@@ -1,8 +1,5 @@
 import { Inject } from '@nestjs/common';
-import {
-  CommandHandler,
-  type ICommandHandler,
-} from '@nestjs/cqrs';
+import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
 
 import {
   EMAIL_REGISTRATION_REPOSITORY,
@@ -28,14 +25,13 @@ import {
   RegisterWithEmailCommand,
   type RegisterWithEmailResult,
 } from './register-with-email.command.js';
+import { InputValidationError } from '../../../../../shared/application/errors/input-validation.error.js';
 
 const REGISTRATION_MESSAGE =
   'If this email can be registered, a verification email will be sent.';
 
 @CommandHandler(RegisterWithEmailCommand)
-export class RegisterWithEmailHandler
-  implements ICommandHandler<RegisterWithEmailCommand>
-{
+export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEmailCommand> {
   constructor(
     @Inject(EMAIL_REGISTRATION_REPOSITORY)
     private readonly registrations: EmailRegistrationRepository,
@@ -57,11 +53,23 @@ export class RegisterWithEmailHandler
     const displayName = command.displayName?.trim() || null;
 
     if (command.password.length < 12) {
-      throw new Error('Password must contain at least 12 characters.');
+      throw new InputValidationError([
+        {
+          field: 'password',
+          code: 'VALIDATION.MIN_LENGTH',
+          params: { min: 12 },
+        },
+      ]);
     }
 
     if (command.password.length > 1024) {
-      throw new Error('Password is too long.');
+      throw new InputValidationError([
+        {
+          field: 'password',
+          code: 'VALIDATION.MAX_LENGTH',
+          params: { max: 1024 },
+        },
+      ]);
     }
 
     const passwordHash = await this.passwordHasher.hash(command.password);
