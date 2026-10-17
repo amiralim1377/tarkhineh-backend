@@ -13,7 +13,7 @@ function createPrismaError(
     {
       code,
       clientVersion: 'test-version',
-      meta,
+      ...(meta ? { meta } : {}),
     },
   );
 }
@@ -69,4 +69,45 @@ describe('normalizePrismaError', () => {
       expect(result.cause).toBe(originalError);
     },
   );
+
+  it('maps P2010 when the adapter reports DatabaseNotReachable', () => {
+    const originalError = createPrismaError('P2010', {
+      driverAdapterError: {
+        name: 'DriverAdapterError',
+        cause: {
+          kind: 'DatabaseNotReachable',
+          host: '127.0.0.1',
+          port: 59999,
+        },
+      },
+    });
+
+    const result = normalizePrismaError(originalError);
+
+    expect(result).toBeInstanceOf(DependencyUnavailableError);
+
+    if (!(result instanceof DependencyUnavailableError)) {
+      throw new Error('Expected DependencyUnavailableError');
+    }
+
+    expect(result.code).toBe('COMMON.DEPENDENCY_UNAVAILABLE');
+    expect(result.metadata).toMatchObject({
+      dependency: 'postgresql',
+      prismaCode: 'P2010',
+    });
+    expect(result.cause).toBe(originalError);
+  });
+
+  it('preserves P2010 for a non-connectivity adapter error', () => {
+    const originalError = createPrismaError('P2010', {
+      driverAdapterError: {
+        name: 'DriverAdapterError',
+        cause: {
+          kind: 'TableDoesNotExist',
+        },
+      },
+    });
+
+    expect(normalizePrismaError(originalError)).toBe(originalError);
+  });
 });
