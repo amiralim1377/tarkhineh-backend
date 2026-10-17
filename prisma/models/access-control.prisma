@@ -49,10 +49,10 @@ model RoleAssignment {
   createdAt    DateTime  @default(now())
   revokedAt    DateTime?
 
-  user User  @relation("RoleAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
-  role Role  @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  assignedBy User? @relation("RoleAssignmentActor", fields: [assignedById], references: [id], onDelete: SetNull)
+  user       User    @relation("RoleAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  role       Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  branch     Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  assignedBy User?   @relation("RoleAssignmentActor", fields: [assignedById], references: [id], onDelete: SetNull)
 
   @@index([userId, revokedAt])
   @@index([branchId, revokedAt])
@@ -68,10 +68,10 @@ model UserPermissionOverride {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  user User @relation("PermissionOverrideTarget", fields: [userId], references: [id], onDelete: Cascade)
+  user       User       @relation("PermissionOverrideTarget", fields: [userId], references: [id], onDelete: Cascade)
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  assignedBy User @relation("PermissionOverrideActor", fields: [assignedById], references: [id], onDelete: Restrict)
+  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  assignedBy User       @relation("PermissionOverrideActor", fields: [assignedById], references: [id], onDelete: Restrict)
 
   @@unique([userId, permissionId, branchId])
   @@index([branchId, permissionId])
