@@ -8,6 +8,8 @@ import { IdentityAccessModule } from './contexts/identity-access/identity-access
 import { HealthModule } from './health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { envSchema } from './config/env.schema.js';
+import { APP_FILTER } from '@nestjs/core';
+import { GlobalHttpExceptionFilter } from './shared/presentation/http/global-http-exception.filter.js';
 
 @Module({
   imports: [
@@ -93,6 +95,12 @@ import { envSchema } from './config/env.schema.js';
     HealthModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_FILTER,
+      useClass: GlobalHttpExceptionFilter,
+    },
+  ],
 })
 export class AppModule {}

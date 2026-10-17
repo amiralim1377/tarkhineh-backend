@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
+import { createValidationException } from './shared/presentation/http/validation-exception.factory.js';
 
 export function appCreate(app: INestApplication): void {
   app.useLogger(app.get(Logger));
@@ -9,6 +10,12 @@ export function appCreate(app: INestApplication): void {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+
+      validationError: {
+        target: false,
+        value: false,
+      },
+      exceptionFactory: createValidationException,
     }),
   );
 
