@@ -1,3 +1,4 @@
+import { IdentityAccessModule } from './contexts/identity-access/identity-access.module.js';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -10,6 +11,7 @@ import { HealthModule } from './health/health.module.js';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    IdentityAccessModule,
     PrismaModule,
     HealthModule,
   ],
