@@ -1,3 +1,7 @@
+export const EMAIL_VERIFICATION_TOKEN_FACTORY = Symbol(
+  'EMAIL_VERIFICATION_TOKEN_FACTORY',
+);
+
 export interface EmailVerificationToken {
   rawToken: string;
   tokenHash: string;
@@ -7,7 +11,3 @@ export interface EmailVerificationToken {
 export interface EmailVerificationTokenFactory {
   create(): EmailVerificationToken;
 }
-
-export const EMAIL_VERIFICATION_TOKEN_FACTORY = Symbol(
-  'EMAIL_VERIFICATION_TOKEN_FACTORY',
-);
