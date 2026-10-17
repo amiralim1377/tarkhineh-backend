@@ -13,12 +13,6 @@ import { RegisterWithEmailCommand } from '../../application/commands/register-wi
 import { RegisterWithEmailDto } from './register-with-email.dto.js';
 
 @Controller('auth')
-@UsePipes(
-  new ValidationPipe({
-    whitelist: true,
-    transform: true,
-  }),
-)
 export class IdentityAccessController {
   constructor(private readonly commandBus: CommandBus) {}
 
@@ -26,11 +20,7 @@ export class IdentityAccessController {
   @HttpCode(HttpStatus.ACCEPTED)
   registerWithEmail(@Body() dto: RegisterWithEmailDto) {
     return this.commandBus.execute(
-      new RegisterWithEmailCommand(
-        dto.email,
-        dto.password,
-        dto.displayName,
-      ),
+      new RegisterWithEmailCommand(dto.email, dto.password, dto.displayName),
     );
   }
 }
