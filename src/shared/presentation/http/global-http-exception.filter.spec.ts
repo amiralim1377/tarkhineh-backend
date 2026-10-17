@@ -5,6 +5,7 @@ import { PinoLogger } from 'nestjs-pino';
 import { ApplicationError } from '../../application/errors/application-error.js';
 import { ERROR_CATEGORY } from '../../errors/error-category.js';
 import { GlobalHttpExceptionFilter } from './global-http-exception.filter.js';
+import { DependencyUnavailableError } from '../../application/errors/dependency-unavailable.error.js';
 
 function createHost(request: Record<string, unknown>) {
   const response = {
@@ -107,5 +108,51 @@ describe('GlobalHttpExceptionFilter', () => {
       method: 'GET',
       path: '/health',
     });
+  });
+
+  it('returns a safe 503 and logs only sanitized dependency diagnostics', () => {
+    const { filter, logger } = createFilter();
+
+    const { host, response } = createHost({
+      id: 'request-789',
+      method: 'POST',
+      originalUrl: '/auth/register/email?token=private',
+    });
+
+    const cause = new Error('postgres://secret-password@private-host/database');
+
+    const exception = new DependencyUnavailableError('P1001', cause);
+
+    filter.catch(exception, host);
+
+    expect(response.setHeader).toHaveBeenCalledWith(
+      'X-Request-Id',
+      'request-789',
+    );
+
+    expect(response.status).toHaveBeenCalledWith(503);
+
+    expect(response.json).toHaveBeenCalledWith({
+      code: 'COMMON.DEPENDENCY_UNAVAILABLE',
+      category: ERROR_CATEGORY.DEPENDENCY_UNAVAILABLE,
+      requestId: 'request-789',
+    });
+
+    const publicResponse = JSON.stringify(response.json.mock.calls);
+
+    expect(publicResponse).not.toContain('secret-password');
+    expect(publicResponse).not.toContain('private-host');
+    expect(publicResponse).not.toContain('P1001');
+
+    expect(logger.error).toHaveBeenCalledTimes(1);
+
+    const logOutput = JSON.stringify(logger.error.mock.calls);
+
+    expect(logOutput).toContain('request-789');
+    expect(logOutput).toContain('P1001');
+    expect(logOutput).toContain('postgresql');
+
+    expect(logOutput).not.toContain('secret-password');
+    expect(logOutput).not.toContain('private-host');
   });
 });
