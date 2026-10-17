@@ -7,11 +7,13 @@ import { AppService } from './app.service.js';
 import { IdentityAccessModule } from './contexts/identity-access/identity-access.module.js';
 import { HealthModule } from './health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { envSchema } from './config/env.schema.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      validationSchema: envSchema,
     }),
 
     LoggerModule.forRootAsync({
