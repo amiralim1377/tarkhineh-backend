@@ -15,16 +15,17 @@ enum OtpPurpose {
 }
 
 model User {
-  id              String     @id @default(cuid())
-  email           String?    @unique
-  emailVerifiedAt DateTime?
-  passwordHash    String?
-  phone           String?    @unique
-  phoneVerifiedAt DateTime?
-  displayName     String?
-  status          UserStatus @default(PENDING)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  emailVerificationChallenges EmailVerificationChallenge[]
+  id                          String                       @id @default(cuid())
+  email                       String?                      @unique
+  emailVerifiedAt             DateTime?
+  passwordHash                String?
+  phone                       String?                      @unique
+  phoneVerifiedAt             DateTime?
+  displayName                 String?
+  status                      UserStatus                   @default(PENDING)
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
 
   oauthAccounts              OAuthAccount[]
   roleAssignments            RoleAssignment[]         @relation("RoleAssignmentUser")
@@ -61,4 +62,19 @@ model OtpChallenge {
   createdAt      DateTime   @default(now())
 
   @@index([phone, purpose, expiresAt])
+}
+
+model EmailVerificationChallenge {
+  id         String    @id @default(cuid())
+  userId     String
+  email      String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([email, expiresAt])
 }
