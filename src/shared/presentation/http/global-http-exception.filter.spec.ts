@@ -108,6 +108,13 @@ describe('GlobalHttpExceptionFilter', () => {
       method: 'GET',
       path: '/health',
     });
+    const logOutput = JSON.stringify(logger.error.mock.calls);
+
+    expect(logOutput).toContain('request-456');
+    expect(logOutput).toContain('stackFrames');
+    expect(logOutput).not.toContain('secret-password');
+    expect(logOutput).not.toContain('private-host');
+    expect(logOutput).not.toContain('postgres://');
   });
 
   it('returns a safe 503 and logs only sanitized dependency diagnostics', () => {

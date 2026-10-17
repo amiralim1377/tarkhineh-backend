@@ -127,12 +127,39 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
     method: string | undefined,
     path: string,
   ): void {
+    const errorType =
+      exception instanceof Error &&
+      /^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(exception.name)
+        ? exception.name
+        : 'UnknownError';
+
+    const stackFrames =
+      exception instanceof Error && exception.stack
+        ? exception.stack
+            .split('\n')
+            .slice(1, 21)
+            .map((line) =>
+              line
+                .replace(
+                  /(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis):\/\/[^\s"'<>)]*/gi,
+                  '[REDACTED_CONNECTION_URL]',
+                )
+                .replace(
+                  /\b(password|passwd|pwd|token|secret|authorization)=([^\s&"']+)/gi,
+                  '$1=[REDACTED]',
+                ),
+            )
+            .join('\n')
+            .slice(0, 5000)
+        : undefined;
+
     this.logger.error(
       {
-        err: exception,
         requestId,
         method,
         path,
+        errorType,
+        ...(stackFrames ? { stackFrames } : {}),
       },
       'Unhandled exception at HTTP boundary',
     );
