@@ -55,6 +55,34 @@ function getPrismaErrorCode(error: unknown): string | undefined {
   return findDriverConnectivityCode(error);
 }
 
+function isDatabaseNotReachable(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+    return false;
+  }
+
+  const meta = error.meta;
+
+  if (typeof meta !== 'object' || meta === null) {
+    return false;
+  }
+
+  const driverAdapterError = (meta as Record<string, unknown>)
+    .driverAdapterError;
+
+  if (typeof driverAdapterError !== 'object' || driverAdapterError === null) {
+    return false;
+  }
+
+  const cause = (driverAdapterError as Record<string, unknown>).cause;
+
+  return (
+    typeof cause === 'object' &&
+    cause !== null &&
+    'kind' in cause &&
+    cause.kind === 'DatabaseNotReachable'
+  );
+}
+
 export function normalizePrismaError(error: unknown): unknown {
   const code = getPrismaErrorCode(error);
 
@@ -66,6 +94,14 @@ export function normalizePrismaError(error: unknown): unknown {
     return new DependencyUnavailableError(code, error);
   }
 
-  // Preserve all unrecognized errors for the outer error boundary.
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2010' &&
+    isDatabaseNotReachable(error)
+  ) {
+    return new DependencyUnavailableError('P2010', error);
+  }
+
+  // Preserve unknown and unmapped errors for the outer error boundary.
   return error;
 }
