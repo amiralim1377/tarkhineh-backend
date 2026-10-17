@@ -16,7 +16,8 @@ import { appCreate } from '../../../app.create.js';
 import { ApplicationError } from '../../application/errors/application-error.js';
 import { ERROR_CATEGORY } from '../../errors/error-category.js';
 import { GlobalHttpExceptionFilter } from './global-http-exception.filter.js';
-import { DependencyUnavailableError } from '../../application/errors/dependency-unavailable.error.js';
+import { Prisma } from '../../../generated/prisma/client.js';
+import { normalizePrismaError } from '../../../prisma/errors/prisma-error-translator.js';
 
 class IntegrationTestDto {
   @IsEmail()
@@ -64,12 +65,15 @@ class ErrorHandlingTestController {
 
   @Get('dependency-unavailable')
   throwDependencyUnavailable(): never {
-    throw new DependencyUnavailableError(
-      'P1001',
-      new Error(
-        'postgres://private-user:private-password@db.internal.example/database',
-      ),
+    const prismaError = new Prisma.PrismaClientKnownRequestError(
+      'Synthetic database connectivity failure',
+      {
+        code: 'P2024',
+        clientVersion: 'test-version',
+      },
     );
+
+    throw normalizePrismaError(prismaError);
   }
 }
 
