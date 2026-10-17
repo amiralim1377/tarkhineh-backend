@@ -1,3 +1,7 @@
+export const EMAIL_REGISTRATION_REPOSITORY = Symbol(
+  'EMAIL_REGISTRATION_REPOSITORY',
+);
+
 export interface CreatePendingEmailRegistration {
   email: string;
   passwordHash: string;
@@ -11,7 +15,3 @@ export interface EmailRegistrationRepository {
     input: CreatePendingEmailRegistration,
   ): Promise<boolean>;
 }
-
-export const EMAIL_REGISTRATION_REPOSITORY = Symbol(
-  'EMAIL_REGISTRATION_REPOSITORY',
-);
