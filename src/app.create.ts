@@ -1,6 +1,9 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 
 export function appCreate(app: INestApplication): void {
+  app.useLogger(app.get(Logger));
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
