@@ -48,6 +48,7 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
         const metadata = exception.metadata ?? {};
         const dependency = metadata.dependency;
         const prismaCode = metadata.prismaCode;
+        const diagnosticType = metadata.diagnosticType;
 
         this.logger.error(
           {
@@ -61,6 +62,7 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
             ...(typeof prismaCode === 'string'
               ? { dependencyErrorCode: prismaCode }
               : {}),
+            ...(typeof diagnosticType === 'string' ? { diagnosticType } : {}),
           },
           'Application dependency unavailable',
         );
