@@ -4,7 +4,9 @@ import { AppModule } from './app.module.js';
 import { appCreate } from './app.create.js';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+  });
 
   appCreate(app);
 
