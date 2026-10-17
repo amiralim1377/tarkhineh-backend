@@ -1,0 +1,64 @@
+enum UserStatus {
+  ACTIVE
+  PENDING
+  SUSPENDED
+}
+
+enum OAuthProvider {
+  GOOGLE
+}
+
+enum OtpPurpose {
+  SIGN_IN
+  VERIFY_PHONE
+  LINK_PHONE
+}
+
+model User {
+  id              String     @id @default(cuid())
+  email           String?    @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String?
+  phone           String?    @unique
+  phoneVerifiedAt DateTime?
+  displayName     String?
+  status          UserStatus @default(PENDING)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  oauthAccounts              OAuthAccount[]
+  roleAssignments            RoleAssignment[]         @relation("RoleAssignmentUser")
+  assignedRoleAssignments    RoleAssignment[]         @relation("RoleAssignmentActor")
+  permissionOverrides        UserPermissionOverride[] @relation("PermissionOverrideTarget")
+  createdPermissionOverrides UserPermissionOverride[] @relation("PermissionOverrideActor")
+
+  @@index([status])
+}
+
+model OAuthAccount {
+  id                String        @id @default(cuid())
+  provider          OAuthProvider
+  providerAccountId String
+  emailAtProvider   String?
+  userId            String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model OtpChallenge {
+  id             String     @id @default(cuid())
+  phone          String
+  codeHash       String
+  purpose        OtpPurpose @default(SIGN_IN)
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  failedAttempts Int        @default(0)
+  createdAt      DateTime   @default(now())
+
+  @@index([phone, purpose, expiresAt])
+}
