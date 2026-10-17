@@ -51,4 +51,22 @@ describe('normalizePrismaError', () => {
 
     expect(normalizePrismaError(originalError)).toBe(originalError);
   });
+
+  it.each(['P1001', 'P1002', 'P1008', 'P1017', 'P2024', 'P2037'])(
+    'normalizes dependency error %s',
+    (code) => {
+      const originalError = createPrismaError(code);
+
+      const result = normalizePrismaError(originalError);
+
+      expect(result).toBeInstanceOf(DependencyUnavailableError);
+
+      if (!(result instanceof DependencyUnavailableError)) {
+        throw new Error('Expected DependencyUnavailableError');
+      }
+
+      expect(result.code).toBe('COMMON.DEPENDENCY_UNAVAILABLE');
+      expect(result.cause).toBe(originalError);
+    },
+  );
 });

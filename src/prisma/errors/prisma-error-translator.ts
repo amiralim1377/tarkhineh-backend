@@ -3,7 +3,8 @@ import { DependencyUnavailableError } from '../../shared/application/errors/depe
 
 const DEPENDENCY_UNAVAILABLE_CODES = new Set([
   'P1001', // Cannot reach database server
-  'P1002', // Database connection timed out
+  'P1002', // Database server reached but timed out
+  'P1008', // Operation timed out
   'P1017', // Database server closed the connection
   'P2024', // Connection pool timeout
   'P2037', // Too many database connections
