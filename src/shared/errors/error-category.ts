@@ -7,6 +7,7 @@ export const ERROR_CATEGORY = {
   BUSINESS_RULE: 'business_rule',
   RATE_LIMITED: 'rate_limited',
   DEPENDENCY_UNAVAILABLE: 'dependency_unavailable',
+  REQUEST_ERROR: 'request_error',
 } as const;
 
 export type ErrorCategory =
