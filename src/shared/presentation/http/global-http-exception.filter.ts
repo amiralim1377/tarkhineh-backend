@@ -45,14 +45,22 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
       // Expected business/authentication/validation failures are not logged here
       // to avoid noisy duplicate logs. Dependency failures are operationally relevant.
       if (exception.category === ERROR_CATEGORY.DEPENDENCY_UNAVAILABLE) {
+        const metadata = exception.metadata ?? {};
+        const dependency = metadata.dependency;
+        const prismaCode = metadata.prismaCode;
+
         this.logger.error(
           {
-            err: exception,
             requestId,
             errorCode: exception.code,
             category: exception.category,
+            errorName: exception.name,
             method,
             path,
+            ...(typeof dependency === 'string' ? { dependency } : {}),
+            ...(typeof prismaCode === 'string'
+              ? { dependencyErrorCode: prismaCode }
+              : {}),
           },
           'Application dependency unavailable',
         );

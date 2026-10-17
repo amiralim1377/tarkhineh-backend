@@ -1,25 +1,31 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../../../prisma/prisma.service.js';
-
+import { Prisma } from '../../../../generated/prisma/client.js';
 import type {
   CreatePendingEmailRegistration,
   EmailRegistrationRepository,
 } from '../../domain/ports/email-registration.repository.js';
+import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
 
-function isUniqueConstraintError(error: unknown): boolean {
+function isEmailUniqueConstraintError(error: unknown): boolean {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== 'P2002'
+  ) {
+    return false;
+  }
+
+  const target = error.meta?.target;
+
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 'P2002'
+    (Array.isArray(target) && target.length === 1 && target[0] === 'email') ||
+    target === 'email' ||
+    target === 'User_email_key'
   );
 }
-
 @Injectable()
-export class PrismaEmailRegistrationRepository
-  implements EmailRegistrationRepository
-{
+export class PrismaEmailRegistrationRepository implements EmailRegistrationRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async createPendingRegistration(
@@ -88,11 +94,11 @@ export class PrismaEmailRegistrationRepository
         return true;
       });
     } catch (error: unknown) {
-      if (isUniqueConstraintError(error)) {
+      if (isEmailUniqueConstraintError(error)) {
         return false;
       }
 
-      throw error;
+      throw normalizePrismaError(error);
     }
   }
 }
