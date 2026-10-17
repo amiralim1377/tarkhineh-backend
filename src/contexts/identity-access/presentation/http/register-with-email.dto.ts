@@ -8,16 +8,32 @@ import {
 
 export class RegisterWithEmailDto {
   @IsEmail()
-  @MaxLength(254)
+  @MaxLength(254, {
+    context: {
+      publicParams: { max: 254 },
+    },
+  })
   email!: string;
 
   @IsString()
-  @MinLength(12)
-  @MaxLength(1024)
+  @MinLength(12, {
+    context: {
+      publicParams: { min: 12 },
+    },
+  })
+  @MaxLength(1024, {
+    context: {
+      publicParams: { max: 1024 },
+    },
+  })
   password!: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(100)
+  @MaxLength(100, {
+    context: {
+      publicParams: { max: 100 },
+    },
+  })
   displayName?: string;
 }
