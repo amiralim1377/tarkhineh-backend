@@ -10,12 +10,23 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { envSchema } from './config/env.schema.js';
 import { APP_FILTER } from '@nestjs/core';
 import { GlobalHttpExceptionFilter } from './shared/presentation/http/global-http-exception.filter.js';
+import { BullModule } from '@nestjs/bullmq';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema: envSchema,
+    }),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.getOrThrow<string>('REDIS_HOST'),
+          port: Number(configService.getOrThrow('REDIS_PORT')),
+        },
+      }),
     }),
 
     LoggerModule.forRootAsync({
