@@ -89,6 +89,11 @@ export const envSchema = z
       z.coerce.number().int().min(1).max(65535).default(6379),
     ),
 
+    BULLMQ_PREFIX: z.preprocess(
+      emptyToUndefined,
+      z.string().trim().min(1).default('bull'),
+    ),
+
     EMAIL_TOKEN_ENCRYPTION_KEY: z.string().refine((value) => {
       const decoded = Buffer.from(value, 'base64');
 
