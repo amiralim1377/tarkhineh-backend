@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
+import { IdentityUser } from '../../domain/entities/identity-user.js';
 import type { EmailVerificationRepository } from '../../domain/ports/email-verification.repository.js';
 
 class VerificationStateChangedError extends Error {
@@ -31,22 +32,47 @@ export class PrismaEmailVerificationRepository implements EmailVerificationRepos
             consumedAt: true,
             user: {
               select: {
+                id: true,
                 email: true,
                 emailVerifiedAt: true,
+                passwordHash: true,
+                displayName: true,
                 status: true,
               },
             },
           },
         });
 
+        // The token must exist, be unused and not be expired.
+        // The challenge email must also match the user's current email.
         if (
           !challenge ||
           challenge.consumedAt !== null ||
           challenge.expiresAt <= now ||
-          challenge.user.emailVerifiedAt !== null ||
-          challenge.user.status !== 'PENDING' ||
           challenge.user.email !== challenge.email
         ) {
+          return false;
+        }
+
+        // Reconstruct the Domain Entity from the persisted user.
+        const user = new IdentityUser({
+          id: challenge.user.id,
+          email: challenge.user.email,
+          emailVerifiedAt: challenge.user.emailVerifiedAt,
+          passwordHash: challenge.user.passwordHash,
+          displayName: challenge.user.displayName,
+          status: challenge.user.status,
+        });
+
+        // The Domain Entity owns the rule for the state transition.
+        if (!user.verifyEmail(now)) {
+          return false;
+        }
+
+        const verifiedAt = user.emailVerifiedAt;
+
+        // Keep the persistence boundary defensive.
+        if (user.status !== 'ACTIVE' || verifiedAt === null) {
           return false;
         }
 
@@ -67,17 +93,18 @@ export class PrismaEmailVerificationRepository implements EmailVerificationRepos
           return false;
         }
 
-        // Activate the account only if it is still pending and unverified.
+        // Persist the Domain Entity's verified state only if the database
+        // still contains the expected pending, unverified account.
         const activated = await tx.user.updateMany({
           where: {
-            id: challenge.userId,
+            id: user.id,
             status: 'PENDING',
             emailVerifiedAt: null,
             email: challenge.email,
           },
           data: {
-            status: 'ACTIVE',
-            emailVerifiedAt: now,
+            status: user.status,
+            emailVerifiedAt: verifiedAt,
           },
         });
 
