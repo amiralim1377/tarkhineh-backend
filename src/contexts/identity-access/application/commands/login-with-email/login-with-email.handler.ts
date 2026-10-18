@@ -1,8 +1,5 @@
 import { Inject } from '@nestjs/common';
-import {
-  CommandHandler,
-  type ICommandHandler,
-} from '@nestjs/cqrs';
+import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
 
 import {
   USER_AUTHENTICATION_REPOSITORY,
@@ -27,23 +24,19 @@ import {
 } from './login-with-email.command.js';
 
 @CommandHandler(LoginWithEmailCommand)
-export class LoginWithEmailHandler
-  implements ICommandHandler<LoginWithEmailCommand>
-{
+export class LoginWithEmailHandler implements ICommandHandler<LoginWithEmailCommand> {
+
+  
   constructor(
     @Inject(USER_AUTHENTICATION_REPOSITORY)
     private readonly users: UserAuthenticationRepository,
-
     @Inject(PASSWORD_VERIFIER)
     private readonly passwordVerifier: PasswordVerifier,
-
     @Inject(ACCESS_TOKEN_ISSUER)
     private readonly tokenIssuer: AccessTokenIssuer,
   ) {}
 
-  async execute(
-    command: LoginWithEmailCommand,
-  ): Promise<LoginWithEmailResult> {
+  async execute(command: LoginWithEmailCommand): Promise<LoginWithEmailResult> {
     const email = command.email.trim().toLowerCase();
     const user = await this.users.findByEmail(email);
 
