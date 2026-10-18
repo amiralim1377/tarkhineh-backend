@@ -4,6 +4,7 @@ import { Prisma } from '../../../../generated/prisma/client.js';
 import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { DependencyUnavailableError } from '../../../../shared/application/errors/dependency-unavailable.error.js';
 
+import { IdentityUser } from '../../domain/entities/identity-user.js';
 import { PrismaEmailRegistrationRepository } from './prisma-email-registration.repository.js';
 import { PrismaUserAuthenticationRepository } from './prisma-user-authentication.repository.js';
 
@@ -21,9 +22,30 @@ function createPrismaError(
   );
 }
 
+function createPendingIdentityUser(
+  email = 'customer@example.com',
+  passwordHash = 'test-hash',
+  displayName: string | null = 'Customer',
+  id?: string,
+): IdentityUser {
+  return IdentityUser.registerPending({
+    ...(id !== undefined ? { id } : {}),
+    email,
+    passwordHash,
+    displayName,
+  });
+}
+
 describe('Prisma repositories: error handling and email outbox', () => {
   it('handles a duplicate email without exposing database errors', async () => {
     const duplicateEmailError = createPrismaError('P2002', ['email']);
+
+    const user = createPendingIdentityUser(
+      'customer@example.com',
+      'test-hash',
+      'Customer',
+      'user-123',
+    );
 
     const tx = {
       user: {
@@ -51,9 +73,7 @@ describe('Prisma repositories: error handling and email outbox', () => {
     const repository = new PrismaEmailRegistrationRepository(prisma);
 
     const result = await repository.createPendingRegistration({
-      email: 'customer@example.com',
-      passwordHash: 'test-hash',
-      displayName: 'Customer',
+      user,
       tokenHash: 'test-token-hash',
       encryptedToken: 'v1:encrypted-test-payload',
       expiresAt: new Date(Date.now() + 30 * 60 * 1000),
@@ -61,6 +81,7 @@ describe('Prisma repositories: error handling and email outbox', () => {
 
     expect(result).toBe(false);
     expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expect(tx.user.create).toHaveBeenCalledOnce();
     expect(tx.emailVerificationChallenge.create).not.toHaveBeenCalled();
     expect(tx.emailOutboxMessage.create).not.toHaveBeenCalled();
   });
@@ -68,10 +89,17 @@ describe('Prisma repositories: error handling and email outbox', () => {
   it('does not swallow a duplicate token-hash error as a duplicate email', async () => {
     const duplicateTokenError = createPrismaError('P2002', ['tokenHash']);
 
+    const user = createPendingIdentityUser(
+      'customer@example.com',
+      'test-hash',
+      'Customer',
+      'user-123',
+    );
+
     const tx = {
       user: {
         findUnique: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({ id: 'user-123' }),
+        create: vi.fn().mockResolvedValue({ id: user.id }),
       },
       emailVerificationChallenge: {
         findMany: vi.fn(),
@@ -95,25 +123,32 @@ describe('Prisma repositories: error handling and email outbox', () => {
 
     await expect(
       repository.createPendingRegistration({
-        email: 'customer@example.com',
-        passwordHash: 'test-hash',
-        displayName: 'Customer',
+        user,
         tokenHash: 'test-token-hash',
         encryptedToken: 'v1:encrypted-test-payload',
         expiresAt: new Date(Date.now() + 30 * 60 * 1000),
       }),
     ).rejects.toBe(duplicateTokenError);
 
+    expect(tx.user.create).toHaveBeenCalledOnce();
+    expect(tx.emailVerificationChallenge.create).toHaveBeenCalledOnce();
     expect(tx.emailOutboxMessage.create).not.toHaveBeenCalled();
   });
 
   it('creates the user, verification challenge and outbox message in one transaction', async () => {
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
+    const user = createPendingIdentityUser(
+      'customer@example.com',
+      'test-hash',
+      'Customer',
+      'user-123',
+    );
+
     const tx = {
       user: {
         findUnique: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({ id: 'user-123' }),
+        create: vi.fn().mockResolvedValue({ id: user.id }),
       },
       emailVerificationChallenge: {
         findMany: vi.fn(),
@@ -136,9 +171,7 @@ describe('Prisma repositories: error handling and email outbox', () => {
     const repository = new PrismaEmailRegistrationRepository(prisma);
 
     const result = await repository.createPendingRegistration({
-      email: 'customer@example.com',
-      passwordHash: 'test-hash',
-      displayName: 'Customer',
+      user,
       tokenHash: 'test-token-hash',
       encryptedToken: 'v1:encrypted-test-payload',
       expiresAt,
@@ -149,6 +182,7 @@ describe('Prisma repositories: error handling and email outbox', () => {
 
     expect(tx.user.create).toHaveBeenCalledWith({
       data: {
+        id: user.id,
         email: 'customer@example.com',
         passwordHash: 'test-hash',
         displayName: 'Customer',
@@ -159,7 +193,7 @@ describe('Prisma repositories: error handling and email outbox', () => {
 
     expect(tx.emailVerificationChallenge.create).toHaveBeenCalledWith({
       data: {
-        userId: 'user-123',
+        userId: user.id,
         email: 'customer@example.com',
         tokenHash: 'test-token-hash',
         expiresAt,
@@ -176,10 +210,17 @@ describe('Prisma repositories: error handling and email outbox', () => {
   });
 
   it('cancels old outbox messages before creating a replacement challenge', async () => {
+    const user = createPendingIdentityUser(
+      'customer@example.com',
+      'new-test-hash',
+      'Customer',
+      'user-123',
+    );
+
     const tx = {
       user: {
         findUnique: vi.fn().mockResolvedValue({
-          id: 'user-123',
+          id: user.id,
           emailVerifiedAt: null,
           status: 'PENDING',
         }),
@@ -210,9 +251,7 @@ describe('Prisma repositories: error handling and email outbox', () => {
     const repository = new PrismaEmailRegistrationRepository(prisma);
 
     const result = await repository.createPendingRegistration({
-      email: 'customer@example.com',
-      passwordHash: 'new-test-hash',
-      displayName: 'Customer',
+      user,
       tokenHash: 'new-test-token-hash',
       encryptedToken: 'v1:new-encrypted-payload',
       expiresAt: new Date(Date.now() + 30 * 60 * 1000),
