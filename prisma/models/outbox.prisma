@@ -1,0 +1,25 @@
+enum EmailOutboxStatus {
+  PENDING
+  QUEUED
+  SENT
+  DEAD
+  CANCELLED
+}
+
+model EmailOutboxMessage {
+  id             String            @id @default(cuid())
+  challengeId    String            @unique
+  encryptedToken String?
+  status         EmailOutboxStatus @default(PENDING)
+  attempts       Int               @default(0)
+  availableAt    DateTime          @default(now())
+  enqueuedAt     DateTime?
+  sentAt         DateTime?
+  lastErrorCode  String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  challenge EmailVerificationChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+}
