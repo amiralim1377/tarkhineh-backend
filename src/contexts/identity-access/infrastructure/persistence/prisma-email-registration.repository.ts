@@ -32,10 +32,28 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
   async createPendingRegistration(
     input: CreatePendingEmailRegistration,
   ): Promise<boolean> {
+    const { user } = input;
+    const email = user.email;
+    const passwordHash = user.passwordHash;
+
+    // This repository operation accepts only a new, pending email identity.
+    // Keep this guard outside the Prisma error-normalization block.
+    if (
+      email === null ||
+      email.trim().length === 0 ||
+      passwordHash === null ||
+      user.status !== 'PENDING' ||
+      user.emailVerifiedAt !== null
+    ) {
+      throw new Error(
+        'createPendingRegistration requires a pending email identity user.',
+      );
+    }
+
     try {
       return await this.prisma.$transaction(async (tx) => {
         const existingUser = await tx.user.findUnique({
-          where: { email: input.email },
+          where: { email },
           select: {
             id: true,
             emailVerifiedAt: true,
@@ -44,6 +62,8 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
         });
 
         if (existingUser) {
+          // Keep the existing anti-enumeration behavior:
+          // verified or non-pending accounts do not get a new challenge.
           if (
             existingUser.emailVerifiedAt !== null ||
             existingUser.status !== 'PENDING'
@@ -51,7 +71,6 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
             return false;
           }
 
-          // Find the existing, unconsumed challenges for this user.
           const previousChallenges =
             await tx.emailVerificationChallenge.findMany({
               where: {
@@ -67,8 +86,7 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
             (challenge) => challenge.id,
           );
 
-          // Cancel pending jobs associated with old challenges.
-          // The worker must also check this status before sending.
+          // Cancel pending jobs that belong to the old challenges.
           if (previousChallengeIds.length > 0) {
             await tx.emailOutboxMessage.updateMany({
               where: {
@@ -86,7 +104,7 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
             });
           }
 
-          // Invalidate the previous verification links.
+          // Invalidate any old verification links.
           await tx.emailVerificationChallenge.updateMany({
             where: {
               userId: existingUser.id,
@@ -97,11 +115,10 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
             },
           });
 
-          // Create a new verification challenge.
           const challenge = await tx.emailVerificationChallenge.create({
             data: {
               userId: existingUser.id,
-              email: input.email,
+              email,
               tokenHash: input.tokenHash,
               expiresAt: input.expiresAt,
             },
@@ -110,7 +127,7 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
             },
           });
 
-          // Save the email job in the same database transaction.
+          // The challenge and email job are committed together.
           await tx.emailOutboxMessage.create({
             data: {
               challengeId: challenge.id,
@@ -121,24 +138,25 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
           return true;
         }
 
-        // Create a new user.
-        const user = await tx.user.create({
+        // Persist the identity created by the Domain Entity.
+        // The ID and initial status are no longer independently chosen here.
+        const createdUser = await tx.user.create({
           data: {
-            email: input.email,
-            passwordHash: input.passwordHash,
-            displayName: input.displayName,
-            status: 'PENDING',
+            id: user.id,
+            email,
+            passwordHash,
+            displayName: user.displayName,
+            status: user.status,
           },
           select: {
             id: true,
           },
         });
 
-        // Create the verification challenge.
         const challenge = await tx.emailVerificationChallenge.create({
           data: {
-            userId: user.id,
-            email: input.email,
+            userId: createdUser.id,
+            email,
             tokenHash: input.tokenHash,
             expiresAt: input.expiresAt,
           },
@@ -147,7 +165,6 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
           },
         });
 
-        // Store the email job atomically with the user and challenge.
         await tx.emailOutboxMessage.create({
           data: {
             challengeId: challenge.id,
