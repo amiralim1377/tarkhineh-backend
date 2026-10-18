@@ -16,6 +16,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { EMAIL_TOKEN_ENCRYPTOR } from './application/ports/email-token-encryptor.port.js';
 import { AesGcmEmailTokenEncryptor } from './infrastructure/security/aes-gcm-email-token-encryptor.js';
 import { EmailVerificationProcessor } from './infrastructure/security/email-verification.processor.js';
+import { EmailOutboxDispatcher } from './infrastructure/queue/email-outbox-dispatcher.js';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { EmailVerificationProcessor } from './infrastructure/security/email-veri
     AesGcmEmailTokenEncryptor,
     RegisterWithEmailHandler,
     EmailVerificationProcessor,
+    EmailOutboxDispatcher,
     {
       provide: EMAIL_REGISTRATION_REPOSITORY,
       useExisting: PrismaEmailRegistrationRepository,
