@@ -13,6 +13,7 @@ import { EmailOutboxDispatcher } from '../../../src/contexts/identity-access/inf
 import { EmailVerificationProcessor } from '../../../src/contexts/identity-access/infrastructure/security/email-verification.processor.js';
 import type { EmailTokenEncryptor } from '../../../src/contexts/identity-access/application/ports/email-token-encryptor.port.js';
 import type { EmailVerificationSender } from '../../../src/contexts/identity-access/application/ports/email-verification-sender.port.js';
+import { IdentityUser } from '../../../src/contexts/identity-access/domain/entities/identity-user.js';
 
 function createTestDatabaseUrl(): string {
   const configuredUrl = process.env.DATABASE_URL;
@@ -143,9 +144,11 @@ describe('Email outbox to BullMQ worker integration', () => {
     const encryptedToken = 'v1:integration-test-encrypted-payload';
 
     const created = await registrationRepository.createPendingRegistration({
-      email: testEmail,
-      passwordHash: 'integration-test-password-hash',
-      displayName: 'Integration Test',
+      user: IdentityUser.registerPending({
+        email: testEmail,
+        passwordHash: 'integration-test-password-hash',
+        displayName: 'Integration Test',
+      }),
       tokenHash,
       expiresAt: new Date(Date.now() + 30 * 60 * 1000),
       encryptedToken,
