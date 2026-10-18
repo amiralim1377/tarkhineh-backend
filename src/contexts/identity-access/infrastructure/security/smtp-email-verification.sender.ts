@@ -5,19 +5,12 @@ import { createTransport } from 'nodemailer';
 import type { EmailVerificationSender } from '../../application/ports/email-verification-sender.port.js';
 
 @Injectable()
-export class SmtpEmailVerificationSender
-  implements EmailVerificationSender
-{
+export class SmtpEmailVerificationSender implements EmailVerificationSender {
   constructor(private readonly configService: ConfigService) {}
 
-  async sendVerificationEmail(
-    email: string,
-    rawToken: string,
-  ): Promise<void> {
+  async sendVerificationEmail(email: string, rawToken: string): Promise<void> {
     const host = this.configService.get<string>('SMTP_HOST');
-    const port = Number(
-      this.configService.get<string>('SMTP_PORT') ?? '587',
-    );
+    const port = this.configService.get<number>('SMTP_PORT') ?? 587;
     const username = this.configService.get<string>('SMTP_USER');
     const password = this.configService.get<string>('SMTP_PASSWORD');
     const from = this.configService.get<string>('SMTP_FROM');
@@ -36,10 +29,7 @@ export class SmtpEmailVerificationSender
       throw new Error('SMTP or API public URL configuration is incomplete.');
     }
 
-    const verificationUrl = new URL(
-      '/auth/verify-email',
-      apiPublicUrl,
-    );
+    const verificationUrl = new URL('/auth/verify-email', apiPublicUrl);
     verificationUrl.searchParams.set('token', rawToken);
 
     const transporter = createTransport({
