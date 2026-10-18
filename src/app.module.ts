@@ -11,6 +11,7 @@ import { envSchema } from './config/env.schema.js';
 import { APP_FILTER } from '@nestjs/core';
 import { GlobalHttpExceptionFilter } from './shared/presentation/http/global-http-exception.filter.js';
 import { BullModule } from '@nestjs/bullmq';
+import './queue/redis-client.factory.js';
 
 @Module({
   imports: [
