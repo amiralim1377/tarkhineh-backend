@@ -17,11 +17,6 @@ import {
 } from '../../ports/email-verification-token-factory.port.js';
 
 import {
-  EMAIL_VERIFICATION_SENDER,
-  type EmailVerificationSender,
-} from '../../ports/email-verification-sender.port.js';
-
-import {
   RegisterWithEmailCommand,
   type RegisterWithEmailResult,
 } from './register-with-email.command.js';
@@ -43,8 +38,6 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
     private readonly passwordHasher: PasswordHasher,
     @Inject(EMAIL_VERIFICATION_TOKEN_FACTORY)
     private readonly tokenFactory: EmailVerificationTokenFactory,
-    @Inject(EMAIL_VERIFICATION_SENDER)
-    private readonly emailSender: EmailVerificationSender,
     @Inject(EMAIL_TOKEN_ENCRYPTOR)
     private readonly tokenEncryptor: EmailTokenEncryptor,
   ) {}
@@ -79,7 +72,7 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
     const token = this.tokenFactory.create();
     const encryptedToken = this.tokenEncryptor.encrypt(token.rawToken);
 
-    const created = await this.registrations.createPendingRegistration({
+    await this.registrations.createPendingRegistration({
       email,
       passwordHash,
       displayName,
