@@ -11,6 +11,7 @@ import { envSchema } from './config/env.schema.js';
 import { APP_FILTER } from '@nestjs/core';
 import { GlobalHttpExceptionFilter } from './shared/presentation/http/global-http-exception.filter.js';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import './queue/redis-client.factory.js';
 
 @Module({
@@ -29,7 +30,7 @@ import './queue/redis-client.factory.js';
         },
       }),
     }),
-
+    ScheduleModule.forRoot(),
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -101,7 +102,6 @@ import './queue/redis-client.factory.js';
         };
       },
     }),
-
     IdentityAccessModule,
     PrismaModule,
     HealthModule,
