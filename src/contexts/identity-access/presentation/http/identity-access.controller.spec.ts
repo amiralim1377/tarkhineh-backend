@@ -17,7 +17,9 @@ import {
 import { appCreate } from '../../../../app.create.js';
 import { GlobalHttpExceptionFilter } from '../../../../shared/presentation/http/global-http-exception.filter.js';
 import { InvalidEmailVerificationTokenError } from '../../application/errors/invalid-email-verification-token.error.js';
+import { InvalidCredentialsError } from '../../application/errors/invalid-credentials.error.js';
 import { VerifyEmailCommand } from '../../application/commands/verify-email/verify-email.command.js';
+import { LoginWithEmailCommand } from '../../application/commands/login-with-email/login-with-email.command.js';
 import { IdentityAccessController } from './identity-access.controller.js';
 
 const VALID_TOKEN = 'A'.repeat(43);
@@ -158,4 +160,105 @@ describe('IdentityAccessController: email verification', () => {
       'Email verification token is invalid or expired',
     );
   });
+
+  it('logs in with valid credentials and returns the public login response', async () => {
+    commandBusMock.execute.mockResolvedValueOnce({
+      accessToken: 'test-access-token',
+      tokenType: 'Bearer',
+      expiresIn: 900,
+      user: {
+        id: 'user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({
+        email: 'user@example.com',
+        password: 'ValidPassword123!',
+      })
+      .expect(200);
+
+    expect(response.body).toEqual({
+      accessToken: 'test-access-token',
+      tokenType: 'Bearer',
+      expiresIn: 900,
+      user: {
+        id: 'user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+      },
+    });
+
+    expect(commandBusMock.execute).toHaveBeenCalledOnce();
+
+    const command = commandBusMock.execute.mock.calls[0]?.[0];
+    expect(command).toBeInstanceOf(LoginWithEmailCommand);
+    expect(command).toMatchObject({
+      email: 'user@example.com',
+      password: 'ValidPassword123!',
+    });
+  });
+
+  it('rejects an invalid email during login DTO validation', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({
+        email: 'not-an-email',
+        password: 'ValidPassword123!',
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      code: 'COMMON.VALIDATION_FAILED',
+      category: 'validation',
+    });
+
+    expect(commandBusMock.execute).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty password during login DTO validation', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({
+        email: 'user@example.com',
+        password: '',
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      code: 'COMMON.VALIDATION_FAILED',
+      category: 'validation',
+    });
+
+    expect(commandBusMock.execute).not.toHaveBeenCalled();
+  });
+
+  it('returns a safe 401 response for invalid login credentials', async () => {
+    commandBusMock.execute.mockRejectedValueOnce(
+      new InvalidCredentialsError(),
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/login/email')
+      .send({
+        email: 'user@example.com',
+        password: 'WrongPassword123!',
+      })
+      .expect(401);
+
+    expect(response.body).toMatchObject({
+      code: 'IDENTITY.INVALID_CREDENTIALS',
+      category: 'authentication',
+    });
+
+    expect(response.body.requestId).toBeTruthy();
+    expect(response.body.message).toBeUndefined();
+    expect(
+      JSON.stringify(response.body),
+    ).not.toContain('Invalid email or password');
+  });
+
 });
