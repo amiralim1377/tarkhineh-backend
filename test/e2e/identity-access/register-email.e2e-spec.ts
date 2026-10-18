@@ -14,16 +14,18 @@ import {
   vi,
 } from 'vitest';
 
-import { AppModule } from '../../../src/app.module.js';
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
 
 import { EMAIL_VERIFICATION_SENDER } from '../../../src/contexts/identity-access/application/ports/email-verification-sender.port.js';
 
 import { EmailOutboxDispatcher } from '../../../src/contexts/identity-access/infrastructure/queue/email-outbox-dispatcher.js';
 
-function createTestDatabaseUrl(): string {
-  const configuredUrl = process.env.DATABASE_URL;
+const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalBullMqPrefix = process.env.BULLMQ_PREFIX;
 
+const testBullMqPrefix = `tarkhineh-e2e-${randomUUID()}`;
+
+function createTestDatabaseUrl(configuredUrl: string | undefined): string {
   if (!configuredUrl) {
     throw new Error('DATABASE_URL must be configured for E2E tests');
   }
@@ -44,6 +46,17 @@ function createTestDatabaseUrl(): string {
   return url.toString();
 }
 
+function restoreEnvironmentVariable(
+  name: string,
+  originalValue: string | undefined,
+): void {
+  if (originalValue === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = originalValue;
+  }
+}
+
 describe('Email registration flow (E2E)', () => {
   let app: INestApplication | undefined;
   let prisma: PrismaService;
@@ -56,8 +69,15 @@ describe('Email registration flow (E2E)', () => {
     .mockResolvedValue(undefined);
 
   beforeAll(async () => {
-    // All test writes must go to the isolated test database.
-    process.env.DATABASE_URL = createTestDatabaseUrl();
+    // Restrict all database writes to the isolated test database.
+    process.env.DATABASE_URL = createTestDatabaseUrl(originalDatabaseUrl);
+
+    // Use a unique BullMQ namespace for this E2E test run.
+    // Set it before importing AppModule because its configuration
+    // is evaluated when the module is imported.
+    process.env.BULLMQ_PREFIX = testBullMqPrefix;
+
+    const { AppModule } = await import('../../../src/app.module.js');
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -81,6 +101,7 @@ describe('Email registration flow (E2E)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
+
     dispatcher = app.get(EmailOutboxDispatcher, {
       strict: false,
     });
@@ -103,8 +124,15 @@ describe('Email registration flow (E2E)', () => {
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
+    try {
+      if (app) {
+        await app.close();
+      }
+    } finally {
+      // Restore environment variables even if application shutdown fails.
+      restoreEnvironmentVariable('DATABASE_URL', originalDatabaseUrl);
+
+      restoreEnvironmentVariable('BULLMQ_PREFIX', originalBullMqPrefix);
     }
   });
 
@@ -113,8 +141,12 @@ describe('Email registration flow (E2E)', () => {
 
     while (Date.now() < deadline) {
       const message = await prisma.emailOutboxMessage.findUnique({
-        where: { id: outboxMessageId },
-        select: { status: true },
+        where: {
+          id: outboxMessageId,
+        },
+        select: {
+          status: true,
+        },
       });
 
       if (message?.status === 'SENT') {
@@ -137,6 +169,7 @@ describe('Email registration flow (E2E)', () => {
 
   it('registers a user, processes the email job, and verifies the account over HTTP', async () => {
     const email = `register-e2e-${randomUUID()}@example.com`;
+
     testEmails.add(email);
 
     // 1. Register through the real HTTP endpoint.
@@ -154,9 +187,11 @@ describe('Email registration flow (E2E)', () => {
         'If this email can be registered, a verification email will be sent.',
     });
 
-    // 2. Verify that the real registration flow persisted the user.
+    // 2. Check that the real registration flow persisted the user.
     const userAfterRegistration = await prisma.user.findUnique({
-      where: { email },
+      where: {
+        email,
+      },
       select: {
         status: true,
         emailVerifiedAt: true,
@@ -173,10 +208,14 @@ describe('Email registration flow (E2E)', () => {
       'Integration-Test-Password-123!',
     );
 
-    // 3. Find the challenge and its associated Outbox message.
+    // 3. Find the verification challenge and associated Outbox message.
     const challenge = await prisma.emailVerificationChallenge.findFirst({
-      where: { email },
-      orderBy: { createdAt: 'desc' },
+      where: {
+        email,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
       select: {
         id: true,
         tokenHash: true,
@@ -199,11 +238,11 @@ describe('Email registration flow (E2E)', () => {
 
     const outboxMessageId = challenge.outboxMessage.id;
 
-    // 4. Dispatch the persisted Outbox message into the real BullMQ queue.
+    // 4. Dispatch the persisted Outbox message to the real BullMQ queue.
     await dispatcher.dispatchPendingMessages();
 
-    // 5. Wait for the real Worker to process it.
-    //    The SMTP boundary is mocked, so no real email is sent.
+    // 5. Wait until the real Worker finishes processing the message.
+    // The email sender is mocked, so no real email is sent.
     await waitForOutboxToBeSent(outboxMessageId);
 
     const callsForThisEmail = emailSenderMock.mock.calls.filter(
@@ -220,13 +259,15 @@ describe('Email registration flow (E2E)', () => {
       );
     }
 
-    // The database stores the hash, not the raw verification token.
+    // 6. Confirm that the emailed raw token matches the stored hash.
     expect(createHash('sha256').update(rawToken).digest('hex')).toBe(
       challenge.tokenHash,
     );
 
     const sentOutbox = await prisma.emailOutboxMessage.findUnique({
-      where: { id: outboxMessageId },
+      where: {
+        id: outboxMessageId,
+      },
       select: {
         status: true,
         attempts: true,
@@ -242,19 +283,23 @@ describe('Email registration flow (E2E)', () => {
       encryptedToken: null,
     });
 
-    // 6. Use the token received by the mock email sender through HTTP.
+    // 7. Submit the token through the real HTTP verification endpoint.
     const verificationResponse = await request(app!.getHttpServer())
       .post('/auth/verify-email')
-      .send({ token: rawToken })
+      .send({
+        token: rawToken,
+      })
       .expect(200);
 
     expect(verificationResponse.body).toMatchObject({
       message: 'Email verified successfully.',
     });
 
-    // 7. Confirm the account and challenge were updated in PostgreSQL.
+    // 8. Verify the final account and challenge state in PostgreSQL.
     const verifiedUser = await prisma.user.findUnique({
-      where: { email },
+      where: {
+        email,
+      },
       select: {
         status: true,
         emailVerifiedAt: true,
@@ -268,8 +313,12 @@ describe('Email registration flow (E2E)', () => {
 
     const verifiedChallenge =
       await prisma.emailVerificationChallenge.findUnique({
-        where: { tokenHash: challenge.tokenHash },
-        select: { consumedAt: true },
+        where: {
+          tokenHash: challenge.tokenHash,
+        },
+        select: {
+          consumedAt: true,
+        },
       });
 
     expect(verifiedChallenge?.consumedAt).toBeInstanceOf(Date);
