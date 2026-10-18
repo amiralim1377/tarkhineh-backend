@@ -1,5 +1,6 @@
 import { Entity } from '../../../../shared/domain/entities/entity.js';
 import { UniqueId } from '../../../../shared/domain/value-objects/unique-id.vo.js';
+import { InvalidIdentityUserDataError } from '../errors/invalid-identity-user-data.error.js';
 
 export type IdentityUserStatus = 'ACTIVE' | 'PENDING' | 'SUSPENDED';
 
@@ -37,11 +38,17 @@ export class IdentityUser extends Entity<UniqueId> {
    */
   static registerPending(input: RegisterPendingIdentityUser): IdentityUser {
     if (input.email.trim().length === 0) {
-      throw new Error('A pending identity must have an email.');
+      throw new InvalidIdentityUserDataError(
+        'IDENTITY.EMAIL_REQUIRED',
+        'A pending identity must have an email.',
+      );
     }
 
     if (input.passwordHash.length === 0) {
-      throw new Error('Password hash cannot be empty.');
+      throw new InvalidIdentityUserDataError(
+        'IDENTITY.PASSWORD_HASH_REQUIRED',
+        'Password hash cannot be empty.',
+      );
     }
 
     const id = new UniqueId(input.id);
@@ -57,20 +64,29 @@ export class IdentityUser extends Entity<UniqueId> {
   }
 
   /**
-   * Creates an already-verified identity for trusted provisioning flows,
-   * such as the initial central administrator.
+   * Creates an already-verified identity through a trusted provisioning flow,
+   * such as initial central administrator setup.
    */
   static provisionVerified(input: ProvisionVerifiedIdentityUser): IdentityUser {
     if (input.email.trim().length === 0) {
-      throw new Error('A verified identity must have an email.');
+      throw new InvalidIdentityUserDataError(
+        'IDENTITY.EMAIL_REQUIRED',
+        'A verified identity must have an email.',
+      );
     }
 
     if (!Number.isFinite(input.emailVerifiedAt.getTime())) {
-      throw new Error('Email verification date must be valid.');
+      throw new InvalidIdentityUserDataError(
+        'IDENTITY.EMAIL_VERIFICATION_DATE_INVALID',
+        'Email verification date must be valid.',
+      );
     }
 
     if (input.passwordHash.length === 0) {
-      throw new Error('Password hash cannot be empty.');
+      throw new InvalidIdentityUserDataError(
+        'IDENTITY.PASSWORD_HASH_REQUIRED',
+        'Password hash cannot be empty.',
+      );
     }
 
     const id = new UniqueId(input.id);
@@ -87,7 +103,7 @@ export class IdentityUser extends Entity<UniqueId> {
 
   /**
    * Reconstructs an existing identity from trusted persisted data.
-   * This does not represent a new registration.
+   * This is not a new registration and does not apply registration defaults.
    */
   static reconstitute(props: IdentityUserProps): IdentityUser {
     return new IdentityUser(props);
@@ -119,6 +135,7 @@ export class IdentityUser extends Entity<UniqueId> {
 
   /**
    * Applies the domain rule for verifying a pending email identity.
+   * Returns false when the transition is not allowed.
    */
   verifyEmail(verifiedAt: Date): boolean {
     if (
