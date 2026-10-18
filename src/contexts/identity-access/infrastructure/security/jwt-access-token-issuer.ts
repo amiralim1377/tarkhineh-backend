@@ -15,17 +15,11 @@ export class JwtAccessTokenIssuer implements AccessTokenIssuer {
   ) {}
 
   async issueFor(userId: string): Promise<IssuedAccessToken> {
-    const expiresInSeconds = Number(
-      this.configService.get<string>('JWT_ACCESS_TTL_SECONDS') ?? '900',
-    );
+    const expiresInSeconds =
+      this.configService.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 900;
 
-    if (
-      !Number.isSafeInteger(expiresInSeconds) ||
-      expiresInSeconds <= 0
-    ) {
-      throw new Error(
-        'JWT_ACCESS_TTL_SECONDS must be a positive integer',
-      );
+    if (!Number.isSafeInteger(expiresInSeconds) || expiresInSeconds <= 0) {
+      throw new Error('JWT_ACCESS_TTL_SECONDS must be a positive integer');
     }
 
     const accessToken = await this.jwtService.signAsync(
