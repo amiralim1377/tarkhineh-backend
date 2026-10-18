@@ -28,6 +28,7 @@ import './queue/redis-client.factory.js';
           host: configService.getOrThrow<string>('REDIS_HOST'),
           port: Number(configService.getOrThrow('REDIS_PORT')),
         },
+        prefix: configService.getOrThrow<string>('BULLMQ_PREFIX'),
       }),
     }),
     ScheduleModule.forRoot(),
