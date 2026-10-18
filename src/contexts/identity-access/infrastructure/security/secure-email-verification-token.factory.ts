@@ -8,9 +8,7 @@ import type {
 } from '../../application/ports/email-verification-token-factory.port.js';
 
 @Injectable()
-export class SecureEmailVerificationTokenFactory
-  implements EmailVerificationTokenFactory
-{
+export class SecureEmailVerificationTokenFactory implements EmailVerificationTokenFactory {
   constructor(private readonly configService: ConfigService) {}
 
   create(): EmailVerificationToken {
@@ -27,14 +25,15 @@ export class SecureEmailVerificationTokenFactory
     }
 
     const rawToken = randomBytes(32).toString('base64url');
-    const tokenHash = createHash('sha256')
-      .update(rawToken)
-      .digest('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
 
     return {
       rawToken,
       tokenHash,
       expiresAt: new Date(Date.now() + ttlSeconds * 1000),
     };
+  }
+  hash(rawToken: string): string {
+    return createHash('sha256').update(rawToken).digest('hex');
   }
 }
