@@ -28,7 +28,7 @@ export class PrismaUserAuthenticationRepository implements UserAuthenticationRep
         return null;
       }
 
-      return new IdentityUser({
+      return IdentityUser.reconstitute({
         id: user.id,
         email: user.email,
         emailVerifiedAt: user.emailVerifiedAt,
