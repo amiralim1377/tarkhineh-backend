@@ -33,16 +33,17 @@ describe('IdentityUser', () => {
   });
 
   it('does not verify an already active user', () => {
-    const user = new IdentityUser({
+    const originalVerifiedAt = new Date('2026-10-18T11:00:00.000Z');
+
+    const user = IdentityUser.reconstitute({
       id: 'user-123',
       email: 'customer@example.com',
-      emailVerifiedAt: new Date('2026-10-18T11:00:00.000Z'),
+      emailVerifiedAt: originalVerifiedAt,
       passwordHash: 'test-hash',
       displayName: 'Customer',
       status: 'ACTIVE',
     });
 
-    const originalVerifiedAt = user.emailVerifiedAt;
     const result = user.verifyEmail(new Date('2026-10-18T12:00:00.000Z'));
 
     expect(result).toBe(false);
@@ -51,7 +52,7 @@ describe('IdentityUser', () => {
   });
 
   it('does not verify a suspended user', () => {
-    const user = new IdentityUser({
+    const user = IdentityUser.reconstitute({
       id: 'user-123',
       email: 'customer@example.com',
       emailVerifiedAt: null,
@@ -68,7 +69,7 @@ describe('IdentityUser', () => {
   });
 
   it('does not verify a user without an email address', () => {
-    const user = new IdentityUser({
+    const user = IdentityUser.reconstitute({
       id: 'user-123',
       email: null,
       emailVerifiedAt: null,
