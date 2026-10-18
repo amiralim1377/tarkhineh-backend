@@ -25,6 +25,7 @@ import {
   EMAIL_TOKEN_ENCRYPTOR,
   type EmailTokenEncryptor,
 } from '../../ports/email-token-encryptor.port.js';
+import { IdentityUser } from '../../../domain/entities/identity-user.js';
 
 const REGISTRATION_MESSAGE =
   'If this email can be registered, a verification email will be sent.';
@@ -69,13 +70,18 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
     }
 
     const passwordHash = await this.passwordHasher.hash(command.password);
+
+    const user = IdentityUser.registerPending({
+      email,
+      passwordHash,
+      displayName,
+    });
+
     const token = this.tokenFactory.create();
     const encryptedToken = this.tokenEncryptor.encrypt(token.rawToken);
 
     await this.registrations.createPendingRegistration({
-      email,
-      passwordHash,
-      displayName,
+      user,
       tokenHash: token.tokenHash,
       expiresAt: token.expiresAt,
       encryptedToken,
