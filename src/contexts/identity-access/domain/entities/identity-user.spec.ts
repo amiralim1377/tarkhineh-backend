@@ -83,4 +83,41 @@ describe('IdentityUser', () => {
     expect(user.status).toBe('PENDING');
     expect(user.emailVerifiedAt).toBeNull();
   });
+
+  it('generates a unique ID when registering a new user without an ID', () => {
+    const firstUser = IdentityUser.registerPending({
+      email: 'first@example.com',
+      passwordHash: 'test-hash',
+      displayName: 'First',
+    });
+
+    const secondUser = IdentityUser.registerPending({
+      email: 'second@example.com',
+      passwordHash: 'test-hash',
+      displayName: 'Second',
+    });
+
+    expect(firstUser.id).toBeTruthy();
+    expect(firstUser.getId().getValue()).toBe(firstUser.id);
+    expect(firstUser.equals(secondUser)).toBe(false);
+  });
+
+  it('recognizes two instances with the same ID as the same entity', () => {
+    const firstUser = IdentityUser.registerPending({
+      id: 'existing-user-123',
+      email: 'customer@example.com',
+      passwordHash: 'test-hash',
+      displayName: 'Customer',
+    });
+
+    const secondUser = IdentityUser.registerPending({
+      id: 'existing-user-123',
+      email: 'customer@example.com',
+      passwordHash: 'test-hash',
+      displayName: 'Customer',
+    });
+
+    expect(firstUser).not.toBe(secondUser);
+    expect(firstUser.equals(secondUser)).toBe(true);
+  });
 });
