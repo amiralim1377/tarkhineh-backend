@@ -9,18 +9,31 @@ import {
   Query,
 } from '@nestjs/common';
 import { CommandBus } from '@nestjs/cqrs';
-
 import { RegisterWithEmailCommand } from '../../application/commands/register-with-email/register-with-email.command.js';
 import { VerifyEmailCommand } from '../../application/commands/verify-email/verify-email.command.js';
-
+import { LoginWithEmailCommand } from '../../application/commands/login-with-email/login-with-email.command.js';
 import { RegisterWithEmailDto } from './dto/register-with-email.dto.js';
 import { VerifyEmailDto } from './dto/verify-email.dto.js';
+import { LoginWithEmailDto } from './dto/login-with-email.dto.js';
+import { LoginWithEmailResponseDto } from './dto/login-with-email-response.dto.js';
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 @Controller('auth')
 export class IdentityAccessController {
   constructor(private readonly commandBus: CommandBus) {}
+
+  @Post('login/email')
+  @HttpCode(HttpStatus.OK)
+  async loginWithEmail(
+    @Body() dto: LoginWithEmailDto,
+  ): Promise<LoginWithEmailResponseDto> {
+    const result = await this.commandBus.execute(
+      new LoginWithEmailCommand(dto.email, dto.password),
+    );
+
+    return LoginWithEmailResponseDto.fromResult(result);
+  }
 
   @Post('register/email')
   @HttpCode(HttpStatus.ACCEPTED)
