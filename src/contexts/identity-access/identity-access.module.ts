@@ -15,6 +15,7 @@ import { IdentityAccessController } from './presentation/http/identity-access.co
 import { BullModule } from '@nestjs/bullmq';
 import { EMAIL_TOKEN_ENCRYPTOR } from './application/ports/email-token-encryptor.port.js';
 import { AesGcmEmailTokenEncryptor } from './infrastructure/security/aes-gcm-email-token-encryptor.js';
+import { EmailVerificationProcessor } from './infrastructure/security/email-verification.processor.js';
 
 @Module({
   imports: [
@@ -27,13 +28,13 @@ import { AesGcmEmailTokenEncryptor } from './infrastructure/security/aes-gcm-ema
   ],
   controllers: [IdentityAccessController],
   providers: [
-    RegisterWithEmailHandler,
-
     PrismaEmailRegistrationRepository,
     Argon2PasswordHasher,
     SecureEmailVerificationTokenFactory,
     SmtpEmailVerificationSender,
     AesGcmEmailTokenEncryptor,
+    RegisterWithEmailHandler,
+    EmailVerificationProcessor,
     {
       provide: EMAIL_REGISTRATION_REPOSITORY,
       useExisting: PrismaEmailRegistrationRepository,
