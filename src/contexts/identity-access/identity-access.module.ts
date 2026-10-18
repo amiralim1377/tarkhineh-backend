@@ -17,6 +17,8 @@ import { EMAIL_TOKEN_ENCRYPTOR } from './application/ports/email-token-encryptor
 import { AesGcmEmailTokenEncryptor } from './infrastructure/security/aes-gcm-email-token-encryptor.js';
 import { EmailVerificationProcessor } from './infrastructure/security/email-verification.processor.js';
 import { EmailOutboxDispatcher } from './infrastructure/queue/email-outbox-dispatcher.js';
+import { EMAIL_VERIFICATION_REPOSITORY } from './domain/ports/email-verification.repository.js';
+import { PrismaEmailVerificationRepository } from './infrastructure/persistence/prisma-email-verification.repository.js';
 
 @Module({
   imports: [
@@ -37,6 +39,7 @@ import { EmailOutboxDispatcher } from './infrastructure/queue/email-outbox-dispa
     RegisterWithEmailHandler,
     EmailVerificationProcessor,
     EmailOutboxDispatcher,
+    PrismaEmailVerificationRepository,
     {
       provide: EMAIL_REGISTRATION_REPOSITORY,
       useExisting: PrismaEmailRegistrationRepository,
@@ -56,6 +59,10 @@ import { EmailOutboxDispatcher } from './infrastructure/queue/email-outbox-dispa
     {
       provide: EMAIL_TOKEN_ENCRYPTOR,
       useExisting: AesGcmEmailTokenEncryptor,
+    },
+    {
+      provide: EMAIL_VERIFICATION_REPOSITORY,
+      useExisting: PrismaEmailVerificationRepository,
     },
   ],
 })
