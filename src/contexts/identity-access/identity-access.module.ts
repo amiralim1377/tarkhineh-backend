@@ -19,6 +19,7 @@ import { EmailVerificationProcessor } from './infrastructure/security/email-veri
 import { EmailOutboxDispatcher } from './infrastructure/queue/email-outbox-dispatcher.js';
 import { EMAIL_VERIFICATION_REPOSITORY } from './domain/ports/email-verification.repository.js';
 import { PrismaEmailVerificationRepository } from './infrastructure/persistence/prisma-email-verification.repository.js';
+import { VerifyEmailHandler } from './application/commands/verify-email/verify-email.handler.js';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { PrismaEmailVerificationRepository } from './infrastructure/persistence/
     EmailVerificationProcessor,
     EmailOutboxDispatcher,
     PrismaEmailVerificationRepository,
+    VerifyEmailHandler,
     {
       provide: EMAIL_REGISTRATION_REPOSITORY,
       useExisting: PrismaEmailRegistrationRepository,
