@@ -10,7 +10,7 @@ import {
 import { CommandBus } from '@nestjs/cqrs';
 
 import { RegisterWithEmailCommand } from '../../application/commands/register-with-email/register-with-email.command.js';
-import { RegisterWithEmailDto } from './register-with-email.dto.js';
+import { RegisterWithEmailDto } from './dto/register-with-email.dto.js';
 
 @Controller('auth')
 export class IdentityAccessController {
