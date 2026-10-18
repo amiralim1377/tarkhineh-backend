@@ -120,4 +120,30 @@ describe('IdentityUser', () => {
     expect(firstUser).not.toBe(secondUser);
     expect(firstUser.equals(secondUser)).toBe(true);
   });
+
+  it('creates a verified active identity', () => {
+    const emailVerifiedAt = new Date('2026-10-18T12:00:00.000Z');
+
+    const user = IdentityUser.provisionVerified({
+      email: 'admin@example.com',
+      emailVerifiedAt,
+      passwordHash: 'test-hash',
+      displayName: 'Central Admin',
+    });
+
+    expect(user.status).toBe('ACTIVE');
+    expect(user.emailVerifiedAt).toEqual(emailVerifiedAt);
+    expect(user.canLoginWithPassword()).toBe(true);
+  });
+
+  it('rejects an invalid email verification date when provisioning', () => {
+    expect(() =>
+      IdentityUser.provisionVerified({
+        email: 'admin@example.com',
+        emailVerifiedAt: new Date(Number.NaN),
+        passwordHash: 'test-hash',
+        displayName: 'Central Admin',
+      }),
+    ).toThrow('Email verification date must be valid.');
+  });
 });
