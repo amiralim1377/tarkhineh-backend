@@ -12,12 +12,12 @@ import { IsEmail, MinLength } from 'class-validator';
 import { Logger, LoggerModule } from 'nestjs-pino';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { appCreate } from '../../../app.create.js';
-import { ApplicationError } from '../../application/errors/application-error.js';
-import { ERROR_CATEGORY } from '../../errors/error-category.js';
-import { GlobalHttpExceptionFilter } from './global-http-exception.filter.js';
-import { Prisma } from '../../../generated/prisma/client.js';
-import { normalizePrismaError } from '../../../prisma/errors/prisma-error-translator.js';
+import { appCreate } from '../../../src/app.create.js';
+import { ApplicationError } from '../../../src/shared/application/errors/application-error.js';
+import { ERROR_CATEGORY } from '../../../src/shared/errors/error-category.js';
+import { GlobalHttpExceptionFilter } from '../../../src/shared/presentation/http/global-http-exception.filter.js';
+import { Prisma } from '../../../src/generated/prisma/client.js';
+import { normalizePrismaError } from '../../../src/prisma/errors/prisma-error-translator.js';
 
 class IntegrationTestDto {
   @IsEmail()

@@ -3,18 +3,12 @@ import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { LoggerModule } from 'nestjs-pino';
 import request from 'supertest';
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { appCreate } from '../app.create.js';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { GlobalHttpExceptionFilter } from '../shared/presentation/http/global-http-exception.filter.js';
-import { HealthController } from './health.controller.js';
+import { appCreate } from '../../../src/app.create.js';
+import { PrismaService } from '../../../src/prisma/prisma.service.js';
+import { GlobalHttpExceptionFilter } from '../../../src/shared/presentation/http/global-http-exception.filter.js';
+import { HealthController } from '../../../src/health/health.controller.js';
 
 async function createHealthApp(
   queryRaw: ReturnType<typeof vi.fn>,
