@@ -18,6 +18,8 @@ describe('envSchema', () => {
       expect(result.data.PORT).toBe(3000);
       expect(result.data.JWT_ACCESS_TTL_SECONDS).toBe(900);
       expect(result.data.EMAIL_VERIFICATION_TTL_SECONDS).toBe(1800);
+      expect(result.data.REDIS_HOST).toBe('127.0.0.1');
+      expect(result.data.REDIS_PORT).toBe(6379);
     }
   });
 
@@ -82,5 +84,14 @@ describe('envSchema', () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it('rejects an invalid Redis port', () => {
+    const result = envSchema.safeParse({
+      ...validBaseEnv,
+      REDIS_PORT: '70000',
+    });
+
+    expect(result.success).toBe(false);
   });
 });

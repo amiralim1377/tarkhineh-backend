@@ -79,6 +79,16 @@ export const envSchema = z
 
     CORS_ORIGINS: z.string().default('http://localhost:5173'),
 
+    REDIS_HOST: z.preprocess(
+      emptyToUndefined,
+      z.string().trim().min(1).default('127.0.0.1'),
+    ),
+
+    REDIS_PORT: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(1).max(65535).default(6379),
+    ),
+
     SMTP_HOST: optionalText,
     SMTP_PORT: optionalPort,
     SMTP_SECURE: optionalSmtpSecure,
