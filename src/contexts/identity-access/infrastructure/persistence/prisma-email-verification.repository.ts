@@ -55,7 +55,7 @@ export class PrismaEmailVerificationRepository implements EmailVerificationRepos
         }
 
         // Reconstruct the Domain Entity from the persisted user.
-        const user = new IdentityUser({
+        const user = IdentityUser.reconstitute({
           id: challenge.user.id,
           email: challenge.user.email,
           emailVerifiedAt: challenge.user.emailVerifiedAt,
