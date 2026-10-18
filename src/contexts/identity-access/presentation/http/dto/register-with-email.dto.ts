@@ -16,9 +16,9 @@ export class RegisterWithEmailDto {
   email!: string;
 
   @IsString()
-  @MinLength(12, {
+  @MinLength(8, {
     context: {
-      publicParams: { min: 12 },
+      publicParams: { min: 8 },
     },
   })
   @MaxLength(1024, {
