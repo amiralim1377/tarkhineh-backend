@@ -19,10 +19,20 @@ function createChallenge(
     userId: 'user-123',
     email: 'customer@example.com',
     expiresAt: overrides.expiresAt ?? new Date('2026-10-18T13:00:00.000Z'),
-    consumedAt: overrides.consumedAt ?? null,
+    consumedAt:
+      overrides.consumedAt !== undefined ? overrides.consumedAt : null,
     user: {
-      email: overrides.userEmail ?? 'customer@example.com',
-      emailVerifiedAt: overrides.emailVerifiedAt ?? null,
+      id: 'user-123',
+      email:
+        overrides.userEmail !== undefined
+          ? overrides.userEmail
+          : 'customer@example.com',
+      emailVerifiedAt:
+        overrides.emailVerifiedAt !== undefined
+          ? overrides.emailVerifiedAt
+          : null,
+      passwordHash: 'test-hash',
+      displayName: 'Customer',
       status: overrides.status ?? 'PENDING',
     },
   };
@@ -83,8 +93,11 @@ describe('PrismaEmailVerificationRepository', () => {
         consumedAt: true,
         user: {
           select: {
+            id: true,
             email: true,
             emailVerifiedAt: true,
+            passwordHash: true,
+            displayName: true,
             status: true,
           },
         },
@@ -198,6 +211,41 @@ describe('PrismaEmailVerificationRepository', () => {
     });
 
     const result = await repository.verifyByTokenHash('token-hash', NOW);
+
+    expect(result).toBe(false);
+    expect(tx.emailVerificationChallenge.updateMany).not.toHaveBeenCalled();
+    expect(tx.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not re-verify an already active user', async () => {
+    const { tx, repository } = createHarness({
+      challenge: createChallenge({
+        status: 'ACTIVE',
+        emailVerifiedAt: new Date('2026-10-18T11:00:00.000Z'),
+      }),
+    });
+
+    const result = await repository.verifyByTokenHash(
+      'already-verified-token-hash',
+      NOW,
+    );
+
+    expect(result).toBe(false);
+    expect(tx.emailVerificationChallenge.updateMany).not.toHaveBeenCalled();
+    expect(tx.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not verify a suspended user', async () => {
+    const { tx, repository } = createHarness({
+      challenge: createChallenge({
+        status: 'SUSPENDED',
+      }),
+    });
+
+    const result = await repository.verifyByTokenHash(
+      'suspended-user-token-hash',
+      NOW,
+    );
 
     expect(result).toBe(false);
     expect(tx.emailVerificationChallenge.updateMany).not.toHaveBeenCalled();
