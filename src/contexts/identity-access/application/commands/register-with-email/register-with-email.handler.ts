@@ -26,6 +26,10 @@ import {
   type RegisterWithEmailResult,
 } from './register-with-email.command.js';
 import { InputValidationError } from '../../../../../shared/application/errors/input-validation.error.js';
+import {
+  EMAIL_TOKEN_ENCRYPTOR,
+  type EmailTokenEncryptor,
+} from '../../ports/email-token-encryptor.port.js';
 
 const REGISTRATION_MESSAGE =
   'If this email can be registered, a verification email will be sent.';
@@ -35,15 +39,14 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
   constructor(
     @Inject(EMAIL_REGISTRATION_REPOSITORY)
     private readonly registrations: EmailRegistrationRepository,
-
     @Inject(PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
-
     @Inject(EMAIL_VERIFICATION_TOKEN_FACTORY)
     private readonly tokenFactory: EmailVerificationTokenFactory,
-
     @Inject(EMAIL_VERIFICATION_SENDER)
     private readonly emailSender: EmailVerificationSender,
+    @Inject(EMAIL_TOKEN_ENCRYPTOR)
+    private readonly tokenEncryptor: EmailTokenEncryptor,
   ) {}
 
   async execute(
@@ -74,6 +77,7 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
 
     const passwordHash = await this.passwordHasher.hash(command.password);
     const token = this.tokenFactory.create();
+    const encryptedToken = this.tokenEncryptor.encrypt(token.rawToken);
 
     const created = await this.registrations.createPendingRegistration({
       email,
@@ -81,11 +85,8 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
       displayName,
       tokenHash: token.tokenHash,
       expiresAt: token.expiresAt,
+      encryptedToken,
     });
-
-    if (created) {
-      await this.emailSender.sendVerificationEmail(email, token.rawToken);
-    }
 
     return { message: REGISTRATION_MESSAGE };
   }
