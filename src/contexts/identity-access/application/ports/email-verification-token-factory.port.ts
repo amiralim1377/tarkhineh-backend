@@ -10,4 +10,5 @@ export interface EmailVerificationToken {
 
 export interface EmailVerificationTokenFactory {
   create(): EmailVerificationToken;
+  hash(rawToken: string): string;
 }
