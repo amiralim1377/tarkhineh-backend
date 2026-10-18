@@ -1,3 +1,6 @@
+import { Entity } from '../../../../shared/domain/entities/entity.js';
+import { UniqueId } from '../../../../shared/domain/value-objects/unique-id.vo.js';
+
 export type IdentityUserStatus = 'ACTIVE' | 'PENDING' | 'SUSPENDED';
 
 export interface IdentityUserProps {
@@ -10,18 +13,22 @@ export interface IdentityUserProps {
 }
 
 export interface RegisterPendingIdentityUser {
-  id: string;
+  id?: string;
   email: string;
   passwordHash: string;
   displayName: string | null;
 }
 
-export class IdentityUser {
-  constructor(private props: IdentityUserProps) {}
+export class IdentityUser extends Entity<UniqueId> {
+  constructor(private readonly props: IdentityUserProps) {
+    super(new UniqueId(props.id));
+  }
 
   static registerPending(input: RegisterPendingIdentityUser): IdentityUser {
+    const id = new UniqueId(input.id);
+
     return new IdentityUser({
-      id: input.id,
+      id: id.getValue(),
       email: input.email,
       emailVerifiedAt: null,
       passwordHash: input.passwordHash,
@@ -31,7 +38,7 @@ export class IdentityUser {
   }
 
   get id(): string {
-    return this.props.id;
+    return this.getId().getValue();
   }
 
   get email(): string | null {
@@ -56,6 +63,7 @@ export class IdentityUser {
 
   verifyEmail(verifiedAt: Date): boolean {
     if (
+      !Number.isFinite(verifiedAt.getTime()) ||
       this.props.status !== 'PENDING' ||
       this.props.email === null ||
       this.props.emailVerifiedAt !== null
