@@ -48,12 +48,12 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
     const email = command.email.trim().toLowerCase();
     const displayName = command.displayName?.trim() || null;
 
-    if (command.password.length < 12) {
+    if (command.password.length < 8) {
       throw new InputValidationError([
         {
           field: 'password',
           code: 'VALIDATION.MIN_LENGTH',
-          params: { min: 12 },
+          params: { min: 8 },
         },
       ]);
     }
