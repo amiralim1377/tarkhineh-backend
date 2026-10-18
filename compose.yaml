@@ -10,17 +10,43 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
 
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+      - '127.0.0.1:${POSTGRES_PORT:-5433}:5432'
 
     volumes:
       - postgres_data:/var/lib/postgresql
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
 
+  redis:
+    image: redis:7-alpine
+    container_name: tarkhineh-redis
+    restart: unless-stopped
+
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --maxmemory-policy
+      - noeviction
+
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
 volumes:
   postgres_data:
+  redis_data:
