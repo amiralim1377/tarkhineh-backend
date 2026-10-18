@@ -107,4 +107,37 @@ describe('EmailOutboxDispatcher', () => {
       'Failed to dispatch email outbox message',
     );
   });
+
+  it('reuses the same job id if the outbox status update fails', async () => {
+    const { prisma, queue, logger, dispatcher } = createHarness([
+      { id: 'outbox-retry-123' },
+    ]);
+
+    vi.mocked(prisma.emailOutboxMessage.updateMany)
+      .mockRejectedValueOnce(new Error('Database unavailable'))
+      .mockResolvedValue({ count: 1 });
+
+    // Queue insertion succeeds, but updating PostgreSQL fails.
+    await dispatcher.dispatchPendingMessages();
+
+    // The message is still pending, so the next run sees it again.
+    await dispatcher.dispatchPendingMessages();
+
+    expect(queue.add).toHaveBeenCalledTimes(2);
+
+    const expectedJob = [
+      'send-verification-email',
+      { outboxMessageId: 'outbox-retry-123' },
+      expect.objectContaining({
+        jobId: 'email-verification-outbox-retry-123',
+        attempts: 5,
+      }),
+    ];
+
+    expect(queue.add).toHaveBeenNthCalledWith(1, ...expectedJob);
+    expect(queue.add).toHaveBeenNthCalledWith(2, ...expectedJob);
+
+    expect(prisma.emailOutboxMessage.updateMany).toHaveBeenCalledTimes(2);
+    expect(logger.error).toHaveBeenCalledOnce();
+  });
 });
