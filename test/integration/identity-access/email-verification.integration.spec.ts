@@ -4,9 +4,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { PrismaService } from '../../../src/prisma/prisma.service.js';
+import { IdentityUser } from '../../../src/contexts/identity-access/domain/entities/identity-user.js';
 import { PrismaEmailRegistrationRepository } from '../../../src/contexts/identity-access/infrastructure/persistence/prisma-email-registration.repository.js';
 import { PrismaEmailVerificationRepository } from '../../../src/contexts/identity-access/infrastructure/persistence/prisma-email-verification.repository.js';
+import { PrismaService } from '../../../src/prisma/prisma.service.js';
 
 function createTestDatabaseUrl(): string {
   const configuredUrl = process.env.DATABASE_URL;
@@ -16,8 +17,10 @@ function createTestDatabaseUrl(): string {
   }
 
   const url = new URL(configuredUrl);
+
   const databaseName = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
 
+  // Safety guard: integration tests must target tarkhineh_test.
   if (databaseName !== 'tarkhineh_db') {
     throw new Error(
       'Refusing to run integration tests against an unexpected database',
@@ -62,9 +65,11 @@ async function createPendingUser(
   testEmails.push(email);
 
   const created = await registrationRepository.createPendingRegistration({
-    email,
-    passwordHash: 'integration-test-password-hash',
-    displayName: 'Verification Integration Test',
+    user: IdentityUser.registerPending({
+      email,
+      passwordHash: 'integration-test-password-hash',
+      displayName: 'Verification Integration Test',
+    }),
     tokenHash,
     encryptedToken: 'v1:integration-test-encrypted-payload',
     expiresAt,
@@ -131,7 +136,9 @@ describe('Email verification with PostgreSQL', () => {
 
     const challenge = await prisma.emailVerificationChallenge.findUnique({
       where: { tokenHash },
-      select: { consumedAt: true },
+      select: {
+        consumedAt: true,
+      },
     });
 
     expect(challenge?.consumedAt).toEqual(now);
@@ -203,7 +210,9 @@ describe('Email verification with PostgreSQL', () => {
 
     const challenge = await prisma.emailVerificationChallenge.findUnique({
       where: { tokenHash },
-      select: { consumedAt: true },
+      select: {
+        consumedAt: true,
+      },
     });
 
     const user = await prisma.user.findUnique({
