@@ -19,6 +19,14 @@ export interface RegisterPendingIdentityUser {
   displayName: string | null;
 }
 
+export interface ProvisionVerifiedIdentityUser {
+  id?: string;
+  email: string;
+  emailVerifiedAt: Date;
+  passwordHash: string;
+  displayName: string | null;
+}
+
 export class IdentityUser extends Entity<UniqueId> {
   constructor(private readonly props: IdentityUserProps) {
     super(new UniqueId(props.id));
@@ -34,6 +42,31 @@ export class IdentityUser extends Entity<UniqueId> {
       passwordHash: input.passwordHash,
       displayName: input.displayName,
       status: 'PENDING',
+    });
+  }
+
+  static provisionVerified(input: ProvisionVerifiedIdentityUser): IdentityUser {
+    if (input.email.trim().length === 0) {
+      throw new Error('A verified identity must have an email.');
+    }
+
+    if (!Number.isFinite(input.emailVerifiedAt.getTime())) {
+      throw new Error('Email verification date must be valid.');
+    }
+
+    if (input.passwordHash.length === 0) {
+      throw new Error('Password hash cannot be empty.');
+    }
+
+    const id = new UniqueId(input.id);
+
+    return new IdentityUser({
+      id: id.getValue(),
+      email: input.email,
+      emailVerifiedAt: input.emailVerifiedAt,
+      passwordHash: input.passwordHash,
+      displayName: input.displayName,
+      status: 'ACTIVE',
     });
   }
 
