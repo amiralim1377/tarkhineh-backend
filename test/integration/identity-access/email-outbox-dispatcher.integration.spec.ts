@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
 import { PrismaEmailRegistrationRepository } from '../../../src/contexts/identity-access/infrastructure/persistence/prisma-email-registration.repository.js';
 import { EmailOutboxDispatcher } from '../../../src/contexts/identity-access/infrastructure/queue/email-outbox-dispatcher.js';
+import { IdentityUser } from '../../../src/contexts/identity-access/domain/entities/identity-user.js';
 
 function createTestDatabaseUrl(): string {
   const configuredUrl = process.env.DATABASE_URL;
@@ -106,9 +107,11 @@ describe('EmailOutboxDispatcher with PostgreSQL and Redis', () => {
     const tokenHash = randomUUID();
 
     const registrationResult = await repository.createPendingRegistration({
-      email: testEmail,
-      passwordHash: 'integration-test-password-hash',
-      displayName: 'Integration Test',
+      user: IdentityUser.registerPending({
+        email: testEmail,
+        passwordHash: 'integration-test-password-hash',
+        displayName: 'Integration Test',
+      }),
       tokenHash,
       expiresAt: new Date(Date.now() + 30 * 60 * 1000),
       encryptedToken: 'v1:integration-test-encrypted-payload',
