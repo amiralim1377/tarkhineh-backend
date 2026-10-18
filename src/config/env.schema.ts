@@ -89,6 +89,12 @@ export const envSchema = z
       z.coerce.number().int().min(1).max(65535).default(6379),
     ),
 
+    EMAIL_TOKEN_ENCRYPTION_KEY: z.string().refine((value) => {
+      const decoded = Buffer.from(value, 'base64');
+
+      return decoded.length === 32 && decoded.toString('base64') === value;
+    }, 'EMAIL_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key'),
+
     SMTP_HOST: optionalText,
     SMTP_PORT: optionalPort,
     SMTP_SECURE: optionalSmtpSecure,

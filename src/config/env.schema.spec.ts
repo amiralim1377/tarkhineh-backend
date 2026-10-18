@@ -6,6 +6,7 @@ const validBaseEnv = {
   NODE_ENV: 'development',
   DATABASE_URL: 'postgresql://user:password@localhost:5432/test',
   JWT_ACCESS_SECRET: 'a'.repeat(32),
+  EMAIL_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
 };
 
 describe('envSchema', () => {
@@ -21,6 +22,15 @@ describe('envSchema', () => {
       expect(result.data.REDIS_HOST).toBe('127.0.0.1');
       expect(result.data.REDIS_PORT).toBe(6379);
     }
+  });
+
+  it('rejects an invalid email token encryption key', () => {
+    const result = envSchema.safeParse({
+      ...validBaseEnv,
+      EMAIL_TOKEN_ENCRYPTION_KEY: 'not-a-valid-key',
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it('rejects a short JWT secret', () => {
