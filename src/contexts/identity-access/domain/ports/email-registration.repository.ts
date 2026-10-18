@@ -8,6 +8,7 @@ export interface CreatePendingEmailRegistration {
   displayName: string | null;
   tokenHash: string;
   expiresAt: Date;
+  encryptedToken: string;
 }
 
 export interface EmailRegistrationRepository {
