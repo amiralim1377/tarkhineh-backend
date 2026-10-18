@@ -9,22 +9,63 @@ import {
   Query,
 } from '@nestjs/common';
 import { CommandBus } from '@nestjs/cqrs';
+import {
+  ApiAcceptedResponse,
+  ApiBadRequestResponse,
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiProduces,
+  ApiQuery,
+  ApiResponse,
+  ApiServiceUnavailableResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+
 import { RegisterWithEmailCommand } from '../../application/commands/register-with-email/register-with-email.command.js';
 import { VerifyEmailCommand } from '../../application/commands/verify-email/verify-email.command.js';
 import { LoginWithEmailCommand } from '../../application/commands/login-with-email/login-with-email.command.js';
+
 import { RegisterWithEmailDto } from './dto/register-with-email.dto.js';
 import { VerifyEmailDto } from './dto/verify-email.dto.js';
 import { LoginWithEmailDto } from './dto/login-with-email.dto.js';
 import { LoginWithEmailResponseDto } from './dto/login-with-email-response.dto.js';
+import { AuthMessageResponseDto } from './dto/auth-message-response.dto.js';
+import { ApiErrorResponseDto } from '../../../../shared/presentation/http/api-error-response.dto.js';
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
+@ApiTags('Identity & Access')
 @Controller('auth')
 export class IdentityAccessController {
   constructor(private readonly commandBus: CommandBus) {}
 
   @Post('login/email')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Log in with email and password',
+    description:
+      'Authenticates an active user with a verified email address and returns a signed JWT access token.',
+  })
+  @ApiBody({ type: LoginWithEmailDto })
+  @ApiOkResponse({
+    description:
+      'Login successful. Returns the access token and public user information.',
+    type: LoginWithEmailResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'The request body is invalid.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'The credentials are invalid or the account cannot log in.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+    type: ApiErrorResponseDto,
+  })
   async loginWithEmail(
     @Body() dto: LoginWithEmailDto,
   ): Promise<LoginWithEmailResponseDto> {
@@ -37,6 +78,24 @@ export class IdentityAccessController {
 
   @Post('register/email')
   @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Register with email',
+    description:
+      'Starts email registration. A verification email is sent when registration can proceed.',
+  })
+  @ApiBody({ type: RegisterWithEmailDto })
+  @ApiAcceptedResponse({
+    description: 'The registration request has been accepted.',
+    type: AuthMessageResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'The request body is invalid.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+    type: ApiErrorResponseDto,
+  })
   registerWithEmail(@Body() dto: RegisterWithEmailDto) {
     return this.commandBus.execute(
       new RegisterWithEmailCommand(dto.email, dto.password, dto.displayName),
@@ -45,6 +104,31 @@ export class IdentityAccessController {
 
   @Get('verify-email')
   @Header('Content-Type', 'text/html; charset=utf-8')
+  @ApiOperation({
+    summary: 'Display the email verification page',
+    description:
+      'Returns an HTML confirmation page for a well-formed token. A GET request does not consume or verify the token.',
+  })
+  @ApiQuery({
+    name: 'token',
+    required: true,
+    description: 'Email verification token from the email link.',
+    example: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+  })
+  @ApiProduces('text/html')
+  @ApiResponse({
+    status: 200,
+    description:
+      'HTML confirmation page, or an HTML invalid-link page if the token format is invalid.',
+    content: {
+      'text/html': {
+        schema: {
+          type: 'string',
+          example: '<html><body><h1>Verify your email</h1></body></html>',
+        },
+      },
+    },
+  })
   verificationConfirmationPage(@Query('token') token?: string): string {
     if (typeof token !== 'string' || !TOKEN_PATTERN.test(token)) {
       return `<!doctype html>
@@ -86,6 +170,25 @@ export class IdentityAccessController {
 
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Verify an email address',
+    description:
+      'Consumes a valid email verification token and activates the pending account.',
+  })
+  @ApiBody({ type: VerifyEmailDto })
+  @ApiOkResponse({
+    description: 'Email successfully verified.',
+    type: AuthMessageResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'The token is invalid, expired, or the request body is invalid.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+    type: ApiErrorResponseDto,
+  })
   verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.commandBus.execute(new VerifyEmailCommand(dto.token));
   }
