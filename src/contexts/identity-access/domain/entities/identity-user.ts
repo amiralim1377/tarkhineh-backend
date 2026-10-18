@@ -28,11 +28,22 @@ export interface ProvisionVerifiedIdentityUser {
 }
 
 export class IdentityUser extends Entity<UniqueId> {
-  constructor(private readonly props: IdentityUserProps) {
+  private constructor(private readonly props: IdentityUserProps) {
     super(new UniqueId(props.id));
   }
 
+  /**
+   * Creates a new identity for the normal email registration flow.
+   */
   static registerPending(input: RegisterPendingIdentityUser): IdentityUser {
+    if (input.email.trim().length === 0) {
+      throw new Error('A pending identity must have an email.');
+    }
+
+    if (input.passwordHash.length === 0) {
+      throw new Error('Password hash cannot be empty.');
+    }
+
     const id = new UniqueId(input.id);
 
     return new IdentityUser({
@@ -45,6 +56,10 @@ export class IdentityUser extends Entity<UniqueId> {
     });
   }
 
+  /**
+   * Creates an already-verified identity for trusted provisioning flows,
+   * such as the initial central administrator.
+   */
   static provisionVerified(input: ProvisionVerifiedIdentityUser): IdentityUser {
     if (input.email.trim().length === 0) {
       throw new Error('A verified identity must have an email.');
@@ -68,6 +83,14 @@ export class IdentityUser extends Entity<UniqueId> {
       displayName: input.displayName,
       status: 'ACTIVE',
     });
+  }
+
+  /**
+   * Reconstructs an existing identity from trusted persisted data.
+   * This does not represent a new registration.
+   */
+  static reconstitute(props: IdentityUserProps): IdentityUser {
+    return new IdentityUser(props);
   }
 
   get id(): string {
@@ -94,11 +117,15 @@ export class IdentityUser extends Entity<UniqueId> {
     return this.props.status;
   }
 
+  /**
+   * Applies the domain rule for verifying a pending email identity.
+   */
   verifyEmail(verifiedAt: Date): boolean {
     if (
       !Number.isFinite(verifiedAt.getTime()) ||
       this.props.status !== 'PENDING' ||
       this.props.email === null ||
+      this.props.email.trim().length === 0 ||
       this.props.emailVerifiedAt !== null
     ) {
       return false;
