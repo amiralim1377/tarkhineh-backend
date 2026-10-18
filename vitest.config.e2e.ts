@@ -7,5 +7,6 @@ export default defineConfig({
     root: './',
     include: ['test/app.e2e-spec.ts', 'test/e2e/**/*.e2e-spec.ts'],
     exclude: ['test/integration/**'],
+    fileParallelism: false,
   },
 });
