@@ -13,6 +13,8 @@ import { SecureEmailVerificationTokenFactory } from './infrastructure/security/s
 import { SmtpEmailVerificationSender } from './infrastructure/security/smtp-email-verification.sender.js';
 import { IdentityAccessController } from './presentation/http/identity-access.controller.js';
 import { BullModule } from '@nestjs/bullmq';
+import { EMAIL_TOKEN_ENCRYPTOR } from './application/ports/email-token-encryptor.port.js';
+import { AesGcmEmailTokenEncryptor } from './infrastructure/security/aes-gcm-email-token-encryptor.js';
 
 @Module({
   imports: [
@@ -31,7 +33,7 @@ import { BullModule } from '@nestjs/bullmq';
     Argon2PasswordHasher,
     SecureEmailVerificationTokenFactory,
     SmtpEmailVerificationSender,
-
+    AesGcmEmailTokenEncryptor,
     {
       provide: EMAIL_REGISTRATION_REPOSITORY,
       useExisting: PrismaEmailRegistrationRepository,
@@ -47,6 +49,10 @@ import { BullModule } from '@nestjs/bullmq';
     {
       provide: EMAIL_VERIFICATION_SENDER,
       useExisting: SmtpEmailVerificationSender,
+    },
+    {
+      provide: EMAIL_TOKEN_ENCRYPTOR,
+      useExisting: AesGcmEmailTokenEncryptor,
     },
   ],
 })
