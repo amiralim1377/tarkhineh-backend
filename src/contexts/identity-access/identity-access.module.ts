@@ -9,6 +9,8 @@ import { PrismaModule } from '../../prisma/prisma.module.js';
 import { EMAIL_REGISTRATION_REPOSITORY } from './domain/ports/email-registration.repository.js';
 import { EMAIL_VERIFICATION_REPOSITORY } from './domain/ports/email-verification.repository.js';
 import { USER_AUTHENTICATION_REPOSITORY } from './domain/ports/user-authentication.repository.js';
+import { ACCESS_TOKEN_IDENTITY_READER } from './application/ports/access-token-identity-reader.port.js';
+import { PrismaAccessTokenIdentityReader } from './infrastructure/persistence/prisma-access-token-identity-reader.js';
 
 import { PASSWORD_HASHER } from './application/ports/password-hasher.port.js';
 import { PASSWORD_VERIFIER } from './application/ports/password-verifier.port.js';
@@ -58,6 +60,7 @@ import { IdentityAccessController } from './presentation/http/identity-access.co
     PrismaEmailRegistrationRepository,
     PrismaEmailVerificationRepository,
     PrismaUserAuthenticationRepository,
+    PrismaAccessTokenIdentityReader,
 
     Argon2PasswordHasher,
     Argon2PasswordVerifier,
@@ -84,6 +87,10 @@ import { IdentityAccessController } from './presentation/http/identity-access.co
     {
       provide: USER_AUTHENTICATION_REPOSITORY,
       useExisting: PrismaUserAuthenticationRepository,
+    },
+    {
+      provide: ACCESS_TOKEN_IDENTITY_READER,
+      useExisting: PrismaAccessTokenIdentityReader,
     },
     {
       provide: PASSWORD_HASHER,
