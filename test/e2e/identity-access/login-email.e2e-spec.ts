@@ -309,6 +309,174 @@ describe('Identity access authentication (E2E)', () => {
     expect(revokedSession?.revocationReason).toBe('REFRESH_TOKEN_REUSE');
   });
 
+  it('rejects an expired refresh token without creating a replacement or revoking the session', async () => {
+    const email = `refresh-expired-${randomUUID()}@example.com`;
+    const password = 'Refresh-Expired-E2E-Password-123!';
+
+    const user = await createUser(email, password, 'ACTIVE', new Date());
+
+    const loginResponse = await request(app!.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(200);
+
+    const csrfToken = loginResponse.body.csrfToken as string;
+    const loginCookies = loginResponse.headers['set-cookie'];
+
+    const refreshCookie = Array.isArray(loginCookies)
+      ? loginCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token='),
+        )
+      : undefined;
+
+    if (!refreshCookie) {
+      throw new Error('Login did not set a refresh-token cookie');
+    }
+
+    const cookiePair = refreshCookie.split(';')[0];
+
+    if (!cookiePair) {
+      throw new Error('Could not extract the refresh-token cookie');
+    }
+
+    const session = await prisma.authSession.findFirst({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+
+    if (!session) {
+      throw new Error('Login did not create an authentication session');
+    }
+
+    // Expire the active refresh token directly in the test database.
+    await prisma.refreshToken.updateMany({
+      where: {
+        sessionId: session.id,
+        usedAt: null,
+        revokedAt: null,
+      },
+      data: {
+        expiresAt: new Date(Date.now() - 1000),
+      },
+    });
+
+    const response = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', cookiePair)
+      .set('X-CSRF-Token', csrfToken)
+      .expect(401);
+
+    expect(response.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(response.body.message).toBeUndefined();
+    expect(response.body).not.toHaveProperty('accessToken');
+    expect(response.headers['set-cookie']).toBeUndefined();
+
+    const [persistedSession, tokens] = await Promise.all([
+      prisma.authSession.findUnique({
+        where: { id: session.id },
+        select: {
+          revokedAt: true,
+          revocationReason: true,
+        },
+      }),
+      prisma.refreshToken.findMany({
+        where: { sessionId: session.id },
+        select: { id: true },
+      }),
+    ]);
+
+    // Expiry must not trigger reuse detection or revoke this session.
+    expect(persistedSession?.revokedAt).toBeNull();
+    expect(persistedSession?.revocationReason).toBeNull();
+
+    // No replacement refresh token should have been created.
+    expect(tokens).toHaveLength(1);
+  });
+
+  it('rejects an expired session even when its refresh token has not expired', async () => {
+    const email = `session-expired-${randomUUID()}@example.com`;
+    const password = 'Session-Expired-E2E-Password-123!';
+
+    const user = await createUser(email, password, 'ACTIVE', new Date());
+
+    const loginResponse = await request(app!.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(200);
+
+    const csrfToken = loginResponse.body.csrfToken as string;
+    const loginCookies = loginResponse.headers['set-cookie'];
+
+    const refreshCookie = Array.isArray(loginCookies)
+      ? loginCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token='),
+        )
+      : undefined;
+
+    if (!refreshCookie) {
+      throw new Error('Login did not set a refresh-token cookie');
+    }
+
+    const cookiePair = refreshCookie.split(';')[0];
+
+    if (!cookiePair) {
+      throw new Error('Could not extract the refresh-token cookie');
+    }
+
+    const session = await prisma.authSession.findFirst({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+
+    if (!session) {
+      throw new Error('Login did not create an authentication session');
+    }
+
+    // Expire the session while leaving its refresh token unexpired.
+    await prisma.authSession.update({
+      where: { id: session.id },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    const response = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', cookiePair)
+      .set('X-CSRF-Token', csrfToken)
+      .expect(401);
+
+    expect(response.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(response.body.message).toBeUndefined();
+    expect(response.body).not.toHaveProperty('accessToken');
+    expect(response.headers['set-cookie']).toBeUndefined();
+
+    const [persistedSession, tokens] = await Promise.all([
+      prisma.authSession.findUnique({
+        where: { id: session.id },
+        select: {
+          revokedAt: true,
+          revocationReason: true,
+        },
+      }),
+      prisma.refreshToken.findMany({
+        where: { sessionId: session.id },
+        select: { id: true },
+      }),
+    ]);
+
+    // Expired sessions must not produce replacement refresh tokens.
+    expect(tokens).toHaveLength(1);
+
+    // Natural expiry should not be misclassified as token reuse.
+    expect(persistedSession?.revokedAt).toBeNull();
+    expect(persistedSession?.revocationReason).toBeNull();
+  });
+
   it('rejects missing or malformed refresh cookies without consuming a valid session', async () => {
     const email = `refresh-cookie-${randomUUID()}@example.com`;
     const password = 'Refresh-Cookie-E2E-Password-123!';
