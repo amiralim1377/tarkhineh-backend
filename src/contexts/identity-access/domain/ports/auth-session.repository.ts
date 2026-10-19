@@ -8,6 +8,7 @@ export type SessionRevocationReason =
 export interface CreateAuthSessionInput {
   readonly userId: string;
   readonly initialRefreshTokenHash: string;
+  readonly csrfTokenHash: string;
   readonly now: Date;
   readonly sessionExpiresAt: Date;
   readonly refreshTokenExpiresAt: Date;
@@ -21,7 +22,9 @@ export interface CreatedAuthSession {
 
 export interface RotateRefreshTokenInput {
   readonly currentTokenHash: string;
+  readonly currentCsrfTokenHash: string;
   readonly replacementTokenHash: string;
+  readonly replacementCsrfTokenHash: string;
   readonly now: Date;
   readonly replacementExpiresAt: Date;
 }
@@ -52,6 +55,7 @@ export interface AuthSessionRepository {
 
   revokeSessionByTokenHash(
     tokenHash: string,
+    csrfTokenHash: string,
     now: Date,
   ): Promise<boolean>;
 
