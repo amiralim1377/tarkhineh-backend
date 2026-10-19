@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { Clock } from '../../../../../shared/application/ports/clock.port.js';
 import type {
   AuthSessionRepository,
   RefreshTokenRotationResult,
@@ -16,6 +17,8 @@ const CURRENT_REFRESH_TOKEN = 'A'.repeat(43);
 const CURRENT_CSRF_TOKEN = 'B'.repeat(43);
 const NEW_REFRESH_TOKEN = 'C'.repeat(43);
 const NEW_CSRF_TOKEN = 'D'.repeat(43);
+
+const FIXED_NOW = new Date('2026-10-19T10:00:00.000Z');
 
 function createSut() {
   const rotateRefreshToken = vi.fn(
@@ -46,12 +49,16 @@ function createSut() {
   };
 
   const tokenIssuer = { issueFor } as unknown as AccessTokenIssuer;
+  const clock: Clock = {
+    now: vi.fn(() => new Date(FIXED_NOW.getTime())),
+  };
 
   const handler = new RefreshSessionHandler(
     sessions,
     factory,
     policy,
     tokenIssuer,
+    clock,
   );
 
   return {
@@ -61,6 +68,8 @@ function createSut() {
     hashToken,
     issueFor,
     policy,
+    clock,
+    fixedNow: FIXED_NOW,
   };
 }
 
@@ -72,7 +81,12 @@ describe('RefreshSessionHandler', () => {
   });
 
   it('rotates a valid refresh token and issues new access and CSRF tokens', async () => {
-    const refreshTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const refreshTokenExpiresAt = new Date(
+      sut.fixedNow.getTime() + sut.policy.refreshTokenTtlSeconds * 1000,
+    );
+    const sessionExpiresAt = new Date(
+      sut.fixedNow.getTime() + sut.policy.sessionTtlSeconds * 1000,
+    );
 
     sut.createRefreshToken
       .mockReturnValueOnce({
@@ -88,7 +102,7 @@ describe('RefreshSessionHandler', () => {
       status: 'ROTATED',
       userId: 'user-123',
       sessionId: 'session-123',
-      sessionExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      sessionExpiresAt,
       refreshTokenExpiresAt,
     });
 
@@ -99,17 +113,16 @@ describe('RefreshSessionHandler', () => {
     expect(sut.hashToken).toHaveBeenCalledWith(CURRENT_REFRESH_TOKEN);
     expect(sut.hashToken).toHaveBeenCalledWith(CURRENT_CSRF_TOKEN);
     expect(sut.createRefreshToken).toHaveBeenCalledTimes(2);
+    expect(sut.clock.now).toHaveBeenCalledOnce();
 
-    expect(sut.rotateRefreshToken).toHaveBeenCalledWith(
-      expect.objectContaining({
-        currentTokenHash: `hash:${CURRENT_REFRESH_TOKEN}`,
-        currentCsrfTokenHash: `hash:${CURRENT_CSRF_TOKEN}`,
-        replacementTokenHash: 'new-refresh-hash',
-        replacementCsrfTokenHash: 'new-csrf-hash',
-        now: expect.any(Date),
-        replacementExpiresAt: expect.any(Date),
-      }),
-    );
+    expect(sut.rotateRefreshToken).toHaveBeenCalledWith({
+      currentTokenHash: `hash:${CURRENT_REFRESH_TOKEN}`,
+      currentCsrfTokenHash: `hash:${CURRENT_CSRF_TOKEN}`,
+      replacementTokenHash: 'new-refresh-hash',
+      replacementCsrfTokenHash: 'new-csrf-hash',
+      now: sut.fixedNow,
+      replacementRefreshTokenTtlSeconds: sut.policy.refreshTokenTtlSeconds,
+    });
 
     const rotationInput = sut.rotateRefreshToken.mock.calls[0]?.[0];
     expect(rotationInput).toBeDefined();
@@ -118,10 +131,11 @@ describe('RefreshSessionHandler', () => {
       throw new Error('Expected refresh token rotation input');
     }
 
-    expect(
-      rotationInput.replacementExpiresAt.getTime() - rotationInput.now.getTime(),
-    ).toBe(sut.policy.refreshTokenTtlSeconds * 1000);
+    expect(rotationInput.replacementRefreshTokenTtlSeconds).toBe(
+      sut.policy.refreshTokenTtlSeconds,
+    );
 
+    expect(sut.issueFor).toHaveBeenCalledOnce();
     expect(sut.issueFor).toHaveBeenCalledWith('user-123');
 
     expect(result).toEqual({
@@ -134,7 +148,7 @@ describe('RefreshSessionHandler', () => {
     });
   });
 
-  it('rejects malformed refresh or CSRF tokens before touching the repository', async () => {
+  it('rejects malformed refresh or CSRF tokens before touching dependencies', async () => {
     await expect(
       sut.handler.execute(
         new RefreshSessionCommand('malformed', CURRENT_CSRF_TOKEN),
@@ -149,7 +163,9 @@ describe('RefreshSessionHandler', () => {
 
     expect(sut.rotateRefreshToken).not.toHaveBeenCalled();
     expect(sut.createRefreshToken).not.toHaveBeenCalled();
+    expect(sut.hashToken).not.toHaveBeenCalled();
     expect(sut.issueFor).not.toHaveBeenCalled();
+    expect(sut.clock.now).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown, expired or otherwise invalid refresh token', async () => {
@@ -170,6 +186,7 @@ describe('RefreshSessionHandler', () => {
       ),
     ).rejects.toBeInstanceOf(InvalidRefreshTokenError);
 
+    expect(sut.rotateRefreshToken).toHaveBeenCalledOnce();
     expect(sut.issueFor).not.toHaveBeenCalled();
   });
 
