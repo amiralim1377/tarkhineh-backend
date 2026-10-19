@@ -38,6 +38,7 @@ import {
   CLOCK,
   type Clock,
 } from '../../../../../shared/application/ports/clock.port.js';
+import { AuthSession } from '../../../domain/entities/auth-session.js';
 
 @CommandHandler(LoginWithEmailCommand)
 export class LoginWithEmailHandler implements ICommandHandler<LoginWithEmailCommand> {
@@ -83,16 +84,20 @@ export class LoginWithEmailHandler implements ICommandHandler<LoginWithEmailComm
       refreshTokenTtlSeconds: this.sessionPolicy.refreshTokenTtlSeconds,
     });
 
+    const authSession = AuthSession.create({
+      userId: user.id,
+      createdAt: sessionLifetime.createdAt,
+      expiresAt: sessionLifetime.sessionExpiresAt,
+    });
+
     const accessToken = await this.tokenIssuer.issueFor(user.id);
     const refreshToken = this.refreshTokenFactory.create();
     const csrfToken = this.refreshTokenFactory.create();
 
     const session = await this.sessions.createSession({
-      userId: user.id,
+      session: authSession,
       initialRefreshTokenHash: refreshToken.tokenHash,
       csrfTokenHash: csrfToken.tokenHash,
-      now: sessionLifetime.createdAt,
-      sessionExpiresAt: sessionLifetime.sessionExpiresAt,
       refreshTokenExpiresAt: sessionLifetime.refreshTokenExpiresAt,
     });
 
