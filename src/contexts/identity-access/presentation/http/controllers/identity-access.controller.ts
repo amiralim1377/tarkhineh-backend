@@ -38,6 +38,7 @@ import { RegisterWithEmailCommand } from '../../../application/commands/register
 import { VerifyEmailCommand } from '../../../application/commands/verify-email/verify-email.command.js';
 import { LoginWithEmailCommand } from '../../../application/commands/login-with-email/login-with-email.command.js';
 import { RefreshSessionCommand } from '../../../application/commands/refresh-session/refresh-session.command.js';
+import { LogoutSessionCommand } from '../../../application/commands/logout-session/logout-session.command.js';
 
 import { RegisterWithEmailDto } from '../dto/registration/register-with-email.dto.js';
 import { VerifyEmailDto } from '../dto/verification/verify-email.dto.js';
@@ -167,6 +168,53 @@ export class IdentityAccessController {
     );
 
     return RefreshSessionResponseDto.fromResult(result);
+  }
+
+  @Auth(AuthType.None)
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Log out the current authentication session',
+    description:
+      'Revokes the session associated with the refresh-token cookie and clears that cookie. Requires the matching CSRF token.',
+  })
+  @ApiOkResponse({
+    description: 'The session was revoked and the refresh-token cookie was cleared.',
+    type: AuthMessageResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'The refresh token or CSRF token is invalid.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+    type: ApiErrorResponseDto,
+  })
+  async logoutSession(
+    @Req() request: Request,
+    @Headers('x-csrf-token') csrfTokenHeader: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<AuthMessageResponseDto> {
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('Pragma', 'no-cache');
+
+    const refreshToken = request.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
+
+    const result = await this.commandBus.execute(
+      new LogoutSessionCommand(
+        typeof refreshToken === 'string' ? refreshToken : '',
+        typeof csrfTokenHeader === 'string' ? csrfTokenHeader : '',
+      ),
+    );
+
+    response.clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/auth',
+    });
+
+    return result;
   }
 
   @Auth(AuthType.None)
