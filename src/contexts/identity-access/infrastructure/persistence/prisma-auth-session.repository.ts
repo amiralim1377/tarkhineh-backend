@@ -54,6 +54,7 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
           refreshTokens: {
             create: {
               tokenHash: input.initialRefreshTokenHash,
+              csrfTokenHash: input.csrfTokenHash,
               createdAt: now,
               expiresAt: refreshTokenExpiresAt,
             },
@@ -105,6 +106,7 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
           select: {
             id: true,
             sessionId: true,
+            csrfTokenHash: true,
             expiresAt: true,
             usedAt: true,
             revokedAt: true,
@@ -135,6 +137,11 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
           session.revokedAt !== null ||
           session.expiresAt <= now
         ) {
+          return { status: 'INVALID' };
+        }
+
+        // Validate CSRF against this exact token generation.
+        if (token.csrfTokenHash !== input.currentCsrfTokenHash) {
           return { status: 'INVALID' };
         }
 
@@ -212,6 +219,7 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
             usedAt: null,
             revokedAt: null,
             expiresAt: { gt: now },
+            csrfTokenHash: input.currentCsrfTokenHash,
             session: {
               is: {
                 revokedAt: null,
@@ -236,6 +244,7 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
             where: { id: token.id },
             select: {
               usedAt: true,
+              csrfTokenHash: true,
               session: {
                 select: {
                   expiresAt: true,
@@ -248,6 +257,7 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
           if (
             latest &&
             latest.usedAt !== null &&
+            latest.csrfTokenHash === input.currentCsrfTokenHash &&
             latest.session.revokedAt === null &&
             latest.session.expiresAt > now
           ) {
@@ -265,6 +275,7 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
           data: {
             sessionId: session.id,
             tokenHash: input.replacementTokenHash,
+            csrfTokenHash: input.replacementCsrfTokenHash,
             createdAt: now,
             expiresAt: replacementExpiresAt,
           },
@@ -316,16 +327,20 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
 
   async revokeSessionByTokenHash(
     tokenHash: string,
+    csrfTokenHash: string,
     now: Date,
   ): Promise<boolean> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const token = await tx.refreshToken.findUnique({
           where: { tokenHash },
-          select: { sessionId: true },
+          select: {
+            sessionId: true,
+            csrfTokenHash: true,
+          },
         });
 
-        if (!token) {
+        if (!token || token.csrfTokenHash !== csrfTokenHash) {
           return false;
         }
 
