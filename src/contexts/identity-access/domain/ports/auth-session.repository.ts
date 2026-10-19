@@ -1,16 +1,14 @@
+import type { AuthSession } from '../entities/auth-session.js';
+
 export const AUTH_SESSION_REPOSITORY = Symbol('AUTH_SESSION_REPOSITORY');
 
 export type SessionRevocationReason =
-  | 'LOGOUT'
-  | 'REFRESH_TOKEN_REUSE'
-  | 'SECURITY_ACTION';
+  'LOGOUT' | 'REFRESH_TOKEN_REUSE' | 'SECURITY_ACTION';
 
 export interface CreateAuthSessionInput {
-  readonly userId: string;
+  readonly session: AuthSession;
   readonly initialRefreshTokenHash: string;
   readonly csrfTokenHash: string;
-  readonly now: Date;
-  readonly sessionExpiresAt: Date;
   readonly refreshTokenExpiresAt: Date;
 }
 
@@ -45,9 +43,7 @@ export type RefreshTokenRotationResult =
     };
 
 export interface AuthSessionRepository {
-  createSession(
-    input: CreateAuthSessionInput,
-  ): Promise<CreatedAuthSession>;
+  createSession(input: CreateAuthSessionInput): Promise<CreatedAuthSession>;
 
   rotateRefreshToken(
     input: RotateRefreshTokenInput,
