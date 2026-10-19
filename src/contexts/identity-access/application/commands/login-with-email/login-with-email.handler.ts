@@ -34,6 +34,10 @@ import {
 } from './login-with-email.command.js';
 
 import { AuthSessionLifetime } from '../../../domain/value-objects/auth-session-lifetime.js';
+import {
+  CLOCK,
+  type Clock,
+} from '../../../../../shared/application/ports/clock.port.js';
 
 @CommandHandler(LoginWithEmailCommand)
 export class LoginWithEmailHandler implements ICommandHandler<LoginWithEmailCommand> {
@@ -50,6 +54,8 @@ export class LoginWithEmailHandler implements ICommandHandler<LoginWithEmailComm
     private readonly refreshTokenFactory: RefreshTokenFactory,
     @Inject(AUTH_SESSION_POLICY)
     private readonly sessionPolicy: AuthSessionPolicy,
+    @Inject(CLOCK)
+    private readonly clock: Clock,
   ) {}
 
   async execute(command: LoginWithEmailCommand): Promise<LoginWithEmailResult> {
@@ -69,7 +75,8 @@ export class LoginWithEmailHandler implements ICommandHandler<LoginWithEmailComm
       throw new InvalidCredentialsError();
     }
 
-    const now = new Date();
+    const now = this.clock.now();
+
     const sessionLifetime = AuthSessionLifetime.calculate({
       now,
       sessionTtlSeconds: this.sessionPolicy.sessionTtlSeconds,

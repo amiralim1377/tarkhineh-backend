@@ -18,7 +18,10 @@ import { ACCESS_TOKEN_ISSUER } from './application/ports/access-token-issuer.por
 import { ACCESS_TOKEN_VALIDATOR } from './application/ports/access-token-validator.port.js';
 import { AUTH_SESSION_REPOSITORY } from './domain/ports/auth-session.repository.js';
 import { REFRESH_TOKEN_FACTORY } from './application/ports/refresh-token-factory.port.js';
-import { AUTH_SESSION_POLICY, type AuthSessionPolicy } from './application/ports/auth-session-policy.port.js';
+import {
+  AUTH_SESSION_POLICY,
+  type AuthSessionPolicy,
+} from './application/ports/auth-session-policy.port.js';
 import { PrismaAuthSessionRepository } from './infrastructure/persistence/prisma-auth-session.repository.js';
 import { SecureRefreshTokenFactory } from './infrastructure/security/secure-refresh-token.factory.js';
 import { RegisterWithEmailHandler } from './application/commands/register-with-email/register-with-email.handler.js';
@@ -47,6 +50,8 @@ import {
   AUTHENTICATION_STRATEGIES,
   type AuthenticationStrategy,
 } from './presentation/http/auth/contracts/authentication-strategy.js';
+import { CLOCK } from '../../shared/application/ports/clock.port.js';
+import { SystemClock } from '../../shared/infrastructure/time/system-clock.js';
 
 @Module({
   imports: [
@@ -166,6 +171,10 @@ import {
     {
       provide: APP_GUARD,
       useClass: AuthenticationGuard,
+    },
+    {
+      provide: CLOCK,
+      useClass: SystemClock,
     },
   ],
 })
