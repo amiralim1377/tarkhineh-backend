@@ -16,9 +16,15 @@ import { EMAIL_VERIFICATION_SENDER } from './application/ports/email-verificatio
 import { EMAIL_TOKEN_ENCRYPTOR } from './application/ports/email-token-encryptor.port.js';
 import { ACCESS_TOKEN_ISSUER } from './application/ports/access-token-issuer.port.js';
 import { ACCESS_TOKEN_VALIDATOR } from './application/ports/access-token-validator.port.js';
+import { AUTH_SESSION_REPOSITORY } from './domain/ports/auth-session.repository.js';
+import { REFRESH_TOKEN_FACTORY } from './application/ports/refresh-token-factory.port.js';
+import { AUTH_SESSION_POLICY, type AuthSessionPolicy } from './application/ports/auth-session-policy.port.js';
+import { PrismaAuthSessionRepository } from './infrastructure/persistence/prisma-auth-session.repository.js';
+import { SecureRefreshTokenFactory } from './infrastructure/security/secure-refresh-token.factory.js';
 import { RegisterWithEmailHandler } from './application/commands/register-with-email/register-with-email.handler.js';
 import { VerifyEmailHandler } from './application/commands/verify-email/verify-email.handler.js';
 import { LoginWithEmailHandler } from './application/commands/login-with-email/login-with-email.handler.js';
+import { RefreshSessionHandler } from './application/commands/refresh-session/refresh-session.handler.js';
 import { PrismaEmailRegistrationRepository } from './infrastructure/persistence/prisma-email-registration.repository.js';
 import { PrismaEmailVerificationRepository } from './infrastructure/persistence/prisma-email-verification.repository.js';
 import { PrismaUserAuthenticationRepository } from './infrastructure/persistence/prisma-user-authentication.repository.js';
@@ -63,6 +69,8 @@ import {
     PrismaEmailVerificationRepository,
     PrismaUserAuthenticationRepository,
     PrismaAccessTokenIdentityReader,
+    PrismaAuthSessionRepository,
+    SecureRefreshTokenFactory,
     Argon2PasswordHasher,
     Argon2PasswordVerifier,
     SecureEmailVerificationTokenFactory,
@@ -75,6 +83,7 @@ import {
     RegisterWithEmailHandler,
     VerifyEmailHandler,
     LoginWithEmailHandler,
+    RefreshSessionHandler,
     EmailVerificationProcessor,
     EmailOutboxDispatcher,
     {
@@ -112,6 +121,26 @@ import {
     {
       provide: EMAIL_TOKEN_ENCRYPTOR,
       useExisting: AesGcmEmailTokenEncryptor,
+    },
+    {
+      provide: AUTH_SESSION_REPOSITORY,
+      useExisting: PrismaAuthSessionRepository,
+    },
+    {
+      provide: REFRESH_TOKEN_FACTORY,
+      useExisting: SecureRefreshTokenFactory,
+    },
+    {
+      provide: AUTH_SESSION_POLICY,
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService): AuthSessionPolicy => ({
+        refreshTokenTtlSeconds: configService.getOrThrow<number>(
+          'REFRESH_TOKEN_TTL_SECONDS',
+        ),
+        sessionTtlSeconds: configService.getOrThrow<number>(
+          'AUTH_SESSION_TTL_SECONDS',
+        ),
+      }),
     },
     {
       provide: ACCESS_TOKEN_ISSUER,
