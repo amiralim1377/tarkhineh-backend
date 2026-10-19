@@ -88,8 +88,9 @@ enum AuthSessionRevocationReason {
 }
 
 model AuthSession {
-  id               String                       @id @default(cuid())
-  userId           String
+  id     String @id @default(cuid())
+  userId String
+
   createdAt        DateTime                     @default(now())
   lastUsedAt       DateTime?
   expiresAt        DateTime
@@ -107,6 +108,7 @@ model RefreshToken {
   id                String    @id @default(cuid())
   sessionId         String
   tokenHash         String    @unique
+  csrfTokenHash     String
   createdAt         DateTime  @default(now())
   expiresAt         DateTime
   usedAt            DateTime?
