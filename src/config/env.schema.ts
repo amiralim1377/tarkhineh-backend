@@ -70,6 +70,8 @@ export const envSchema = z
       .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
 
     JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+    REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
+    AUTH_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(2592000),
 
     EMAIL_VERIFICATION_TTL_SECONDS: z.coerce
       .number()
