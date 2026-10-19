@@ -48,7 +48,11 @@ function createSut() {
   };
 
   const handler = new LoginWithEmailHandler(
-    { findByEmail },
+    {
+      findByEmail,
+      findById: vi.fn(),
+      changePassword: vi.fn(),
+    },
     { verify: verifyPassword },
     { issueFor },
     { createSession } as unknown as AuthSessionRepository,
