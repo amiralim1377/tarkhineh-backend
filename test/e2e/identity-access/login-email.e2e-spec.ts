@@ -309,6 +309,94 @@ describe('Identity access authentication (E2E)', () => {
     expect(revokedSession?.revocationReason).toBe('REFRESH_TOKEN_REUSE');
   });
 
+  it('rejects missing or malformed refresh cookies without consuming a valid session', async () => {
+    const email = `refresh-cookie-${randomUUID()}@example.com`;
+    const password = 'Refresh-Cookie-E2E-Password-123!';
+
+    const user = await createUser(email, password, 'ACTIVE', new Date());
+
+    const loginResponse = await request(app!.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(200);
+
+    const csrfToken = loginResponse.body.csrfToken as string;
+    const loginCookies = loginResponse.headers['set-cookie'];
+
+    const refreshCookie = Array.isArray(loginCookies)
+      ? loginCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token='),
+        )
+      : undefined;
+
+    if (!refreshCookie) {
+      throw new Error('Login did not set a refresh-token cookie');
+    }
+
+    const cookiePair = refreshCookie.split(';')[0];
+
+    if (!cookiePair) {
+      throw new Error('Could not extract the refresh-token cookie');
+    }
+
+    // A missing refresh cookie must be rejected.
+    const missingCookieResponse = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('X-CSRF-Token', csrfToken)
+      .expect(401);
+
+    expect(missingCookieResponse.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(missingCookieResponse.body.message).toBeUndefined();
+    expect(missingCookieResponse.body).not.toHaveProperty('accessToken');
+    expect(missingCookieResponse.headers['set-cookie']).toBeUndefined();
+
+    // A malformed refresh cookie must also be rejected.
+    const malformedCookieResponse = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', 'refresh_token=invalid')
+      .set('X-CSRF-Token', csrfToken)
+      .expect(401);
+
+    expect(malformedCookieResponse.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(malformedCookieResponse.body.message).toBeUndefined();
+    expect(malformedCookieResponse.body).not.toHaveProperty('accessToken');
+    expect(malformedCookieResponse.headers['set-cookie']).toBeUndefined();
+
+    // Failed requests must not revoke the valid session.
+    const session = await prisma.authSession.findFirst({
+      where: { userId: user.id },
+      select: {
+        revokedAt: true,
+        revocationReason: true,
+      },
+    });
+
+    expect(session).not.toBeNull();
+    expect(session?.revokedAt).toBeNull();
+    expect(session?.revocationReason).toBeNull();
+
+    // The original cookie must still work with the matching CSRF token.
+    const validRefreshResponse = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', cookiePair)
+      .set('X-CSRF-Token', csrfToken)
+      .expect(200);
+
+    expect(validRefreshResponse.body).toMatchObject({
+      accessToken: expect.any(String),
+      tokenType: 'Bearer',
+      csrfToken: expect.any(String),
+    });
+    expect(validRefreshResponse.body).not.toHaveProperty('refreshToken');
+    expect(validRefreshResponse.headers['cache-control']).toBe('no-store');
+  });
+
   it('rejects missing or mismatched CSRF tokens without consuming a valid refresh token', async () => {
     const email = `refresh-csrf-${randomUUID()}@example.com`;
     const password = 'Refresh-CSRF-E2E-Password-123!';
@@ -391,6 +479,108 @@ describe('Identity access authentication (E2E)', () => {
     expect(validRefreshResponse.body.csrfToken).not.toBe(csrfToken);
     expect(validRefreshResponse.body).not.toHaveProperty('refreshToken');
     expect(validRefreshResponse.headers['cache-control']).toBe('no-store');
+  });
+
+  it('rejects missing or malformed refresh cookies without revoking a valid session on logout', async () => {
+    const email = `logout-cookie-${randomUUID()}@example.com`;
+    const password = 'Logout-Cookie-E2E-Password-123!';
+
+    const user = await createUser(email, password, 'ACTIVE', new Date());
+
+    const loginResponse = await request(app!.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(200);
+
+    const csrfToken = loginResponse.body.csrfToken as string;
+    const loginCookies = loginResponse.headers['set-cookie'];
+
+    const refreshCookie = Array.isArray(loginCookies)
+      ? loginCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token='),
+        )
+      : undefined;
+
+    if (!refreshCookie) {
+      throw new Error('Login did not set a refresh-token cookie');
+    }
+
+    const cookiePair = refreshCookie.split(';')[0];
+
+    if (!cookiePair) {
+      throw new Error('Could not extract the refresh-token cookie');
+    }
+
+    // A missing refresh cookie must not be treated as successful logout.
+    const missingCookieResponse = await request(app!.getHttpServer())
+      .post('/auth/logout')
+      .set('X-CSRF-Token', csrfToken)
+      .expect(401);
+
+    expect(missingCookieResponse.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(missingCookieResponse.body.message).toBeUndefined();
+    expect(missingCookieResponse.headers['set-cookie']).toBeUndefined();
+
+    // A malformed refresh cookie must also be rejected.
+    const malformedCookieResponse = await request(app!.getHttpServer())
+      .post('/auth/logout')
+      .set('Cookie', 'refresh_token=invalid')
+      .set('X-CSRF-Token', csrfToken)
+      .expect(401);
+
+    expect(malformedCookieResponse.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(malformedCookieResponse.body.message).toBeUndefined();
+    expect(malformedCookieResponse.headers['set-cookie']).toBeUndefined();
+
+    // Failed logout requests must not revoke the valid session.
+    const sessionBeforeValidLogout = await prisma.authSession.findFirst({
+      where: { userId: user.id },
+      select: {
+        revokedAt: true,
+        revocationReason: true,
+      },
+    });
+
+    expect(sessionBeforeValidLogout).not.toBeNull();
+    expect(sessionBeforeValidLogout?.revokedAt).toBeNull();
+    expect(sessionBeforeValidLogout?.revocationReason).toBeNull();
+
+    // The original cookie and CSRF token must still allow a valid logout.
+    const validLogoutResponse = await request(app!.getHttpServer())
+      .post('/auth/logout')
+      .set('Cookie', cookiePair)
+      .set('X-CSRF-Token', csrfToken)
+      .expect(200);
+
+    expect(validLogoutResponse.body).toEqual({
+      message: 'Logged out successfully.',
+    });
+
+    const setCookies = validLogoutResponse.headers['set-cookie'];
+    const clearedCookie = Array.isArray(setCookies)
+      ? setCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token=;'),
+        )
+      : undefined;
+
+    expect(clearedCookie).toBeDefined();
+
+    const revokedSession = await prisma.authSession.findFirst({
+      where: { userId: user.id },
+      select: {
+        revokedAt: true,
+        revocationReason: true,
+      },
+    });
+
+    expect(revokedSession?.revokedAt).toBeInstanceOf(Date);
+    expect(revokedSession?.revocationReason).toBe('LOGOUT');
   });
 
   it('rejects missing or mismatched CSRF tokens without logging out a valid session', async () => {
