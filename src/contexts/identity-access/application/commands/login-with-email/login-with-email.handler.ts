@@ -33,7 +33,6 @@ import {
   type LoginWithEmailResult,
 } from './login-with-email.command.js';
 
-import { AuthSessionLifetime } from '../../../domain/value-objects/auth-session-lifetime.js';
 import {
   CLOCK,
   type Clock,
@@ -78,17 +77,15 @@ export class LoginWithEmailHandler implements ICommandHandler<LoginWithEmailComm
 
     const now = this.clock.now();
 
-    const sessionLifetime = AuthSessionLifetime.calculate({
-      now,
-      sessionTtlSeconds: this.sessionPolicy.sessionTtlSeconds,
-      refreshTokenTtlSeconds: this.sessionPolicy.refreshTokenTtlSeconds,
-    });
-
     const authSession = AuthSession.create({
       userId: user.id,
-      createdAt: sessionLifetime.createdAt,
-      expiresAt: sessionLifetime.sessionExpiresAt,
+      createdAt: now,
+      sessionTtlSeconds: this.sessionPolicy.sessionTtlSeconds,
     });
+    const refreshTokenExpiresAt = authSession.calculateRefreshTokenExpiresAt(
+      now,
+      this.sessionPolicy.refreshTokenTtlSeconds,
+    );
 
     const accessToken = await this.tokenIssuer.issueFor(user.id);
     const refreshToken = this.refreshTokenFactory.create();
@@ -98,7 +95,7 @@ export class LoginWithEmailHandler implements ICommandHandler<LoginWithEmailComm
       session: authSession,
       initialRefreshTokenHash: refreshToken.tokenHash,
       csrfTokenHash: csrfToken.tokenHash,
-      refreshTokenExpiresAt: sessionLifetime.refreshTokenExpiresAt,
+      refreshTokenExpiresAt: refreshTokenExpiresAt,
     });
 
     return {
