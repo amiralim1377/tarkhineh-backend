@@ -95,7 +95,7 @@ export class LoginWithEmailHandler implements ICommandHandler<LoginWithEmailComm
       session: authSession,
       initialRefreshTokenHash: refreshToken.tokenHash,
       csrfTokenHash: csrfToken.tokenHash,
-      refreshTokenExpiresAt: refreshTokenExpiresAt,
+      refreshTokenExpiresAt,
     });
 
     return {
