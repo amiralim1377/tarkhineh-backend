@@ -6,12 +6,18 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Headers,
   Query,
+  Req,
+  Res,
 } from '@nestjs/common';
+
+import type { Request, Response } from 'express';
 import { CommandBus } from '@nestjs/cqrs';
 import { Auth } from '../auth/decorators/auth.decorator.js';
 import { AuthType } from '../auth/contracts/auth-type.enum.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import { REFRESH_TOKEN_COOKIE_NAME } from '../auth/cookies/auth-cookie.constants.js';
 import type { AuthenticatedPrincipal } from '../auth/contracts/authentication-strategy.js';
 import {
   ApiAcceptedResponse,
@@ -31,11 +37,13 @@ import {
 import { RegisterWithEmailCommand } from '../../../application/commands/register-with-email/register-with-email.command.js';
 import { VerifyEmailCommand } from '../../../application/commands/verify-email/verify-email.command.js';
 import { LoginWithEmailCommand } from '../../../application/commands/login-with-email/login-with-email.command.js';
+import { RefreshSessionCommand } from '../../../application/commands/refresh-session/refresh-session.command.js';
 
 import { RegisterWithEmailDto } from '../dto/registration/register-with-email.dto.js';
 import { VerifyEmailDto } from '../dto/verification/verify-email.dto.js';
 import { LoginWithEmailDto } from '../dto/login/login-with-email.dto.js';
 import { LoginWithEmailResponseDto } from '../dto/login/login-with-email-response.dto.js';
+import { RefreshSessionResponseDto } from '../dto/login/refresh-session-response.dto.js';
 import { CurrentUserResponseDto } from '../dto/current-user/current-user-response.dto.js';
 import { AuthMessageResponseDto } from '../dto/common/auth-message-response.dto.js';
 import { ApiErrorResponseDto } from '../../../../../shared/presentation/http/api-error-response.dto.js';
@@ -96,12 +104,69 @@ export class IdentityAccessController {
   })
   async loginWithEmail(
     @Body() dto: LoginWithEmailDto,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<LoginWithEmailResponseDto> {
     const result = await this.commandBus.execute(
       new LoginWithEmailCommand(dto.email, dto.password),
     );
 
+    this.setRefreshTokenCookie(
+      response,
+      result.refreshToken,
+      result.refreshTokenExpiresAt,
+    );
+
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('Pragma', 'no-cache');
+
     return LoginWithEmailResponseDto.fromResult(result);
+  }
+
+  @Auth(AuthType.None)
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Refresh an authentication session',
+    description:
+      'Rotates the HttpOnly refresh-token cookie. Requires the matching CSRF token in the X-CSRF-Token header.',
+  })
+  @ApiOkResponse({
+    description: 'The session was refreshed. Returns a new access token and CSRF token.',
+    type: RefreshSessionResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'The refresh token or CSRF token is invalid, expired, or has been reused.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+    type: ApiErrorResponseDto,
+  })
+  async refreshSession(
+    @Req() request: Request,
+    @Headers('x-csrf-token') csrfTokenHeader: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<RefreshSessionResponseDto> {
+    // Ensure refresh responses, including failures, are not cached.
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('Pragma', 'no-cache');
+
+    const refreshToken = request.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
+
+    const result = await this.commandBus.execute(
+      new RefreshSessionCommand(
+        typeof refreshToken === 'string' ? refreshToken : '',
+        typeof csrfTokenHeader === 'string' ? csrfTokenHeader : '',
+      ),
+    );
+
+    this.setRefreshTokenCookie(
+      response,
+      result.refreshToken,
+      result.refreshTokenExpiresAt,
+    );
+
+    return RefreshSessionResponseDto.fromResult(result);
   }
 
   @Auth(AuthType.None)
@@ -223,4 +288,19 @@ export class IdentityAccessController {
   verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.commandBus.execute(new VerifyEmailCommand(dto.token));
   }
+  private setRefreshTokenCookie(
+    response: Response,
+    token: string,
+    expiresAt: Date,
+  ): void {
+    response.cookie(REFRESH_TOKEN_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/auth',
+      expires: expiresAt,
+      maxAge: Math.max(0, expiresAt.getTime() - Date.now()),
+    });
+  }
+
 }
