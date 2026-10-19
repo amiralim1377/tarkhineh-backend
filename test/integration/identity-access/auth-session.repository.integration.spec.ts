@@ -2,15 +2,9 @@ import 'dotenv/config';
 
 import { randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
+import { AuthSession } from '../../../src/contexts/identity-access/domain/entities/auth-session.js';
 import type {
   CreateAuthSessionInput,
   RotateRefreshTokenInput,
@@ -20,6 +14,8 @@ import { SecureRefreshTokenFactory } from '../../../src/contexts/identity-access
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
 
 const DAY = 24 * 60 * 60 * 1000;
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 function createTestDatabaseUrl(): string {
   const configuredUrl = process.env.DATABASE_URL;
@@ -29,9 +25,7 @@ function createTestDatabaseUrl(): string {
   }
 
   const url = new URL(configuredUrl);
-  const databaseName = decodeURIComponent(
-    url.pathname.replace(/^\/+/, ''),
-  );
+  const databaseName = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
 
   if (databaseName !== 'tarkhineh_db') {
     throw new Error(
@@ -84,18 +78,33 @@ async function createActiveSession() {
   const initialToken = tokenFactory.create();
   const initialCsrfToken = tokenFactory.create();
 
-  const sessionInput: CreateAuthSessionInput = {
+  const session = AuthSession.create({
     userId: user.id,
+    createdAt: now,
+    sessionTtlSeconds: SESSION_TTL_SECONDS,
+  });
+
+  const sessionInput: CreateAuthSessionInput = {
+    session,
     initialRefreshTokenHash: initialToken.tokenHash,
     csrfTokenHash: initialCsrfToken.tokenHash,
-    now,
-    sessionExpiresAt: addDays(now, 30),
-    refreshTokenExpiresAt: addDays(now, 7),
+    refreshTokenExpiresAt: session.calculateRefreshTokenExpiresAt(
+      now,
+      REFRESH_TOKEN_TTL_SECONDS,
+    ),
   };
 
-  const session = await repository.createSession(sessionInput);
+  const createdSession = await repository.createSession(sessionInput);
 
-  return { userId: user.id, session, initialToken, initialCsrfToken, now };
+  return {
+    userId: user.id,
+    sessionId: createdSession.sessionId,
+    sessionExpiresAt: createdSession.sessionExpiresAt,
+    refreshTokenExpiresAt: createdSession.refreshTokenExpiresAt,
+    initialToken,
+    initialCsrfToken,
+    now,
+  };
 }
 
 function createRotationInput(
@@ -111,7 +120,7 @@ function createRotationInput(
     replacementTokenHash,
     replacementCsrfTokenHash,
     now,
-    replacementExpiresAt: addDays(now, 7),
+    replacementRefreshTokenTtlSeconds: REFRESH_TOKEN_TTL_SECONDS,
   };
 }
 
@@ -137,10 +146,16 @@ describe('PrismaAuthSessionRepository integration', () => {
   });
 
   it('persists a session and only the refresh-token hash', async () => {
-    const { userId, session, initialToken, initialCsrfToken } = await createActiveSession();
+    const {
+      userId,
+      sessionId,
+      sessionExpiresAt,
+      initialToken,
+      initialCsrfToken,
+    } = await createActiveSession();
 
     const persisted = await prisma.authSession.findUnique({
-      where: { id: session.sessionId },
+      where: { id: sessionId },
       include: { refreshTokens: true },
     });
 
@@ -152,7 +167,7 @@ describe('PrismaAuthSessionRepository integration', () => {
 
     expect(persisted.userId).toBe(userId);
     expect(persisted.revokedAt).toBeNull();
-    expect(persisted.expiresAt).toEqual(session.sessionExpiresAt);
+    expect(persisted.expiresAt).toEqual(sessionExpiresAt);
     expect(persisted.refreshTokens).toHaveLength(1);
 
     const storedToken = persisted.refreshTokens[0];
@@ -167,7 +182,9 @@ describe('PrismaAuthSessionRepository integration', () => {
   });
 
   it('rotates a token and persists its replacement link', async () => {
-    const { session, initialToken, initialCsrfToken, now } = await createActiveSession();
+    const { sessionId, initialToken, initialCsrfToken, now } =
+      await createActiveSession();
+
     const replacementToken = tokenFactory.create();
     const replacementCsrfToken = tokenFactory.create();
     const rotationTime = new Date(now.getTime() + 1000);
@@ -200,7 +217,7 @@ describe('PrismaAuthSessionRepository integration', () => {
 
     expect(previous.usedAt).toEqual(rotationTime);
     expect(previous.replacedByTokenId).toBe(replacement.id);
-    expect(replacement.sessionId).toBe(session.sessionId);
+    expect(replacement.sessionId).toBe(sessionId);
     expect(replacement.csrfTokenHash).toBe(replacementCsrfToken.tokenHash);
     expect(replacement.csrfTokenHash).not.toBe(replacementCsrfToken.token);
     expect(replacement.usedAt).toBeNull();
@@ -208,7 +225,8 @@ describe('PrismaAuthSessionRepository integration', () => {
   });
 
   it('rejects an expired token without creating a replacement', async () => {
-    const { session, initialToken, initialCsrfToken, now } = await createActiveSession();
+    const { sessionId, initialToken, initialCsrfToken, now } =
+      await createActiveSession();
 
     await prisma.refreshToken.update({
       where: { tokenHash: initialToken.tokenHash },
@@ -217,6 +235,7 @@ describe('PrismaAuthSessionRepository integration', () => {
 
     const replacementToken = tokenFactory.create();
     const replacementCsrfToken = tokenFactory.create();
+
     const result = await repository.rotateRefreshToken(
       createRotationInput(
         initialToken.tokenHash,
@@ -233,7 +252,7 @@ describe('PrismaAuthSessionRepository integration', () => {
       where: { tokenHash: replacementToken.tokenHash },
     });
     const persistedSession = await prisma.authSession.findUnique({
-      where: { id: session.sessionId },
+      where: { id: sessionId },
     });
 
     expect(replacement).toBeNull();
@@ -241,7 +260,9 @@ describe('PrismaAuthSessionRepository integration', () => {
   });
 
   it('revokes the session if a consumed token is reused', async () => {
-    const { session, initialToken, initialCsrfToken, now } = await createActiveSession();
+    const { sessionId, initialToken, initialCsrfToken, now } =
+      await createActiveSession();
+
     const firstReplacement = tokenFactory.create();
     const firstReplacementCsrf = tokenFactory.create();
 
@@ -274,10 +295,10 @@ describe('PrismaAuthSessionRepository integration', () => {
     expect(reuseResult).toEqual({ status: 'REUSE_DETECTED' });
 
     const persistedSession = await prisma.authSession.findUnique({
-      where: { id: session.sessionId },
+      where: { id: sessionId },
     });
     const tokens = await prisma.refreshToken.findMany({
-      where: { sessionId: session.sessionId },
+      where: { sessionId },
     });
 
     expect(persistedSession?.revokedAt).toEqual(reuseTime);
@@ -287,7 +308,9 @@ describe('PrismaAuthSessionRepository integration', () => {
   });
 
   it('allows only one concurrent rotation and detects reuse', async () => {
-    const { session, initialToken, initialCsrfToken, now } = await createActiveSession();
+    const { sessionId, initialToken, initialCsrfToken, now } =
+      await createActiveSession();
+
     const firstReplacement = tokenFactory.create();
     const secondReplacement = tokenFactory.create();
     const firstReplacementCsrf = tokenFactory.create();
@@ -315,16 +338,18 @@ describe('PrismaAuthSessionRepository integration', () => {
       ),
     ]);
 
-    expect(results.filter((result) => result.status === 'ROTATED')).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === 'ROTATED'),
+    ).toHaveLength(1);
     expect(
       results.filter((result) => result.status === 'REUSE_DETECTED'),
     ).toHaveLength(1);
 
     const persistedSession = await prisma.authSession.findUnique({
-      where: { id: session.sessionId },
+      where: { id: sessionId },
     });
     const tokens = await prisma.refreshToken.findMany({
-      where: { sessionId: session.sessionId },
+      where: { sessionId },
     });
 
     expect(persistedSession?.revocationReason).toBe('REFRESH_TOKEN_REUSE');
@@ -334,7 +359,8 @@ describe('PrismaAuthSessionRepository integration', () => {
   });
 
   it('revokes a session and its refresh tokens on logout', async () => {
-    const { session, initialToken, initialCsrfToken, now } = await createActiveSession();
+    const { sessionId, initialToken, initialCsrfToken, now } =
+      await createActiveSession();
 
     const result = await repository.revokeSessionByTokenHash(
       initialToken.tokenHash,
@@ -345,10 +371,10 @@ describe('PrismaAuthSessionRepository integration', () => {
     expect(result).toBe(true);
 
     const persistedSession = await prisma.authSession.findUnique({
-      where: { id: session.sessionId },
+      where: { id: sessionId },
     });
     const tokens = await prisma.refreshToken.findMany({
-      where: { sessionId: session.sessionId },
+      where: { sessionId },
     });
 
     expect(persistedSession?.revocationReason).toBe('LOGOUT');
