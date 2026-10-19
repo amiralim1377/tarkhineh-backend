@@ -19,12 +19,12 @@ export interface CreatedAuthSession {
 }
 
 export interface RotateRefreshTokenInput {
-  readonly currentTokenHash: string;
-  readonly currentCsrfTokenHash: string;
-  readonly replacementTokenHash: string;
-  readonly replacementCsrfTokenHash: string;
-  readonly now: Date;
-  readonly replacementExpiresAt: Date;
+  currentTokenHash: string;
+  currentCsrfTokenHash: string;
+  replacementTokenHash: string;
+  replacementCsrfTokenHash: string;
+  now: Date;
+  replacementRefreshTokenTtlSeconds: number;
 }
 
 export type RefreshTokenRotationResult =
