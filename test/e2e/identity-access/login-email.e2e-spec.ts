@@ -183,6 +183,130 @@ describe('Identity access authentication (E2E)', () => {
     expect(payload.exp - payload.iat).toBe(response.body.expiresIn);
   });
 
+  it('detects reuse and revokes the session when the same refresh token is used concurrently', async () => {
+    const email = `refresh-concurrent-${randomUUID()}@example.com`;
+    const password = 'Refresh-Concurrent-E2E-Password-123!';
+
+    const user = await createUser(email, password, 'ACTIVE', new Date());
+
+    const loginResponse = await request(app!.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(200);
+
+    const csrfToken = loginResponse.body.csrfToken as string;
+    const loginCookies = loginResponse.headers['set-cookie'];
+
+    const refreshCookie = Array.isArray(loginCookies)
+      ? loginCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token='),
+        )
+      : undefined;
+
+    if (!refreshCookie) {
+      throw new Error('Login did not set a refresh-token cookie');
+    }
+
+    const cookiePair = refreshCookie.split(';')[0];
+
+    if (!cookiePair) {
+      throw new Error('Could not extract the refresh-token cookie');
+    }
+
+    // Submit two refresh requests concurrently with the same credentials.
+    const responses = await Promise.all([
+      request(app!.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', cookiePair)
+        .set('X-CSRF-Token', csrfToken),
+
+      request(app!.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', cookiePair)
+        .set('X-CSRF-Token', csrfToken),
+    ]);
+
+    expect(
+      responses.map((response) => response.status).sort((a, b) => a - b),
+    ).toEqual([200, 401]);
+
+    const successfulRefresh = responses.find(
+      (response) => response.status === 200,
+    );
+    const rejectedRefresh = responses.find(
+      (response) => response.status === 401,
+    );
+
+    if (!successfulRefresh || !rejectedRefresh) {
+      throw new Error(
+        'Expected one successful and one rejected refresh request',
+      );
+    }
+
+    expect(successfulRefresh.body).toMatchObject({
+      accessToken: expect.any(String),
+      tokenType: 'Bearer',
+      csrfToken: expect.any(String),
+    });
+
+    expect(rejectedRefresh.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(rejectedRefresh.body.message).toBeUndefined();
+
+    // The successful response's replacement token must also be unusable
+    // because reuse detection revokes the entire session.
+    const rotatedCookies = successfulRefresh.headers['set-cookie'];
+    const rotatedCookie = Array.isArray(rotatedCookies)
+      ? rotatedCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token='),
+        )
+      : undefined;
+
+    if (!rotatedCookie) {
+      throw new Error('Successful refresh did not set a replacement cookie');
+    }
+
+    const rotatedCookiePair = rotatedCookie.split(';')[0];
+
+    if (!rotatedCookiePair) {
+      throw new Error('Could not extract the replacement refresh-token cookie');
+    }
+
+    await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', rotatedCookiePair)
+      .set('X-CSRF-Token', successfulRefresh.body.csrfToken as string)
+      .expect(401);
+
+    const session = await prisma.authSession.findFirst({
+      where: { userId: user.id },
+      select: {
+        id: true,
+        revokedAt: true,
+        revocationReason: true,
+      },
+    });
+
+    expect(session).not.toBeNull();
+
+    if (!session) {
+      throw new Error('Authentication session was not found');
+    }
+
+    expect(session.revokedAt).toBeInstanceOf(Date);
+    expect(session.revocationReason).toBe('REFRESH_TOKEN_REUSE');
+
+    const tokens = await prisma.refreshToken.findMany({
+      where: { sessionId: session.id },
+      select: { revokedAt: true },
+    });
+
+    expect(tokens).toHaveLength(2);
+    expect(tokens.every((token) => token.revokedAt !== null)).toBe(true);
+  });
+
   it('rotates a refresh token and revokes the session when the old token is reused', async () => {
     const email = `refresh-rotation-${randomUUID()}@example.com`;
     const password = 'Refresh-E2E-Password-123!';
