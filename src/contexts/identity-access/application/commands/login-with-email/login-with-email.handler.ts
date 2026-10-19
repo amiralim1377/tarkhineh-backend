@@ -33,10 +33,10 @@ import {
   type LoginWithEmailResult,
 } from './login-with-email.command.js';
 
+import { AuthSessionLifetime } from '../../../domain/value-objects/auth-session-lifetime.js';
+
 @CommandHandler(LoginWithEmailCommand)
-export class LoginWithEmailHandler
-  implements ICommandHandler<LoginWithEmailCommand>
-{
+export class LoginWithEmailHandler implements ICommandHandler<LoginWithEmailCommand> {
   constructor(
     @Inject(USER_AUTHENTICATION_REPOSITORY)
     private readonly users: UserAuthenticationRepository,
@@ -70,12 +70,11 @@ export class LoginWithEmailHandler
     }
 
     const now = new Date();
-    const sessionExpiresAt = new Date(
-      now.getTime() + this.sessionPolicy.sessionTtlSeconds * 1000,
-    );
-    const requestedRefreshTokenExpiry = new Date(
-      now.getTime() + this.sessionPolicy.refreshTokenTtlSeconds * 1000,
-    );
+    const sessionLifetime = AuthSessionLifetime.calculate({
+      now,
+      sessionTtlSeconds: this.sessionPolicy.sessionTtlSeconds,
+      refreshTokenTtlSeconds: this.sessionPolicy.refreshTokenTtlSeconds,
+    });
 
     const accessToken = await this.tokenIssuer.issueFor(user.id);
     const refreshToken = this.refreshTokenFactory.create();
@@ -85,9 +84,9 @@ export class LoginWithEmailHandler
       userId: user.id,
       initialRefreshTokenHash: refreshToken.tokenHash,
       csrfTokenHash: csrfToken.tokenHash,
-      now,
-      sessionExpiresAt,
-      refreshTokenExpiresAt: requestedRefreshTokenExpiry,
+      now: sessionLifetime.createdAt,
+      sessionExpiresAt: sessionLifetime.sessionExpiresAt,
+      refreshTokenExpiresAt: sessionLifetime.refreshTokenExpiresAt,
     });
 
     return {
