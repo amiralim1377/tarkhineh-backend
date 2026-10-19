@@ -1,4 +1,4 @@
-import type { IdentityUser } from '../../../../domain/entities/identity-user.js';
+import type { IdentityUser } from '../../../domain/entities/identity-user.js';
 
 export class IdentityUserResponseDto {
   readonly id: string;
