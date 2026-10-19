@@ -3,15 +3,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CqrsModule } from '@nestjs/cqrs';
 import { JwtModule } from '@nestjs/jwt';
 import { BullModule } from '@nestjs/bullmq';
-
 import { PrismaModule } from '../../prisma/prisma.module.js';
-
 import { EMAIL_REGISTRATION_REPOSITORY } from './domain/ports/email-registration.repository.js';
 import { EMAIL_VERIFICATION_REPOSITORY } from './domain/ports/email-verification.repository.js';
 import { USER_AUTHENTICATION_REPOSITORY } from './domain/ports/user-authentication.repository.js';
 import { ACCESS_TOKEN_IDENTITY_READER } from './application/ports/access-token-identity-reader.port.js';
 import { PrismaAccessTokenIdentityReader } from './infrastructure/persistence/prisma-access-token-identity-reader.js';
-
 import { PASSWORD_HASHER } from './application/ports/password-hasher.port.js';
 import { PASSWORD_VERIFIER } from './application/ports/password-verifier.port.js';
 import { EMAIL_VERIFICATION_TOKEN_FACTORY } from './application/ports/email-verification-token-factory.port.js';
@@ -36,6 +33,12 @@ import { BearerJwtStrategy } from './presentation/http/auth/strategies/bearer-jw
 import { EmailVerificationProcessor } from './infrastructure/security/email-verification.processor.js';
 import { EmailOutboxDispatcher } from './infrastructure/queue/email-outbox-dispatcher.js';
 import { IdentityAccessController } from './presentation/http/identity-access.controller.js';
+import { APP_GUARD } from '@nestjs/core';
+import { AuthenticationGuard } from './presentation/http/auth/authentication.guard.js';
+import {
+  AUTHENTICATION_STRATEGIES,
+  type AuthenticationStrategy,
+} from './presentation/http/auth/authentication-strategy.js';
 
 @Module({
   imports: [
@@ -115,6 +118,17 @@ import { IdentityAccessController } from './presentation/http/identity-access.co
     {
       provide: ACCESS_TOKEN_VALIDATOR,
       useExisting: JwtAccessTokenValidator,
+    },
+    {
+      provide: AUTHENTICATION_STRATEGIES,
+      inject: [BearerJwtStrategy],
+      useFactory: (
+        bearerJwtStrategy: BearerJwtStrategy,
+      ): readonly AuthenticationStrategy[] => [bearerJwtStrategy],
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AuthenticationGuard,
     },
   ],
 })
