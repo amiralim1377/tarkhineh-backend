@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AuthSession } from '../../../domain/entities/auth-session.js';
 import { IdentityUser } from '../../../domain/entities/identity-user.js';
 import type {
   AuthSessionRepository,
@@ -10,6 +11,8 @@ import type { RefreshTokenFactory } from '../../ports/refresh-token-factory.port
 import { InvalidCredentialsError } from '../../errors/invalid-credentials.error.js';
 import { LoginWithEmailCommand } from './login-with-email.command.js';
 import { LoginWithEmailHandler } from './login-with-email.handler.js';
+
+const FIXED_NOW = new Date('2026-10-19T10:00:00.000Z');
 
 function createActiveUser(): IdentityUser {
   return IdentityUser.provisionVerified({
@@ -29,20 +32,19 @@ function createSut() {
 
   const createSession = vi.fn(
     async (input: CreateAuthSessionInput): Promise<CreatedAuthSession> => ({
-      sessionId: 'session-123',
-      sessionExpiresAt: input.sessionExpiresAt,
-      refreshTokenExpiresAt: new Date(
-        Math.min(
-          input.refreshTokenExpiresAt.getTime(),
-          input.sessionExpiresAt.getTime(),
-        ),
-      ),
+      sessionId: input.session.id,
+      sessionExpiresAt: input.session.expiresAt,
+      refreshTokenExpiresAt: input.refreshTokenExpiresAt,
     }),
   );
 
   const sessionPolicy = {
     refreshTokenTtlSeconds: 7 * 24 * 60 * 60,
     sessionTtlSeconds: 30 * 24 * 60 * 60,
+  };
+
+  const clock = {
+    now: vi.fn(() => new Date(FIXED_NOW.getTime())),
   };
 
   const handler = new LoginWithEmailHandler(
@@ -52,6 +54,7 @@ function createSut() {
     { createSession } as unknown as AuthSessionRepository,
     { create: createRefreshToken } as unknown as RefreshTokenFactory,
     sessionPolicy,
+    clock,
   );
 
   return {
@@ -62,6 +65,7 @@ function createSut() {
     createSession,
     createRefreshToken,
     sessionPolicy,
+    clock,
   };
 }
 
@@ -72,15 +76,17 @@ describe('LoginWithEmailHandler', () => {
     sut = createSut();
   });
 
-  it('normalizes email, verifies credentials, creates a session and issues tokens', async () => {
+  it('normalizes email, verifies credentials, creates a domain session and issues tokens', async () => {
     const user = createActiveUser();
 
     sut.findByEmail.mockResolvedValue(user);
     sut.verifyPassword.mockResolvedValue(true);
+
     sut.issueFor.mockResolvedValue({
       accessToken: 'test-access-token',
       expiresInSeconds: 900,
     });
+
     sut.createRefreshToken
       .mockReturnValueOnce({
         token: 'test-refresh-token',
@@ -96,38 +102,52 @@ describe('LoginWithEmailHandler', () => {
     );
 
     expect(sut.findByEmail).toHaveBeenCalledWith('user@example.com');
+
     expect(sut.verifyPassword).toHaveBeenCalledWith(
       'argon2-test-hash',
       'CorrectPassword123!',
     );
+
     expect(sut.issueFor).toHaveBeenCalledWith('user-123');
     expect(sut.createRefreshToken).toHaveBeenCalledTimes(2);
+    expect(sut.clock.now).toHaveBeenCalledOnce();
 
+    expect(sut.createSession).toHaveBeenCalledOnce();
     expect(sut.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: 'user-123',
+        session: expect.any(AuthSession),
         initialRefreshTokenHash: 'test-refresh-token-hash',
         csrfTokenHash: 'test-csrf-token-hash',
-        now: expect.any(Date),
-        sessionExpiresAt: expect.any(Date),
         refreshTokenExpiresAt: expect.any(Date),
       }),
     );
 
     const sessionInput = sut.createSession.mock.calls[0]?.[0];
+
     expect(sessionInput).toBeDefined();
 
     if (!sessionInput) {
       throw new Error('Expected a session creation input');
     }
 
-    expect(
-      sessionInput.sessionExpiresAt.getTime() - sessionInput.now.getTime(),
-    ).toBe(sut.sessionPolicy.sessionTtlSeconds * 1000);
+    const { session } = sessionInput;
+
+    expect(session).toBeInstanceOf(AuthSession);
+    expect(session.userId).toBe('user-123');
+    expect(session.createdAt).toEqual(FIXED_NOW);
+
+    expect(session.expiresAt.getTime() - session.createdAt.getTime()).toBe(
+      sut.sessionPolicy.sessionTtlSeconds * 1000,
+    );
 
     expect(
-      sessionInput.refreshTokenExpiresAt.getTime() - sessionInput.now.getTime(),
+      sessionInput.refreshTokenExpiresAt.getTime() -
+        session.createdAt.getTime(),
     ).toBe(sut.sessionPolicy.refreshTokenTtlSeconds * 1000);
+
+    expect(sessionInput.refreshTokenExpiresAt.getTime()).toBeLessThan(
+      session.expiresAt.getTime(),
+    );
 
     expect(result).toEqual({
       accessToken: 'test-access-token',
@@ -159,6 +179,7 @@ describe('LoginWithEmailHandler', () => {
     expect(sut.issueFor).not.toHaveBeenCalled();
     expect(sut.createRefreshToken).not.toHaveBeenCalled();
     expect(sut.createSession).not.toHaveBeenCalled();
+    expect(sut.clock.now).not.toHaveBeenCalled();
   });
 
   it('rejects an incorrect password without creating tokens or a session', async () => {
@@ -175,6 +196,7 @@ describe('LoginWithEmailHandler', () => {
     expect(sut.issueFor).not.toHaveBeenCalled();
     expect(sut.createRefreshToken).not.toHaveBeenCalled();
     expect(sut.createSession).not.toHaveBeenCalled();
+    expect(sut.clock.now).not.toHaveBeenCalled();
   });
 
   it('rejects a user whose email is not verified', async () => {
@@ -195,7 +217,9 @@ describe('LoginWithEmailHandler', () => {
 
     expect(sut.verifyPassword).not.toHaveBeenCalled();
     expect(sut.issueFor).not.toHaveBeenCalled();
+    expect(sut.createRefreshToken).not.toHaveBeenCalled();
     expect(sut.createSession).not.toHaveBeenCalled();
+    expect(sut.clock.now).not.toHaveBeenCalled();
   });
 
   it('rejects a suspended user without creating a session', async () => {
@@ -221,6 +245,8 @@ describe('LoginWithEmailHandler', () => {
 
     expect(sut.verifyPassword).not.toHaveBeenCalled();
     expect(sut.issueFor).not.toHaveBeenCalled();
+    expect(sut.createRefreshToken).not.toHaveBeenCalled();
     expect(sut.createSession).not.toHaveBeenCalled();
+    expect(sut.clock.now).not.toHaveBeenCalled();
   });
 });
