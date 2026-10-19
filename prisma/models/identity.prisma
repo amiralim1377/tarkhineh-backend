@@ -16,6 +16,7 @@ enum OtpPurpose {
 
 model User {
   emailVerificationChallenges EmailVerificationChallenge[]
+  authSessions                AuthSession[]
   id                          String                       @id @default(cuid())
   email                       String?                      @unique
   emailVerifiedAt             DateTime?
@@ -78,4 +79,45 @@ model EmailVerificationChallenge {
 
   @@index([userId, expiresAt])
   @@index([email, expiresAt])
+}
+
+enum AuthSessionRevocationReason {
+  LOGOUT
+  REFRESH_TOKEN_REUSE
+  SECURITY_ACTION
+}
+
+model AuthSession {
+  id               String                       @id @default(cuid())
+  userId           String
+  createdAt        DateTime                     @default(now())
+  lastUsedAt       DateTime?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  revocationReason AuthSessionRevocationReason?
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model RefreshToken {
+  id                String    @id @default(cuid())
+  sessionId         String
+  tokenHash         String    @unique
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  usedAt            DateTime?
+  revokedAt         DateTime?
+  replacedByTokenId String?   @unique
+
+  session         AuthSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  replacedByToken RefreshToken? @relation("RefreshTokenRotation", fields: [replacedByTokenId], references: [id], onDelete: SetNull)
+  replacedToken   RefreshToken? @relation("RefreshTokenRotation")
+
+  @@index([sessionId, expiresAt])
+  @@index([sessionId, usedAt])
+  @@index([expiresAt])
 }
