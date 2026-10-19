@@ -52,6 +52,12 @@ export class LoginWithEmailResponseDto {
   readonly expiresIn: number;
 
   @ApiProperty({
+    description: 'CSRF token to send in the X-CSRF-Token header on refresh and logout requests.',
+    example: 'a-random-csrf-token-value',
+  })
+  readonly csrfToken: string;
+
+  @ApiProperty({
     description: 'Public information about the authenticated user.',
     type: () => LoginWithEmailUserResponseDto,
   })
@@ -61,6 +67,7 @@ export class LoginWithEmailResponseDto {
     this.accessToken = result.accessToken;
     this.tokenType = result.tokenType;
     this.expiresIn = result.expiresIn;
+    this.csrfToken = result.csrfToken;
     this.user = new LoginWithEmailUserResponseDto(result.user);
   }
 
