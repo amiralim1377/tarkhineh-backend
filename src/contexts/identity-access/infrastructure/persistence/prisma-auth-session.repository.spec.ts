@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { PrismaService } from '../../../../prisma/prisma.service.js';
+import { AuthSession } from '../../domain/entities/auth-session.js';
 import type {
   CreateAuthSessionInput,
   RotateRefreshTokenInput,
 } from '../../domain/ports/auth-session.repository.js';
-
 import { PrismaAuthSessionRepository } from './prisma-auth-session.repository.js';
 
 const NOW = new Date('2026-10-19T10:00:00.000Z');
@@ -13,9 +13,22 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const SESSION_EXPIRY = new Date(NOW.getTime() + 30 * DAY);
 const TOKEN_EXPIRY = new Date(NOW.getTime() + 7 * DAY);
+
 const USER_ID = 'user-123';
 const SESSION_ID = 'session-123';
 const TOKEN_ID = 'refresh-token-123';
+
+function createDomainSession(
+  expiresAt: Date = SESSION_EXPIRY,
+  id: string = SESSION_ID,
+): AuthSession {
+  return AuthSession.create({
+    id,
+    userId: USER_ID,
+    createdAt: NOW,
+    expiresAt,
+  });
+}
 
 function createTransactionMock() {
   return {
@@ -82,7 +95,7 @@ function createRotationInput(
 
 describe('PrismaAuthSessionRepository', () => {
   describe('createSession', () => {
-    it('creates a session and its initial refresh token with one nested Prisma write', async () => {
+    it('persists the AuthSession entity and its initial refresh token in one nested Prisma write', async () => {
       const tx = createTransactionMock();
       const prisma = createPrismaMock(tx);
 
@@ -92,13 +105,16 @@ describe('PrismaAuthSessionRepository', () => {
         refreshTokens: [{ expiresAt: TOKEN_EXPIRY }],
       });
 
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
+      );
+
+      const session = createDomainSession();
+
       const input: CreateAuthSessionInput = {
-        userId: USER_ID,
+        session,
         initialRefreshTokenHash: 'initial-token-hash',
         csrfTokenHash: 'csrf-hash',
-        now: NOW,
-        sessionExpiresAt: SESSION_EXPIRY,
         refreshTokenExpiresAt: TOKEN_EXPIRY,
       };
 
@@ -112,8 +128,10 @@ describe('PrismaAuthSessionRepository', () => {
 
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.authSession.create).toHaveBeenCalledOnce();
+
       expect(prisma.authSession.create).toHaveBeenCalledWith({
         data: {
+          id: SESSION_ID,
           userId: USER_ID,
           createdAt: NOW,
           lastUsedAt: NOW,
@@ -137,55 +155,45 @@ describe('PrismaAuthSessionRepository', () => {
       });
     });
 
-    it('never lets the initial refresh token outlive its session', async () => {
+    it('rejects a refresh token that outlives its session', async () => {
       const tx = createTransactionMock();
       const prisma = createPrismaMock(tx);
       const shortSessionExpiry = new Date(NOW.getTime() + DAY);
 
-      prisma.authSession.create.mockResolvedValue({
-        id: SESSION_ID,
-        expiresAt: shortSessionExpiry,
-        refreshTokens: [{ expiresAt: shortSessionExpiry }],
-      });
-
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
-
-      await repository.createSession({
-        userId: USER_ID,
-        initialRefreshTokenHash: 'initial-token-hash',
-        csrfTokenHash: 'csrf-hash',
-        now: NOW,
-        sessionExpiresAt: shortSessionExpiry,
-        refreshTokenExpiresAt: TOKEN_EXPIRY,
-      });
-
-      expect(prisma.authSession.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            expiresAt: shortSessionExpiry,
-            refreshTokens: {
-              create: expect.objectContaining({
-                expiresAt: shortSessionExpiry,
-              }),
-            },
-          }),
-        }),
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
       );
-    });
 
-    it('rejects an already-expired session before writing to the database', async () => {
-      const tx = createTransactionMock();
-      const prisma = createPrismaMock(tx);
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
+      const session = createDomainSession(shortSessionExpiry);
 
       await expect(
         repository.createSession({
-          userId: USER_ID,
+          session,
           initialRefreshTokenHash: 'initial-token-hash',
           csrfTokenHash: 'csrf-hash',
-          now: NOW,
-          sessionExpiresAt: NOW,
           refreshTokenExpiresAt: TOKEN_EXPIRY,
+        }),
+      ).rejects.toThrow(RangeError);
+
+      expect(prisma.authSession.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a refresh token that is expired at session creation', async () => {
+      const tx = createTransactionMock();
+      const prisma = createPrismaMock(tx);
+
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
+      );
+
+      const session = createDomainSession();
+
+      await expect(
+        repository.createSession({
+          session,
+          initialRefreshTokenHash: 'initial-token-hash',
+          csrfTokenHash: 'csrf-hash',
+          refreshTokenExpiresAt: NOW,
         }),
       ).rejects.toThrow(RangeError);
 
@@ -208,7 +216,10 @@ describe('PrismaAuthSessionRepository', () => {
       tx.refreshToken.update.mockResolvedValue({});
       tx.authSession.updateMany.mockResolvedValue({ count: 1 });
 
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
+      );
+
       const result = await repository.rotateRefreshToken(
         createRotationInput({
           replacementExpiresAt: replacementExpiry,
@@ -264,10 +275,11 @@ describe('PrismaAuthSessionRepository', () => {
 
       tx.refreshToken.findUnique.mockResolvedValue(null);
 
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
-      const result = await repository.rotateRefreshToken(
-        createRotationInput(),
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
       );
+
+      const result = await repository.rotateRefreshToken(createRotationInput());
 
       expect(result).toEqual({ status: 'INVALID' });
       expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
@@ -280,7 +292,10 @@ describe('PrismaAuthSessionRepository', () => {
 
       tx.refreshToken.findUnique.mockResolvedValue(createCurrentToken());
 
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
+      );
+
       const result = await repository.rotateRefreshToken(
         createRotationInput({
           currentCsrfTokenHash: 'wrong-csrf-hash',
@@ -303,10 +318,11 @@ describe('PrismaAuthSessionRepository', () => {
         }),
       );
 
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
-      const result = await repository.rotateRefreshToken(
-        createRotationInput(),
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
       );
+
+      const result = await repository.rotateRefreshToken(createRotationInput());
 
       expect(result).toEqual({ status: 'INVALID' });
       expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
@@ -323,10 +339,11 @@ describe('PrismaAuthSessionRepository', () => {
         }),
       );
 
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
-      const result = await repository.rotateRefreshToken(
-        createRotationInput(),
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
       );
+
+      const result = await repository.rotateRefreshToken(createRotationInput());
 
       expect(result).toEqual({ status: 'REUSE_DETECTED' });
 
@@ -376,14 +393,16 @@ describe('PrismaAuthSessionRepository', () => {
 
       tx.authSession.updateMany.mockResolvedValue({ count: 1 });
 
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
-      const result = await repository.rotateRefreshToken(
-        createRotationInput(),
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
       );
+
+      const result = await repository.rotateRefreshToken(createRotationInput());
 
       expect(result).toEqual({ status: 'REUSE_DETECTED' });
       expect(tx.refreshToken.findUnique).toHaveBeenCalledTimes(2);
       expect(tx.refreshToken.create).not.toHaveBeenCalled();
+
       expect(tx.authSession.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: {
@@ -405,7 +424,10 @@ describe('PrismaAuthSessionRepository', () => {
         csrfTokenHash: 'current-csrf-hash',
       });
 
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
+      );
+
       const result = await repository.revokeSessionByTokenHash(
         'logout-token-hash',
         'current-csrf-hash',
@@ -413,6 +435,7 @@ describe('PrismaAuthSessionRepository', () => {
       );
 
       expect(result).toBe(true);
+
       expect(tx.authSession.updateMany).toHaveBeenCalledWith({
         where: { id: SESSION_ID, revokedAt: null },
         data: {
@@ -420,6 +443,7 @@ describe('PrismaAuthSessionRepository', () => {
           revocationReason: 'LOGOUT',
         },
       });
+
       expect(tx.refreshToken.updateMany).toHaveBeenCalledWith({
         where: {
           sessionId: SESSION_ID,
@@ -435,7 +459,10 @@ describe('PrismaAuthSessionRepository', () => {
 
       tx.refreshToken.findUnique.mockResolvedValue(null);
 
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
+      );
+
       const result = await repository.revokeSessionByTokenHash(
         'unknown-token-hash',
         'current-csrf-hash',
@@ -455,7 +482,10 @@ describe('PrismaAuthSessionRepository', () => {
 
       tx.authSession.updateMany.mockResolvedValue({ count: 2 });
 
-      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
+      const repository = new PrismaAuthSessionRepository(
+        prisma as unknown as PrismaService,
+      );
+
       const result = await repository.revokeAllSessionsForUser(
         USER_ID,
         'SECURITY_ACTION',
@@ -463,6 +493,7 @@ describe('PrismaAuthSessionRepository', () => {
       );
 
       expect(result).toBe(2);
+
       expect(tx.authSession.updateMany).toHaveBeenCalledWith({
         where: {
           userId: USER_ID,
@@ -473,6 +504,7 @@ describe('PrismaAuthSessionRepository', () => {
           revocationReason: 'SECURITY_ACTION',
         },
       });
+
       expect(tx.refreshToken.updateMany).toHaveBeenCalledWith({
         where: {
           revokedAt: null,
