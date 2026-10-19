@@ -25,6 +25,7 @@ import { RegisterWithEmailHandler } from './application/commands/register-with-e
 import { VerifyEmailHandler } from './application/commands/verify-email/verify-email.handler.js';
 import { LoginWithEmailHandler } from './application/commands/login-with-email/login-with-email.handler.js';
 import { RefreshSessionHandler } from './application/commands/refresh-session/refresh-session.handler.js';
+import { LogoutSessionHandler } from './application/commands/logout-session/logout-session.handler.js';
 import { PrismaEmailRegistrationRepository } from './infrastructure/persistence/prisma-email-registration.repository.js';
 import { PrismaEmailVerificationRepository } from './infrastructure/persistence/prisma-email-verification.repository.js';
 import { PrismaUserAuthenticationRepository } from './infrastructure/persistence/prisma-user-authentication.repository.js';
@@ -84,6 +85,7 @@ import {
     VerifyEmailHandler,
     LoginWithEmailHandler,
     RefreshSessionHandler,
+    LogoutSessionHandler,
     EmailVerificationProcessor,
     EmailOutboxDispatcher,
     {
