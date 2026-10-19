@@ -64,7 +64,6 @@ import { IdentityAccessController } from './presentation/http/identity-access.co
     PrismaEmailVerificationRepository,
     PrismaUserAuthenticationRepository,
     PrismaAccessTokenIdentityReader,
-
     Argon2PasswordHasher,
     Argon2PasswordVerifier,
     SecureEmailVerificationTokenFactory,
@@ -73,14 +72,11 @@ import { IdentityAccessController } from './presentation/http/identity-access.co
     JwtAccessTokenIssuer,
     JwtAccessTokenValidator,
     BearerJwtStrategy,
-
     RegisterWithEmailHandler,
     VerifyEmailHandler,
     LoginWithEmailHandler,
-
     EmailVerificationProcessor,
     EmailOutboxDispatcher,
-
     {
       provide: EMAIL_REGISTRATION_REPOSITORY,
       useExisting: PrismaEmailRegistrationRepository,
