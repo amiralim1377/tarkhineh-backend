@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
+import { AuthSession } from '../../domain/entities/auth-session.js';
 
 import type {
   AuthSessionRepository,
@@ -89,11 +90,12 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
   async rotateRefreshToken(
     input: RotateRefreshTokenInput,
   ): Promise<RefreshTokenRotationResult> {
-    const { now } = input;
+    const { now, replacementRefreshTokenTtlSeconds } = input;
 
     if (
       !Number.isFinite(now.getTime()) ||
-      !Number.isFinite(input.replacementExpiresAt.getTime())
+      !Number.isSafeInteger(replacementRefreshTokenTtlSeconds) ||
+      replacementRefreshTokenTtlSeconds <= 0
     ) {
       return { status: 'INVALID' };
     }
@@ -113,8 +115,11 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
               select: {
                 id: true,
                 userId: true,
+                createdAt: true,
+                lastUsedAt: true,
                 expiresAt: true,
                 revokedAt: true,
+                revocationReason: true,
                 user: {
                   select: {
                     status: true,
@@ -193,11 +198,20 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
           return { status: 'INVALID' };
         }
 
-        const replacementExpiresAt = new Date(
-          Math.min(
-            input.replacementExpiresAt.getTime(),
-            session.expiresAt.getTime(),
-          ),
+        // Reconstitute the Domain Entity from the state read inside this transaction.
+        const authSession = AuthSession.reconstitute({
+          id: session.id,
+          userId: session.userId,
+          createdAt: session.createdAt,
+          lastUsedAt: session.lastUsedAt,
+          expiresAt: session.expiresAt,
+          revokedAt: session.revokedAt,
+          revocationReason: session.revocationReason,
+        });
+
+        const replacementExpiresAt = authSession.calculateRefreshTokenExpiresAt(
+          now,
+          replacementRefreshTokenTtlSeconds,
         );
 
         if (replacementExpiresAt <= now) {
@@ -354,9 +368,7 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
             sessionId: token.sessionId,
             revokedAt: null,
           },
-          data: {
-            revokedAt: now,
-          },
+          data: { revokedAt: now },
         });
 
         return revoked.count === 1;
@@ -391,9 +403,7 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
               is: { userId },
             },
           },
-          data: {
-            revokedAt: now,
-          },
+          data: { revokedAt: now },
         });
 
         return revokedSessions.count;
