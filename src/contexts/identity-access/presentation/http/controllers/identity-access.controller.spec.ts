@@ -18,8 +18,10 @@ import { appCreate } from '../../../../../app.create.js';
 import { GlobalHttpExceptionFilter } from '../../../../../shared/presentation/http/global-http-exception.filter.js';
 import { InvalidEmailVerificationTokenError } from '../../../application/errors/invalid-email-verification-token.error.js';
 import { InvalidCredentialsError } from '../../../application/errors/invalid-credentials.error.js';
+import { InvalidRefreshTokenError } from '../../../application/errors/invalid-refresh-token.error.js';
 import { VerifyEmailCommand } from '../../../application/commands/verify-email/verify-email.command.js';
 import { LoginWithEmailCommand } from '../../../application/commands/login-with-email/login-with-email.command.js';
+import { RefreshSessionCommand } from '../../../application/commands/refresh-session/refresh-session.command.js';
 import { IdentityAccessController } from './identity-access.controller.js';
 
 const VALID_TOKEN = 'A'.repeat(43);
@@ -166,6 +168,9 @@ describe('IdentityAccessController: email verification', () => {
       accessToken: 'test-access-token',
       tokenType: 'Bearer',
       expiresIn: 900,
+      csrfToken: 'test-csrf-token',
+      refreshToken: 'test-refresh-token',
+      refreshTokenExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       user: {
         id: 'user-123',
         email: 'user@example.com',
@@ -185,12 +190,33 @@ describe('IdentityAccessController: email verification', () => {
       accessToken: 'test-access-token',
       tokenType: 'Bearer',
       expiresIn: 900,
+      csrfToken: 'test-csrf-token',
       user: {
         id: 'user-123',
         email: 'user@example.com',
         displayName: 'Test User',
       },
     });
+
+    expect(response.body).not.toHaveProperty('refreshToken');
+    expect(JSON.stringify(response.body)).not.toContain('test-refresh-token');
+
+    const setCookie = response.headers['set-cookie'];
+    expect(setCookie).toBeDefined();
+
+    const refreshCookie = Array.isArray(setCookie)
+      ? setCookie.find((cookie: string) =>
+          cookie.startsWith('refresh_token=test-refresh-token;'),
+        )
+      : undefined;
+
+    expect(refreshCookie).toBeDefined();
+    expect(refreshCookie).toContain('HttpOnly');
+    expect(refreshCookie).toContain('SameSite=Lax');
+    expect(refreshCookie).toContain('Path=/auth');
+
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers.pragma).toBe('no-cache');
 
     expect(commandBusMock.execute).toHaveBeenCalledOnce();
 
@@ -200,6 +226,83 @@ describe('IdentityAccessController: email verification', () => {
       email: 'user@example.com',
       password: 'ValidPassword123!',
     });
+  });
+
+  it('refreshes a session, rotates the cookie, and omits the refresh token from JSON', async () => {
+    commandBusMock.execute.mockResolvedValueOnce({
+      accessToken: 'new-access-token',
+      tokenType: 'Bearer',
+      expiresIn: 900,
+      csrfToken: 'new-csrf-token',
+      refreshToken: 'new-refresh-token',
+      refreshTokenExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+
+    const currentRefreshToken = 'A'.repeat(43);
+    const currentCsrfToken = 'B'.repeat(43);
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', `refresh_token=${currentRefreshToken}`)
+      .set('X-CSRF-Token', currentCsrfToken)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      accessToken: 'new-access-token',
+      tokenType: 'Bearer',
+      expiresIn: 900,
+      csrfToken: 'new-csrf-token',
+    });
+
+    expect(response.body).not.toHaveProperty('refreshToken');
+    expect(JSON.stringify(response.body)).not.toContain('new-refresh-token');
+
+    const setCookie = response.headers['set-cookie'];
+    expect(setCookie).toBeDefined();
+
+    const refreshCookie = Array.isArray(setCookie)
+      ? setCookie.find((cookie: string) =>
+          cookie.startsWith('refresh_token=new-refresh-token;'),
+        )
+      : undefined;
+
+    expect(refreshCookie).toBeDefined();
+    expect(refreshCookie).toContain('HttpOnly');
+    expect(refreshCookie).toContain('SameSite=Lax');
+    expect(refreshCookie).toContain('Path=/auth');
+    expect(response.headers['cache-control']).toBe('no-store');
+
+    expect(commandBusMock.execute).toHaveBeenCalledOnce();
+
+    const command = commandBusMock.execute.mock.calls[0]?.[0];
+    expect(command).toBeInstanceOf(RefreshSessionCommand);
+    expect(command).toMatchObject({
+      refreshToken: currentRefreshToken,
+      csrfToken: currentCsrfToken,
+    });
+  });
+
+  it('returns a safe 401 response when refresh-token validation fails', async () => {
+    commandBusMock.execute.mockRejectedValueOnce(
+      new InvalidRefreshTokenError(),
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', `refresh_token=${'A'.repeat(43)}`)
+      .set('X-CSRF-Token', 'B'.repeat(43))
+      .expect(401);
+
+    expect(response.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+
+    expect(response.body.message).toBeUndefined();
+    expect(JSON.stringify(response.body)).not.toContain(
+      'Refresh token is invalid or expired',
+    );
+    expect(response.headers['cache-control']).toBe('no-store');
   });
 
   it('rejects an invalid email during login DTO validation', async () => {
