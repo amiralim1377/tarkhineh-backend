@@ -26,7 +26,10 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
   async createSession(
     input: CreateAuthSessionInput,
   ): Promise<CreatedAuthSession> {
-    const { now, sessionExpiresAt, refreshTokenExpiresAt } = input;
+    const { session, refreshTokenExpiresAt } = input;
+
+    const now = session.createdAt;
+    const sessionExpiresAt = session.expiresAt;
 
     if (
       !Number.isFinite(now.getTime()) ||
@@ -40,11 +43,12 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
     }
 
     try {
-      const session = await this.prisma.authSession.create({
+      const sessionRecord = await this.prisma.authSession.create({
         data: {
-          userId: input.userId,
+          id: session.id,
+          userId: session.userId,
           createdAt: now,
-          lastUsedAt: now,
+          lastUsedAt: session.lastUsedAt,
           expiresAt: sessionExpiresAt,
           refreshTokens: {
             create: {
@@ -66,15 +70,15 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
         },
       });
 
-      const initialToken = session.refreshTokens[0];
+      const initialToken = sessionRecord.refreshTokens[0];
 
       if (!initialToken) {
         throw new Error('Initial refresh token was not created');
       }
 
       return {
-        sessionId: session.id,
-        sessionExpiresAt: session.expiresAt,
+        sessionId: sessionRecord.id,
+        sessionExpiresAt: sessionRecord.expiresAt,
         refreshTokenExpiresAt: initialToken.expiresAt,
       };
     } catch (error: unknown) {
