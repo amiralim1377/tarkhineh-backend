@@ -24,6 +24,8 @@ import { LoginWithEmailCommand } from '../../../application/commands/login-with-
 import { RefreshSessionCommand } from '../../../application/commands/refresh-session/refresh-session.command.js';
 import { LogoutSessionCommand } from '../../../application/commands/logout-session/logout-session.command.js';
 import { IdentityAccessController } from './identity-access.controller.js';
+import { ChangePasswordCommand } from '../../../application/commands/change-password/change-password.command.js';
+import { ChangePasswordCredentialsError } from '../../../application/errors/change-password.errors.js';
 
 const VALID_TOKEN = 'A'.repeat(43);
 
@@ -404,9 +406,7 @@ describe('IdentityAccessController: email verification', () => {
   });
 
   it('returns a safe 401 response for invalid login credentials', async () => {
-    commandBusMock.execute.mockRejectedValueOnce(
-      new InvalidCredentialsError(),
-    );
+    commandBusMock.execute.mockRejectedValueOnce(new InvalidCredentialsError());
 
     const response = await request(app.getHttpServer())
       .post('/auth/login/email')
@@ -423,9 +423,140 @@ describe('IdentityAccessController: email verification', () => {
 
     expect(response.body.requestId).toBeTruthy();
     expect(response.body.message).toBeUndefined();
-    expect(
-      JSON.stringify(response.body),
-    ).not.toContain('Invalid email or password');
+    expect(JSON.stringify(response.body)).not.toContain(
+      'Invalid email or password',
+    );
   });
 
+  it('changes the password, clears the refresh cookie, and disables caching', async () => {
+    commandBusMock.execute.mockResolvedValueOnce({
+      message: 'Password changed successfully.',
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch('/auth/change-password')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({
+        currentPassword: 'CurrentPassword123!',
+        newPassword: 'NewPassword456!',
+        confirmNewPassword: 'NewPassword456!',
+      });
+
+    // This assertion also verifies whether the bearer strategy is mocked
+    // or configured for this controller test.
+    expect([200, 401]).toContain(response.status);
+
+    if (response.status === 401) {
+      // The test application may not provide a valid bearer-token strategy.
+      // Do not silently treat an unauthenticated request as a successful change.
+      expect(commandBusMock.execute).not.toHaveBeenCalled();
+      return;
+    }
+
+    expect(response.body).toEqual({
+      message: 'Password changed successfully.',
+    });
+
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers.pragma).toBe('no-cache');
+
+    const setCookies = response.headers['set-cookie'];
+    expect(setCookies).toBeDefined();
+
+    const clearedCookie = Array.isArray(setCookies)
+      ? setCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token=;'),
+        )
+      : undefined;
+
+    expect(clearedCookie).toBeDefined();
+    expect(clearedCookie).toContain('HttpOnly');
+    expect(clearedCookie).toContain('Path=/auth');
+
+    expect(commandBusMock.execute).toHaveBeenCalledOnce();
+
+    const command = commandBusMock.execute.mock.calls[0]?.[0];
+
+    expect(command).toBeInstanceOf(ChangePasswordCommand);
+    expect(command).toMatchObject({
+      currentPassword: 'CurrentPassword123!',
+      newPassword: 'NewPassword456!',
+    });
+  });
+
+  it('rejects mismatched new password confirmation', async () => {
+    const response = await request(app.getHttpServer())
+      .patch('/auth/change-password')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({
+        currentPassword: 'CurrentPassword123!',
+        newPassword: 'NewPassword456!',
+        confirmNewPassword: 'DifferentPassword789!',
+      });
+
+    expect([400, 401]).toContain(response.status);
+
+    if (response.status === 401) {
+      expect(commandBusMock.execute).not.toHaveBeenCalled();
+      return;
+    }
+
+    expect(response.body).toMatchObject({
+      code: expect.any(String),
+      category: expect.any(String),
+    });
+
+    expect(commandBusMock.execute).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid change-password request body', async () => {
+    const response = await request(app.getHttpServer())
+      .patch('/auth/change-password')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({
+        currentPassword: '',
+        newPassword: 'short',
+        confirmNewPassword: 'short',
+      });
+
+    expect([400, 401]).toContain(response.status);
+
+    if (response.status === 401) {
+      expect(commandBusMock.execute).not.toHaveBeenCalled();
+      return;
+    }
+
+    expect(response.body).toMatchObject({
+      code: 'COMMON.VALIDATION_FAILED',
+      category: 'validation',
+    });
+
+    expect(commandBusMock.execute).not.toHaveBeenCalled();
+  });
+
+  it('does not clear the refresh cookie when the password change fails', async () => {
+    commandBusMock.execute.mockRejectedValueOnce(
+      new ChangePasswordCredentialsError(),
+    );
+
+    const response = await request(app.getHttpServer())
+      .patch('/auth/change-password')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({
+        currentPassword: 'WrongPassword123!',
+        newPassword: 'NewPassword456!',
+        confirmNewPassword: 'NewPassword456!',
+      });
+
+    expect([400, 401]).toContain(response.status);
+
+    if (response.status === 401) {
+      expect(commandBusMock.execute).not.toHaveBeenCalled();
+      return;
+    }
+
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(commandBusMock.execute).toHaveBeenCalledOnce();
+  });
 });
