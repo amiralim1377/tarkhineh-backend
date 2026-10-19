@@ -16,6 +16,7 @@ import {
   vi,
 } from 'vitest';
 
+import { appCreate } from '../../../src/app.create.js';
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
 import { EMAIL_VERIFICATION_SENDER } from '../../../src/contexts/identity-access/application/ports/email-verification-sender.port.js';
 
@@ -85,6 +86,7 @@ describe('Identity access authentication (E2E)', () => {
       .compile();
 
     app = moduleRef.createNestApplication();
+    appCreate(app);
     await app.init();
 
     prisma = app.get(PrismaService);
@@ -186,6 +188,136 @@ describe('Identity access authentication (E2E)', () => {
     expect(payload.sub).toBe(user.id);
     expect(payload.exp).toBeGreaterThan(payload.iat);
     expect(payload.exp - payload.iat).toBe(response.body.expiresIn);
+  });
+
+
+  it('rotates a refresh token and revokes the session when the old token is reused', async () => {
+    const email = `refresh-rotation-${randomUUID()}@example.com`;
+    const password = 'Refresh-E2E-Password-123!';
+
+    const user = await createUser(
+      email,
+      password,
+      'ACTIVE',
+      new Date(),
+    );
+
+    // Login creates the initial session and sets the HttpOnly refresh cookie.
+    const loginResponse = await request(app!.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(200);
+
+    expect(loginResponse.body).toMatchObject({
+      accessToken: expect.any(String),
+      tokenType: 'Bearer',
+      csrfToken: expect.any(String),
+    });
+    expect(loginResponse.body).not.toHaveProperty('refreshToken');
+
+    const loginSetCookies = loginResponse.headers['set-cookie'];
+    const initialSetCookie = Array.isArray(loginSetCookies)
+      ? loginSetCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token='),
+        )
+      : undefined;
+
+    if (!initialSetCookie) {
+      throw new Error('Login response did not set a refresh-token cookie');
+    }
+
+    expect(initialSetCookie).toContain('HttpOnly');
+    expect(initialSetCookie).toContain('SameSite=Lax');
+    expect(initialSetCookie).toContain('Path=/auth');
+
+    const initialCookiePair = initialSetCookie.split(';')[0];
+    if (!initialCookiePair) {
+      throw new Error('Could not extract the initial refresh-token cookie');
+    }
+
+    const initialCsrfToken = loginResponse.body.csrfToken as string;
+
+    // A valid refresh rotates both the refresh token and its CSRF token.
+    const refreshResponse = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', initialCookiePair)
+      .set('X-CSRF-Token', initialCsrfToken)
+      .expect(200);
+
+    expect(refreshResponse.body).toMatchObject({
+      accessToken: expect.any(String),
+      tokenType: 'Bearer',
+      expiresIn: Number(process.env.JWT_ACCESS_TTL_SECONDS ?? 900),
+      csrfToken: expect.any(String),
+    });
+    expect(refreshResponse.body).not.toHaveProperty('refreshToken');
+    expect(refreshResponse.body.csrfToken).not.toBe(initialCsrfToken);
+    expect(refreshResponse.headers['cache-control']).toBe('no-store');
+
+    const refreshedPayload = await jwtService.verifyAsync<{
+      sub: string;
+      iat: number;
+      exp: number;
+    }>(refreshResponse.body.accessToken);
+
+    expect(refreshedPayload.sub).toBe(user.id);
+    expect(refreshedPayload.exp).toBeGreaterThan(refreshedPayload.iat);
+
+    const refreshSetCookies = refreshResponse.headers['set-cookie'];
+    const rotatedSetCookie = Array.isArray(refreshSetCookies)
+      ? refreshSetCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token='),
+        )
+      : undefined;
+
+    if (!rotatedSetCookie) {
+      throw new Error('Refresh response did not rotate the refresh-token cookie');
+    }
+
+    expect(rotatedSetCookie).toContain('HttpOnly');
+    expect(rotatedSetCookie).toContain('SameSite=Lax');
+    expect(rotatedSetCookie).toContain('Path=/auth');
+
+    const rotatedCookiePair = rotatedSetCookie.split(';')[0];
+    if (!rotatedCookiePair) {
+      throw new Error('Could not extract the rotated refresh-token cookie');
+    }
+
+    expect(rotatedCookiePair).not.toBe(initialCookiePair);
+
+    const newCsrfToken = refreshResponse.body.csrfToken as string;
+
+    // Replaying the consumed token with its matching CSRF token must be rejected.
+    const replayResponse = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', initialCookiePair)
+      .set('X-CSRF-Token', initialCsrfToken)
+      .expect(401);
+
+    expect(replayResponse.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(replayResponse.body.message).toBeUndefined();
+
+    // Reuse detection revokes the whole session, including the rotated token.
+    await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', rotatedCookiePair)
+      .set('X-CSRF-Token', newCsrfToken)
+      .expect(401);
+
+    const revokedSession = await prisma.authSession.findFirst({
+      where: { userId: user.id },
+      select: {
+        revokedAt: true,
+        revocationReason: true,
+      },
+    });
+
+    expect(revokedSession).not.toBeNull();
+    expect(revokedSession?.revokedAt).toBeInstanceOf(Date);
+    expect(revokedSession?.revocationReason).toBe('REFRESH_TOKEN_REUSE');
   });
 
   it('rejects an incorrect password with a safe 401 response', async () => {
