@@ -37,9 +37,7 @@ function createTestDatabaseUrl(configuredUrl: string | undefined): string {
   }
 
   if (databaseName !== 'tarkhineh_db') {
-    throw new Error(
-      'Refusing to run E2E tests against an unexpected database',
-    );
+    throw new Error('Refusing to run E2E tests against an unexpected database');
   }
 
   url.pathname = '/tarkhineh_test';
@@ -153,12 +151,7 @@ describe('Identity access authentication (E2E)', () => {
     const password = 'Login-E2E-Password-123!';
     const emailVerifiedAt = new Date();
 
-    const user = await createUser(
-      email,
-      password,
-      'ACTIVE',
-      emailVerifiedAt,
-    );
+    const user = await createUser(email, password, 'ACTIVE', emailVerifiedAt);
 
     const response = await request(app!.getHttpServer())
       .post('/auth/login/email')
@@ -190,17 +183,11 @@ describe('Identity access authentication (E2E)', () => {
     expect(payload.exp - payload.iat).toBe(response.body.expiresIn);
   });
 
-
   it('rotates a refresh token and revokes the session when the old token is reused', async () => {
     const email = `refresh-rotation-${randomUUID()}@example.com`;
     const password = 'Refresh-E2E-Password-123!';
 
-    const user = await createUser(
-      email,
-      password,
-      'ACTIVE',
-      new Date(),
-    );
+    const user = await createUser(email, password, 'ACTIVE', new Date());
 
     // Login creates the initial session and sets the HttpOnly refresh cookie.
     const loginResponse = await request(app!.getHttpServer())
@@ -271,7 +258,9 @@ describe('Identity access authentication (E2E)', () => {
       : undefined;
 
     if (!rotatedSetCookie) {
-      throw new Error('Refresh response did not rotate the refresh-token cookie');
+      throw new Error(
+        'Refresh response did not rotate the refresh-token cookie',
+      );
     }
 
     expect(rotatedSetCookie).toContain('HttpOnly');
@@ -320,15 +309,91 @@ describe('Identity access authentication (E2E)', () => {
     expect(revokedSession?.revocationReason).toBe('REFRESH_TOKEN_REUSE');
   });
 
+  it('logs out the current session and rejects subsequent refresh attempts', async () => {
+    const email = `logout-e2e-${randomUUID()}@example.com`;
+    const password = 'Logout-E2E-Password-123!';
+
+    const user = await createUser(email, password, 'ACTIVE', new Date());
+
+    const loginResponse = await request(app!.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(200);
+
+    expect(loginResponse.body).not.toHaveProperty('refreshToken');
+
+    const loginSetCookies = loginResponse.headers['set-cookie'];
+    const initialSetCookie = Array.isArray(loginSetCookies)
+      ? loginSetCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token='),
+        )
+      : undefined;
+
+    if (!initialSetCookie) {
+      throw new Error('Login did not set a refresh-token cookie');
+    }
+
+    const refreshCookiePair = initialSetCookie.split(';')[0];
+    if (!refreshCookiePair) {
+      throw new Error('Could not extract the refresh-token cookie');
+    }
+
+    const csrfToken = loginResponse.body.csrfToken as string;
+
+    const logoutResponse = await request(app!.getHttpServer())
+      .post('/auth/logout')
+      .set('Cookie', refreshCookiePair)
+      .set('X-CSRF-Token', csrfToken)
+      .expect(200);
+
+    expect(logoutResponse.body).toEqual({
+      message: 'Logged out successfully.',
+    });
+    expect(logoutResponse.body).not.toHaveProperty('refreshToken');
+    expect(logoutResponse.headers['cache-control']).toBe('no-store');
+
+    const logoutSetCookies = logoutResponse.headers['set-cookie'];
+    const clearedCookie = Array.isArray(logoutSetCookies)
+      ? logoutSetCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token=;'),
+        )
+      : undefined;
+
+    expect(clearedCookie).toBeDefined();
+    expect(clearedCookie).toContain('HttpOnly');
+    expect(clearedCookie).toContain('SameSite=Lax');
+    expect(clearedCookie).toContain('Path=/auth');
+
+    const revokedSession = await prisma.authSession.findFirst({
+      where: { userId: user.id },
+      select: {
+        revokedAt: true,
+        revocationReason: true,
+      },
+    });
+
+    expect(revokedSession).not.toBeNull();
+    expect(revokedSession?.revokedAt).toBeInstanceOf(Date);
+    expect(revokedSession?.revocationReason).toBe('LOGOUT');
+
+    // The old refresh token must not issue another access token after logout.
+    const refreshAfterLogout = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', refreshCookiePair)
+      .set('X-CSRF-Token', csrfToken)
+      .expect(401);
+
+    expect(refreshAfterLogout.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(refreshAfterLogout.body.message).toBeUndefined();
+  });
+
   it('rejects an incorrect password with a safe 401 response', async () => {
     const email = `login-wrong-password-${randomUUID()}@example.com`;
 
-    await createUser(
-      email,
-      'Correct-E2E-Password-123!',
-      'ACTIVE',
-      new Date(),
-    );
+    await createUser(email, 'Correct-E2E-Password-123!', 'ACTIVE', new Date());
 
     const response = await request(app!.getHttpServer())
       .post('/auth/login/email')
@@ -387,12 +452,7 @@ describe('Identity access authentication (E2E)', () => {
     const email = `login-suspended-${randomUUID()}@example.com`;
     const password = 'Suspended-E2E-Password-123!';
 
-    await createUser(
-      email,
-      password,
-      'SUSPENDED',
-      new Date(),
-    );
+    await createUser(email, password, 'SUSPENDED', new Date());
 
     const response = await request(app!.getHttpServer())
       .post('/auth/login/email')
@@ -407,9 +467,7 @@ describe('Identity access authentication (E2E)', () => {
     expect(response.body.accessToken).toBeUndefined();
   });
   it('rejects GET /auth/me when the bearer token is missing', async () => {
-    await request(app!.getHttpServer())
-      .get('/auth/me')
-      .expect(401);
+    await request(app!.getHttpServer()).get('/auth/me').expect(401);
   });
 
   it('rejects GET /auth/me when the bearer token is invalid', async () => {
@@ -423,12 +481,7 @@ describe('Identity access authentication (E2E)', () => {
     const email = `auth-me-${randomUUID()}@example.com`;
     const password = 'Auth-Me-E2E-Password-123!';
 
-    const user = await createUser(
-      email,
-      password,
-      'ACTIVE',
-      new Date(),
-    );
+    const user = await createUser(email, password, 'ACTIVE', new Date());
 
     const loginResponse = await request(app!.getHttpServer())
       .post('/auth/login/email')
