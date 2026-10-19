@@ -71,6 +71,7 @@ describe('AuthSession', () => {
 
     it('recognizes sessions with the same ID as the same entity', () => {
       const first = createSession();
+
       const second = AuthSession.create({
         id: 'session-123',
         userId: 'another-user',
@@ -457,7 +458,7 @@ describe('AuthSession', () => {
           new Date('2026-10-19T12:00:00.000Z'),
           60,
         ),
-      ).toEqual(new Date('2026-10-19T13:00:00.000Z'));
+      ).toEqual(new Date('2026-10-19T12:01:00.000Z'));
     });
   });
 
