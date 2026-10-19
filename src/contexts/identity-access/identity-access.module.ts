@@ -18,6 +18,7 @@ import { EMAIL_VERIFICATION_TOKEN_FACTORY } from './application/ports/email-veri
 import { EMAIL_VERIFICATION_SENDER } from './application/ports/email-verification-sender.port.js';
 import { EMAIL_TOKEN_ENCRYPTOR } from './application/ports/email-token-encryptor.port.js';
 import { ACCESS_TOKEN_ISSUER } from './application/ports/access-token-issuer.port.js';
+import { ACCESS_TOKEN_VALIDATOR } from './application/ports/access-token-validator.port.js';
 
 import { RegisterWithEmailHandler } from './application/commands/register-with-email/register-with-email.handler.js';
 import { VerifyEmailHandler } from './application/commands/verify-email/verify-email.handler.js';
@@ -33,6 +34,8 @@ import { SecureEmailVerificationTokenFactory } from './infrastructure/security/s
 import { SmtpEmailVerificationSender } from './infrastructure/security/smtp-email-verification.sender.js';
 import { AesGcmEmailTokenEncryptor } from './infrastructure/security/aes-gcm-email-token-encryptor.js';
 import { JwtAccessTokenIssuer } from './infrastructure/security/jwt-access-token-issuer.js';
+import { JwtAccessTokenValidator } from './infrastructure/security/jwt-access-token-validator.js';
+import { BearerJwtStrategy } from './presentation/http/auth/strategies/bearer-jwt.strategy.js';
 
 import { EmailVerificationProcessor } from './infrastructure/security/email-verification.processor.js';
 import { EmailOutboxDispatcher } from './infrastructure/queue/email-outbox-dispatcher.js';
@@ -68,6 +71,8 @@ import { IdentityAccessController } from './presentation/http/identity-access.co
     SmtpEmailVerificationSender,
     AesGcmEmailTokenEncryptor,
     JwtAccessTokenIssuer,
+    JwtAccessTokenValidator,
+    BearerJwtStrategy,
 
     RegisterWithEmailHandler,
     VerifyEmailHandler,
@@ -115,6 +120,10 @@ import { IdentityAccessController } from './presentation/http/identity-access.co
     {
       provide: ACCESS_TOKEN_ISSUER,
       useExisting: JwtAccessTokenIssuer,
+    },
+    {
+      provide: ACCESS_TOKEN_VALIDATOR,
+      useExisting: JwtAccessTokenValidator,
     },
   ],
 })
