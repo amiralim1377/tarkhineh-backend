@@ -22,6 +22,7 @@ import { InvalidRefreshTokenError } from '../../../application/errors/invalid-re
 import { VerifyEmailCommand } from '../../../application/commands/verify-email/verify-email.command.js';
 import { LoginWithEmailCommand } from '../../../application/commands/login-with-email/login-with-email.command.js';
 import { RefreshSessionCommand } from '../../../application/commands/refresh-session/refresh-session.command.js';
+import { LogoutSessionCommand } from '../../../application/commands/logout-session/logout-session.command.js';
 import { IdentityAccessController } from './identity-access.controller.js';
 
 const VALID_TOKEN = 'A'.repeat(43);
@@ -303,6 +304,69 @@ describe('IdentityAccessController: email verification', () => {
       'Refresh token is invalid or expired',
     );
     expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('revokes the session and clears the refresh-token cookie on logout', async () => {
+    commandBusMock.execute.mockResolvedValueOnce({
+      message: 'Logged out successfully.',
+    });
+
+    const refreshToken = 'A'.repeat(43);
+    const csrfToken = 'B'.repeat(43);
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/logout')
+      .set('Cookie', `refresh_token=${refreshToken}`)
+      .set('X-CSRF-Token', csrfToken)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      message: 'Logged out successfully.',
+    });
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers.pragma).toBe('no-cache');
+
+    const setCookies = response.headers['set-cookie'];
+    const clearedCookie = Array.isArray(setCookies)
+      ? setCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token=;'),
+        )
+      : undefined;
+
+    expect(clearedCookie).toBeDefined();
+    expect(clearedCookie).toContain('HttpOnly');
+    expect(clearedCookie).toContain('SameSite=Lax');
+    expect(clearedCookie).toContain('Path=/auth');
+
+    expect(commandBusMock.execute).toHaveBeenCalledOnce();
+    const command = commandBusMock.execute.mock.calls[0]?.[0];
+    expect(command).toBeInstanceOf(LogoutSessionCommand);
+    expect(command).toMatchObject({
+      refreshToken,
+      csrfToken,
+    });
+  });
+
+  it('returns a safe 401 and does not claim logout succeeded for an invalid token', async () => {
+    commandBusMock.execute.mockRejectedValueOnce(
+      new InvalidRefreshTokenError(),
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/logout')
+      .set('Cookie', `refresh_token=${'A'.repeat(43)}`)
+      .set('X-CSRF-Token', 'B'.repeat(43))
+      .expect(401);
+
+    expect(response.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(response.body.message).toBeUndefined();
+    expect(response.headers['cache-control']).toBe('no-store');
+
+    // A failed CSRF/token validation must not be treated as a successful logout.
+    expect(response.headers['set-cookie']).toBeUndefined();
   });
 
   it('rejects an invalid email during login DTO validation', async () => {
