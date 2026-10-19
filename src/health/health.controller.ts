@@ -1,6 +1,8 @@
 import { Controller, Get } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { Auth } from '../contexts/identity-access/presentation/http/auth/auth.decorator.js';
+import { AuthType } from '../contexts/identity-access/presentation/http/auth/auth-type.enum.js';
 import { DependencyUnavailableError } from '../shared/application/errors/dependency-unavailable.error.js';
 import { normalizePrismaError } from '../prisma/errors/prisma-error-translator.js';
 
@@ -10,6 +12,7 @@ import { DatabaseReadinessFailedError } from './errors/database-readiness-failed
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
+  @Auth(AuthType.None)
   @Get('live')
   liveness() {
     return {
@@ -17,11 +20,13 @@ export class HealthController {
     };
   }
 
+  @Auth(AuthType.None)
   @Get('ready')
   readiness() {
     return this.checkDatabase();
   }
 
+  @Auth(AuthType.None)
   @Get()
   check() {
     return this.checkDatabase();
