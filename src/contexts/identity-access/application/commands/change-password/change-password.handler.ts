@@ -1,6 +1,5 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
-
 import {
   USER_AUTHENTICATION_REPOSITORY,
   type UserAuthenticationRepository,
@@ -21,7 +20,10 @@ import {
   CLOCK,
   type Clock,
 } from '../../../../../shared/application/ports/clock.port.js';
-import { ChangePasswordCommand } from './change-password.command.js';
+import {
+  ChangePasswordCommand,
+  ChangePasswordResult,
+} from './change-password.command.js';
 import {
   ChangePasswordCredentialsError,
   PasswordUnchangedError,
@@ -42,7 +44,7 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
     private readonly clock: Clock,
   ) {}
 
-  async execute(command: ChangePasswordCommand): Promise<{ message: string }> {
+  async execute(command: ChangePasswordCommand): Promise<ChangePasswordResult> {
     const user = await this.users.findById(command.userId);
 
     if (!user || !user.canLoginWithPassword() || !user.passwordHash) {
