@@ -56,7 +56,7 @@ function restoreEnvironmentVariable(
   }
 }
 
-describe('POST /auth/login/email (E2E)', () => {
+describe('Identity access authentication (E2E)', () => {
   let app: INestApplication | undefined;
   let prisma: PrismaService;
   let jwtService: JwtService;
@@ -273,5 +273,43 @@ describe('POST /auth/login/email (E2E)', () => {
     });
 
     expect(response.body.accessToken).toBeUndefined();
+  });
+  it('rejects GET /auth/me when the bearer token is missing', async () => {
+    await request(app!.getHttpServer())
+      .get('/auth/me')
+      .expect(401);
+  });
+
+  it('rejects GET /auth/me when the bearer token is invalid', async () => {
+    await request(app!.getHttpServer())
+      .get('/auth/me')
+      .set('Authorization', 'Bearer not-a-valid-jwt')
+      .expect(401);
+  });
+
+  it('returns the authenticated user ID for a valid bearer token', async () => {
+    const email = `auth-me-${randomUUID()}@example.com`;
+    const password = 'Auth-Me-E2E-Password-123!';
+
+    const user = await createUser(
+      email,
+      password,
+      'ACTIVE',
+      new Date(),
+    );
+
+    const loginResponse = await request(app!.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(200);
+
+    const response = await request(app!.getHttpServer())
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${loginResponse.body.accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      userId: user.id,
+    });
   });
 });
