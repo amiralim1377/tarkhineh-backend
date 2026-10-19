@@ -51,6 +51,7 @@ function createCurrentToken(overrides: Record<string, unknown> = {}) {
     expiresAt: TOKEN_EXPIRY,
     usedAt: null,
     revokedAt: null,
+    csrfTokenHash: 'current-csrf-hash',
     session: {
       id: SESSION_ID,
       userId: USER_ID,
@@ -70,7 +71,9 @@ function createRotationInput(
 ): RotateRefreshTokenInput {
   return {
     currentTokenHash: 'current-hash',
+    currentCsrfTokenHash: 'current-csrf-hash',
     replacementTokenHash: 'replacement-hash',
+    replacementCsrfTokenHash: 'replacement-csrf-hash',
     now: NOW,
     replacementExpiresAt: TOKEN_EXPIRY,
     ...overrides,
@@ -93,6 +96,7 @@ describe('PrismaAuthSessionRepository', () => {
       const input: CreateAuthSessionInput = {
         userId: USER_ID,
         initialRefreshTokenHash: 'initial-token-hash',
+        csrfTokenHash: 'csrf-hash',
         now: NOW,
         sessionExpiresAt: SESSION_EXPIRY,
         refreshTokenExpiresAt: TOKEN_EXPIRY,
@@ -117,6 +121,7 @@ describe('PrismaAuthSessionRepository', () => {
           refreshTokens: {
             create: {
               tokenHash: 'initial-token-hash',
+              csrfTokenHash: 'csrf-hash',
               createdAt: NOW,
               expiresAt: TOKEN_EXPIRY,
             },
@@ -148,6 +153,7 @@ describe('PrismaAuthSessionRepository', () => {
       await repository.createSession({
         userId: USER_ID,
         initialRefreshTokenHash: 'initial-token-hash',
+        csrfTokenHash: 'csrf-hash',
         now: NOW,
         sessionExpiresAt: shortSessionExpiry,
         refreshTokenExpiresAt: TOKEN_EXPIRY,
@@ -176,6 +182,7 @@ describe('PrismaAuthSessionRepository', () => {
         repository.createSession({
           userId: USER_ID,
           initialRefreshTokenHash: 'initial-token-hash',
+          csrfTokenHash: 'csrf-hash',
           now: NOW,
           sessionExpiresAt: NOW,
           refreshTokenExpiresAt: TOKEN_EXPIRY,
@@ -235,6 +242,7 @@ describe('PrismaAuthSessionRepository', () => {
         data: {
           sessionId: SESSION_ID,
           tokenHash: 'replacement-hash',
+          csrfTokenHash: 'replacement-csrf-hash',
           createdAt: NOW,
           expiresAt: replacementExpiry,
         },
@@ -264,6 +272,25 @@ describe('PrismaAuthSessionRepository', () => {
       expect(result).toEqual({ status: 'INVALID' });
       expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
       expect(tx.refreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a mismatched CSRF token without modifying session state', async () => {
+      const tx = createTransactionMock();
+      const prisma = createPrismaMock(tx);
+
+      tx.refreshToken.findUnique.mockResolvedValue(createCurrentToken());
+
+      const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
+      const result = await repository.rotateRefreshToken(
+        createRotationInput({
+          currentCsrfTokenHash: 'wrong-csrf-hash',
+        }),
+      );
+
+      expect(result).toEqual({ status: 'INVALID' });
+      expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(tx.refreshToken.create).not.toHaveBeenCalled();
+      expect(tx.authSession.updateMany).not.toHaveBeenCalled();
     });
 
     it('rejects an expired refresh token', async () => {
@@ -336,6 +363,7 @@ describe('PrismaAuthSessionRepository', () => {
         .mockResolvedValueOnce(createCurrentToken())
         .mockResolvedValueOnce({
           usedAt: new Date(NOW.getTime() + 1),
+          csrfTokenHash: 'current-csrf-hash',
           session: {
             expiresAt: SESSION_EXPIRY,
             revokedAt: null,
@@ -374,11 +402,13 @@ describe('PrismaAuthSessionRepository', () => {
 
       tx.refreshToken.findUnique.mockResolvedValue({
         sessionId: SESSION_ID,
+        csrfTokenHash: 'current-csrf-hash',
       });
 
       const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
       const result = await repository.revokeSessionByTokenHash(
         'logout-token-hash',
+        'current-csrf-hash',
         NOW,
       );
 
@@ -408,6 +438,7 @@ describe('PrismaAuthSessionRepository', () => {
       const repository = new PrismaAuthSessionRepository(prisma as unknown as PrismaService);
       const result = await repository.revokeSessionByTokenHash(
         'unknown-token-hash',
+        'current-csrf-hash',
         NOW,
       );
 
