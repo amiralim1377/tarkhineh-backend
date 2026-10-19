@@ -26,20 +26,15 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
   async createSession(
     input: CreateAuthSessionInput,
   ): Promise<CreatedAuthSession> {
-    const { now, sessionExpiresAt } = input;
-    const refreshTokenExpiresAt = new Date(
-      Math.min(
-        input.refreshTokenExpiresAt.getTime(),
-        sessionExpiresAt.getTime(),
-      ),
-    );
+    const { now, sessionExpiresAt, refreshTokenExpiresAt } = input;
 
     if (
       !Number.isFinite(now.getTime()) ||
       !Number.isFinite(sessionExpiresAt.getTime()) ||
       !Number.isFinite(refreshTokenExpiresAt.getTime()) ||
       sessionExpiresAt <= now ||
-      refreshTokenExpiresAt <= now
+      refreshTokenExpiresAt <= now ||
+      refreshTokenExpiresAt > sessionExpiresAt
     ) {
       throw new RangeError('Authentication session expiry dates are invalid');
     }
@@ -133,10 +128,7 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
 
         const session = token.session;
 
-        if (
-          session.revokedAt !== null ||
-          session.expiresAt <= now
-        ) {
+        if (session.revokedAt !== null || session.expiresAt <= now) {
           return { status: 'INVALID' };
         }
 
@@ -185,10 +177,7 @@ export class PrismaAuthSessionRepository implements AuthSessionRepository {
           };
         }
 
-        if (
-          token.revokedAt !== null ||
-          token.expiresAt <= now
-        ) {
+        if (token.revokedAt !== null || token.expiresAt <= now) {
           return { status: 'INVALID' };
         }
 
