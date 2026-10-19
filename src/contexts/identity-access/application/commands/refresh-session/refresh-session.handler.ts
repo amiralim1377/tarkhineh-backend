@@ -17,6 +17,10 @@ import {
   REFRESH_TOKEN_FACTORY,
   type RefreshTokenFactory,
 } from '../../ports/refresh-token-factory.port.js';
+import {
+  CLOCK,
+  type Clock,
+} from '../../../../../shared/application/ports/clock.port.js';
 import { InvalidRefreshTokenError } from '../../errors/invalid-refresh-token.error.js';
 import {
   RefreshSessionCommand,
@@ -26,9 +30,7 @@ import {
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 @CommandHandler(RefreshSessionCommand)
-export class RefreshSessionHandler
-  implements ICommandHandler<RefreshSessionCommand>
-{
+export class RefreshSessionHandler implements ICommandHandler<RefreshSessionCommand> {
   constructor(
     @Inject(AUTH_SESSION_REPOSITORY)
     private readonly sessions: AuthSessionRepository,
@@ -38,11 +40,11 @@ export class RefreshSessionHandler
     private readonly sessionPolicy: AuthSessionPolicy,
     @Inject(ACCESS_TOKEN_ISSUER)
     private readonly tokenIssuer: AccessTokenIssuer,
+    @Inject(CLOCK)
+    private readonly clock: Clock,
   ) {}
 
-  async execute(
-    command: RefreshSessionCommand,
-  ): Promise<RefreshSessionResult> {
+  async execute(command: RefreshSessionCommand): Promise<RefreshSessionResult> {
     if (
       !TOKEN_PATTERN.test(command.refreshToken) ||
       !TOKEN_PATTERN.test(command.csrfToken)
@@ -50,7 +52,7 @@ export class RefreshSessionHandler
       throw new InvalidRefreshTokenError();
     }
 
-    const now = new Date();
+    const now = this.clock.now();
     const currentTokenHash = this.refreshTokenFactory.hash(
       command.refreshToken,
     );
@@ -67,9 +69,8 @@ export class RefreshSessionHandler
       replacementTokenHash: replacementRefreshToken.tokenHash,
       replacementCsrfTokenHash: replacementCsrfToken.tokenHash,
       now,
-      replacementExpiresAt: new Date(
-        now.getTime() + this.sessionPolicy.refreshTokenTtlSeconds * 1000,
-      ),
+      replacementRefreshTokenTtlSeconds:
+        this.sessionPolicy.refreshTokenTtlSeconds,
     });
 
     if (rotation.status !== 'ROTATED') {
