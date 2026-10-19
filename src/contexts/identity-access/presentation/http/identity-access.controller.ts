@@ -9,6 +9,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { CommandBus } from '@nestjs/cqrs';
+import { Auth } from './auth/auth.decorator.js';
+import { AuthType } from './auth/auth-type.enum.js';
 import {
   ApiAcceptedResponse,
   ApiBadRequestResponse,
@@ -41,6 +43,7 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 export class IdentityAccessController {
   constructor(private readonly commandBus: CommandBus) {}
 
+  @Auth(AuthType.None)
   @Post('login/email')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -76,6 +79,7 @@ export class IdentityAccessController {
     return LoginWithEmailResponseDto.fromResult(result);
   }
 
+  @Auth(AuthType.None)
   @Post('register/email')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
@@ -102,6 +106,7 @@ export class IdentityAccessController {
     );
   }
 
+  @Auth(AuthType.None)
   @Get('verify-email')
   @Header('Content-Type', 'text/html; charset=utf-8')
   @ApiOperation({
@@ -168,6 +173,7 @@ export class IdentityAccessController {
 </html>`;
   }
 
+  @Auth(AuthType.None)
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
