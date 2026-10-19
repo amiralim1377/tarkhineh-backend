@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import type { RefreshSessionResult } from '../../../../application/commands/refresh-session/refresh-session.command.js';
+import type { RefreshSessionResult } from '../../../application/commands/refresh-session/refresh-session.command.js';
 
 export class RefreshSessionResponseDto {
   @ApiProperty({
