@@ -1,9 +1,12 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
+import cookieParser from 'cookie-parser';
 import { createValidationException } from './shared/presentation/http/validation-exception.factory.js';
 
 export function appCreate(app: INestApplication): void {
   app.useLogger(app.get(Logger));
+
+  app.use(cookieParser());
 
   app.useGlobalPipes(
     new ValidationPipe({
