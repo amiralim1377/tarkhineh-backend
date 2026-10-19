@@ -309,9 +309,93 @@ describe('Identity access authentication (E2E)', () => {
     expect(revokedSession?.revocationReason).toBe('REFRESH_TOKEN_REUSE');
   });
 
-  it('logs out the current session and rejects subsequent refresh attempts', async () => {
-    const email = `logout-e2e-${randomUUID()}@example.com`;
-    const password = 'Logout-E2E-Password-123!';
+  it('rejects missing or mismatched CSRF tokens without consuming a valid refresh token', async () => {
+    const email = `refresh-csrf-${randomUUID()}@example.com`;
+    const password = 'Refresh-CSRF-E2E-Password-123!';
+
+    const user = await createUser(email, password, 'ACTIVE', new Date());
+
+    const loginResponse = await request(app!.getHttpServer())
+      .post('/auth/login/email')
+      .send({ email, password })
+      .expect(200);
+
+    const csrfToken = loginResponse.body.csrfToken as string;
+    const loginCookies = loginResponse.headers['set-cookie'];
+
+    const refreshCookie = Array.isArray(loginCookies)
+      ? loginCookies.find((cookie: string) =>
+          cookie.startsWith('refresh_token='),
+        )
+      : undefined;
+
+    if (!refreshCookie) {
+      throw new Error('Login did not set a refresh-token cookie');
+    }
+
+    const cookiePair = refreshCookie.split(';')[0];
+    if (!cookiePair) {
+      throw new Error('Could not extract the refresh-token cookie');
+    }
+
+    // A missing CSRF header must be rejected.
+    const missingCsrfResponse = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', cookiePair)
+      .expect(401);
+
+    expect(missingCsrfResponse.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(missingCsrfResponse.body.message).toBeUndefined();
+
+    // A well-formed but mismatched CSRF token must also be rejected.
+    const mismatchedCsrfResponse = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', cookiePair)
+      .set('X-CSRF-Token', 'A'.repeat(43))
+      .expect(401);
+
+    expect(mismatchedCsrfResponse.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(mismatchedCsrfResponse.body.message).toBeUndefined();
+
+    // Failed CSRF validation must not revoke the session.
+    const sessionBeforeValidRefresh = await prisma.authSession.findFirst({
+      where: { userId: user.id },
+      select: {
+        revokedAt: true,
+        revocationReason: true,
+      },
+    });
+
+    expect(sessionBeforeValidRefresh).not.toBeNull();
+    expect(sessionBeforeValidRefresh?.revokedAt).toBeNull();
+    expect(sessionBeforeValidRefresh?.revocationReason).toBeNull();
+
+    // The original refresh token must still work with its matching CSRF token.
+    const validRefreshResponse = await request(app!.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', cookiePair)
+      .set('X-CSRF-Token', csrfToken)
+      .expect(200);
+
+    expect(validRefreshResponse.body).toMatchObject({
+      accessToken: expect.any(String),
+      tokenType: 'Bearer',
+      csrfToken: expect.any(String),
+    });
+    expect(validRefreshResponse.body.csrfToken).not.toBe(csrfToken);
+    expect(validRefreshResponse.body).not.toHaveProperty('refreshToken');
+    expect(validRefreshResponse.headers['cache-control']).toBe('no-store');
+  });
+
+  it('rejects missing or mismatched CSRF tokens without logging out a valid session', async () => {
+    const email = `logout-csrf-${randomUUID()}@example.com`;
+    const password = 'Logout-CSRF-E2E-Password-123!';
 
     const user = await createUser(email, password, 'ACTIVE', new Date());
 
@@ -333,16 +417,57 @@ describe('Identity access authentication (E2E)', () => {
       throw new Error('Login did not set a refresh-token cookie');
     }
 
-    const refreshCookiePair = initialSetCookie.split(';')[0];
-    if (!refreshCookiePair) {
+    const cookiePair = initialSetCookie.split(';')[0];
+    if (!cookiePair) {
       throw new Error('Could not extract the refresh-token cookie');
     }
 
     const csrfToken = loginResponse.body.csrfToken as string;
 
+    // A missing CSRF header must be rejected and must not clear the cookie.
+    const missingCsrfResponse = await request(app!.getHttpServer())
+      .post('/auth/logout')
+      .set('Cookie', cookiePair)
+      .expect(401);
+
+    expect(missingCsrfResponse.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(missingCsrfResponse.body.message).toBeUndefined();
+    expect(missingCsrfResponse.headers['set-cookie']).toBeUndefined();
+
+    // A well-formed but mismatched CSRF token must also be rejected.
+    const mismatchedCsrfResponse = await request(app!.getHttpServer())
+      .post('/auth/logout')
+      .set('Cookie', cookiePair)
+      .set('X-CSRF-Token', 'A'.repeat(43))
+      .expect(401);
+
+    expect(mismatchedCsrfResponse.body).toMatchObject({
+      code: 'IDENTITY.INVALID_REFRESH_TOKEN',
+      category: 'authentication',
+    });
+    expect(mismatchedCsrfResponse.body.message).toBeUndefined();
+    expect(mismatchedCsrfResponse.headers['set-cookie']).toBeUndefined();
+
+    // Neither failed request should revoke the active session.
+    const sessionBeforeValidLogout = await prisma.authSession.findFirst({
+      where: { userId: user.id },
+      select: {
+        revokedAt: true,
+        revocationReason: true,
+      },
+    });
+
+    expect(sessionBeforeValidLogout).not.toBeNull();
+    expect(sessionBeforeValidLogout?.revokedAt).toBeNull();
+    expect(sessionBeforeValidLogout?.revocationReason).toBeNull();
+
+    // The matching CSRF token must still permit logout.
     const logoutResponse = await request(app!.getHttpServer())
       .post('/auth/logout')
-      .set('Cookie', refreshCookiePair)
+      .set('Cookie', cookiePair)
       .set('X-CSRF-Token', csrfToken)
       .expect(200);
 
@@ -379,7 +504,7 @@ describe('Identity access authentication (E2E)', () => {
     // The old refresh token must not issue another access token after logout.
     const refreshAfterLogout = await request(app!.getHttpServer())
       .post('/auth/refresh')
-      .set('Cookie', refreshCookiePair)
+      .set('Cookie', cookiePair)
       .set('X-CSRF-Token', csrfToken)
       .expect(401);
 
@@ -466,6 +591,7 @@ describe('Identity access authentication (E2E)', () => {
 
     expect(response.body.accessToken).toBeUndefined();
   });
+
   it('rejects GET /auth/me when the bearer token is missing', async () => {
     await request(app!.getHttpServer()).get('/auth/me').expect(401);
   });
