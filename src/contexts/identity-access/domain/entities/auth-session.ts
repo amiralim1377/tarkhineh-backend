@@ -19,23 +19,43 @@ export interface CreateAuthSession {
   id?: string;
   userId: string;
   createdAt: Date;
-  expiresAt: Date;
+  sessionTtlSeconds: number;
 }
-
 export class AuthSession extends Entity<UniqueId> {
   private constructor(private readonly props: AuthSessionProps) {
     super(new UniqueId(props.id));
   }
 
   static create(input: CreateAuthSession): AuthSession {
+    if (!Number.isFinite(input.createdAt.getTime())) {
+      throw new InvalidAuthSessionDataError(
+        'IDENTITY.AUTH_SESSION_CREATED_AT_INVALID',
+        'Authentication session creation date must be valid.',
+      );
+    }
+
+    if (
+      !Number.isSafeInteger(input.sessionTtlSeconds) ||
+      input.sessionTtlSeconds <= 0
+    ) {
+      throw new InvalidAuthSessionDataError(
+        'IDENTITY.AUTH_SESSION_TTL_INVALID',
+        'Authentication session lifetime must be a positive integer.',
+      );
+    }
+
     const id = new UniqueId(input.id).getValue();
+
+    const expiresAt = new Date(
+      input.createdAt.getTime() + input.sessionTtlSeconds * 1000,
+    );
 
     const props: AuthSessionProps = {
       id,
       userId: input.userId,
       createdAt: new Date(input.createdAt.getTime()),
       lastUsedAt: new Date(input.createdAt.getTime()),
-      expiresAt: new Date(input.expiresAt.getTime()),
+      expiresAt,
       revokedAt: null,
       revocationReason: null,
     };
@@ -44,7 +64,6 @@ export class AuthSession extends Entity<UniqueId> {
 
     return new AuthSession(props);
   }
-
   static reconstitute(props: AuthSessionProps): AuthSession {
     this.validateProps(props);
 
@@ -183,6 +202,39 @@ export class AuthSession extends Entity<UniqueId> {
       now >= this.props.createdAt &&
       now < this.props.expiresAt &&
       this.props.revokedAt === null
+    );
+  }
+
+  calculateRefreshTokenExpiresAt(issuedAt: Date, ttlSeconds: number): Date {
+    if (
+      !Number.isFinite(issuedAt.getTime()) ||
+      !Number.isSafeInteger(ttlSeconds) ||
+      ttlSeconds <= 0
+    ) {
+      throw new InvalidAuthSessionDataError(
+        'IDENTITY.REFRESH_TOKEN_TTL_INVALID',
+        'Refresh token lifetime must be valid.',
+      );
+    }
+
+    if (!this.isActiveAt(issuedAt)) {
+      throw new InvalidAuthSessionDataError(
+        'IDENTITY.AUTH_SESSION_NOT_ACTIVE',
+        'Cannot issue a refresh token for an inactive session.',
+      );
+    }
+
+    const requestedExpiresAt = new Date(issuedAt.getTime() + ttlSeconds * 1000);
+
+    if (!Number.isFinite(requestedExpiresAt.getTime())) {
+      throw new InvalidAuthSessionDataError(
+        'IDENTITY.REFRESH_TOKEN_EXPIRY_INVALID',
+        'Refresh token expiry date must be valid.',
+      );
+    }
+
+    return new Date(
+      Math.min(requestedExpiresAt.getTime(), this.props.expiresAt.getTime()),
     );
   }
 
