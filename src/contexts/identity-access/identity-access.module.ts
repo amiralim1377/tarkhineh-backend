@@ -52,6 +52,7 @@ import {
 } from './presentation/http/auth/contracts/authentication-strategy.js';
 import { CLOCK } from '../../shared/application/ports/clock.port.js';
 import { SystemClock } from '../../shared/infrastructure/time/system-clock.js';
+import { ChangePasswordHandler } from './application/commands/change-password/change-password.handler.js';
 
 @Module({
   imports: [
@@ -93,6 +94,7 @@ import { SystemClock } from '../../shared/infrastructure/time/system-clock.js';
     LogoutSessionHandler,
     EmailVerificationProcessor,
     EmailOutboxDispatcher,
+    ChangePasswordHandler,
     {
       provide: EMAIL_REGISTRATION_REPOSITORY,
       useExisting: PrismaEmailRegistrationRepository,
