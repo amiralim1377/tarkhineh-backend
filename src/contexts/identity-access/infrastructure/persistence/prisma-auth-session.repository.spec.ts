@@ -22,14 +22,15 @@ function createDomainSession(
   expiresAt: Date = SESSION_EXPIRY,
   id: string = SESSION_ID,
 ): AuthSession {
+  const sessionTtlSeconds = (expiresAt.getTime() - NOW.getTime()) / 1000;
+
   return AuthSession.create({
     id,
     userId: USER_ID,
     createdAt: NOW,
-    expiresAt,
+    sessionTtlSeconds,
   });
 }
-
 function createTransactionMock() {
   return {
     authSession: {
