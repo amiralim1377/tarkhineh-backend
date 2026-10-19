@@ -30,6 +30,7 @@ import { AesGcmEmailTokenEncryptor } from './infrastructure/security/aes-gcm-ema
 import { JwtAccessTokenIssuer } from './infrastructure/security/jwt-access-token-issuer.js';
 import { JwtAccessTokenValidator } from './infrastructure/security/jwt-access-token-validator.js';
 import { BearerJwtStrategy } from './presentation/http/auth/strategies/bearer-jwt.strategy.js';
+import { CookieJwtStrategy } from './presentation/http/auth/strategies/cookie-jwt.strategy.js';
 import { EmailVerificationProcessor } from './infrastructure/security/email-verification.processor.js';
 import { EmailOutboxDispatcher } from './infrastructure/queue/email-outbox-dispatcher.js';
 import { IdentityAccessController } from './presentation/http/controllers/identity-access.controller.js';
@@ -70,6 +71,7 @@ import {
     JwtAccessTokenIssuer,
     JwtAccessTokenValidator,
     BearerJwtStrategy,
+    CookieJwtStrategy,
     RegisterWithEmailHandler,
     VerifyEmailHandler,
     LoginWithEmailHandler,
@@ -121,10 +123,14 @@ import {
     },
     {
       provide: AUTHENTICATION_STRATEGIES,
-      inject: [BearerJwtStrategy],
+      inject: [BearerJwtStrategy, CookieJwtStrategy],
       useFactory: (
         bearerJwtStrategy: BearerJwtStrategy,
-      ): readonly AuthenticationStrategy[] => [bearerJwtStrategy],
+        cookieJwtStrategy: CookieJwtStrategy,
+      ): readonly AuthenticationStrategy[] => [
+        bearerJwtStrategy,
+        cookieJwtStrategy,
+      ],
     },
     {
       provide: APP_GUARD,
