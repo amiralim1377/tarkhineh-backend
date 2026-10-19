@@ -10,6 +10,7 @@ import {
   Query,
   Req,
   Res,
+  Patch,
 } from '@nestjs/common';
 
 import type { Request, Response } from 'express';
@@ -40,14 +41,17 @@ import { LoginWithEmailCommand } from '../../../application/commands/login-with-
 import { RefreshSessionCommand } from '../../../application/commands/refresh-session/refresh-session.command.js';
 import { LogoutSessionCommand } from '../../../application/commands/logout-session/logout-session.command.js';
 
-import { RegisterWithEmailDto } from '../dto/registration/register-with-email.dto.js';
-import { VerifyEmailDto } from '../dto/verification/verify-email.dto.js';
-import { LoginWithEmailDto } from '../dto/login/login-with-email.dto.js';
-import { LoginWithEmailResponseDto } from '../dto/login/login-with-email-response.dto.js';
-import { RefreshSessionResponseDto } from '../dto/login/refresh-session-response.dto.js';
-import { CurrentUserResponseDto } from '../dto/current-user/current-user-response.dto.js';
-import { AuthMessageResponseDto } from '../dto/common/auth-message-response.dto.js';
+import { RegisterWithEmailDto } from '../dto/register-with-email.dto.js';
+import { VerifyEmailDto } from '../dto/verify-email.dto.js';
+import { LoginWithEmailDto } from '../dto/login-with-email.dto.js';
+import { LoginWithEmailResponseDto } from '../dto/login-with-email-response.dto.js';
+import { RefreshSessionResponseDto } from '../dto/refresh-session-response.dto.js';
+import { CurrentUserResponseDto } from '../dto/current-user-response.dto.js';
+import { AuthMessageResponseDto } from '../dto/auth-message-response.dto.js';
 import { ApiErrorResponseDto } from '../../../../../shared/presentation/http/api-error-response.dto.js';
+import { BadRequestException } from '@nestjs/common';
+import { ChangePasswordDto } from '../dto/change-password.dto.js';
+import { ChangePasswordCommand } from '../../../application/commands/change-password/change-password.command.js';
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -132,11 +136,13 @@ export class IdentityAccessController {
       'Rotates the HttpOnly refresh-token cookie. Requires the matching CSRF token in the X-CSRF-Token header.',
   })
   @ApiOkResponse({
-    description: 'The session was refreshed. Returns a new access token and CSRF token.',
+    description:
+      'The session was refreshed. Returns a new access token and CSRF token.',
     type: RefreshSessionResponseDto,
   })
   @ApiUnauthorizedResponse({
-    description: 'The refresh token or CSRF token is invalid, expired, or has been reused.',
+    description:
+      'The refresh token or CSRF token is invalid, expired, or has been reused.',
     type: ApiErrorResponseDto,
   })
   @ApiServiceUnavailableResponse({
@@ -179,7 +185,8 @@ export class IdentityAccessController {
       'Revokes the session associated with the refresh-token cookie and clears that cookie. Requires the matching CSRF token.',
   })
   @ApiOkResponse({
-    description: 'The session was revoked and the refresh-token cookie was cleared.',
+    description:
+      'The session was revoked and the refresh-token cookie was cleared.',
     type: AuthMessageResponseDto,
   })
   @ApiUnauthorizedResponse({
@@ -351,4 +358,58 @@ export class IdentityAccessController {
     });
   }
 
+  @Auth(AuthType.Bearer)
+  @Patch('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Change the current user's password",
+    description:
+      'Requires a valid bearer access token and the current password. Revokes the user’s refresh sessions after a successful password change.',
+  })
+  @ApiBody({ type: ChangePasswordDto })
+  @ApiOkResponse({
+    description: 'Password changed successfully.',
+    type: AuthMessageResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'The request body is invalid or the new password is unchanged.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication failed or the current password is invalid.',
+    type: ApiErrorResponseDto,
+  })
+  async changePassword(
+    @CurrentUser() principal: AuthenticatedPrincipal,
+    @Body() dto: ChangePasswordDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<AuthMessageResponseDto> {
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('Pragma', 'no-cache');
+
+    if (dto.newPassword !== dto.confirmNewPassword) {
+      throw new BadRequestException(
+        'The new password and confirmation do not match.',
+      );
+    }
+
+    const result = await this.commandBus.execute(
+      new ChangePasswordCommand(
+        principal.userId,
+        dto.currentPassword,
+        dto.newPassword,
+      ),
+    );
+
+    response.clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/auth',
+    });
+
+    return result;
+  }
 }
