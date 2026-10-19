@@ -11,8 +11,11 @@ import {
 import { CommandBus } from '@nestjs/cqrs';
 import { Auth } from './auth/auth.decorator.js';
 import { AuthType } from './auth/auth-type.enum.js';
+import { CurrentUser } from './auth/current-user.decorator.js';
+import type { AuthenticatedPrincipal } from './auth/authentication-strategy.js';
 import {
   ApiAcceptedResponse,
+  ApiBearerAuth,
   ApiBadRequestResponse,
   ApiBody,
   ApiOkResponse,
@@ -33,6 +36,7 @@ import { RegisterWithEmailDto } from './dto/register-with-email.dto.js';
 import { VerifyEmailDto } from './dto/verify-email.dto.js';
 import { LoginWithEmailDto } from './dto/login-with-email.dto.js';
 import { LoginWithEmailResponseDto } from './dto/login-with-email-response.dto.js';
+import { CurrentUserResponseDto } from './dto/current-user-response.dto.js';
 import { AuthMessageResponseDto } from './dto/auth-message-response.dto.js';
 import { ApiErrorResponseDto } from '../../../../shared/presentation/http/api-error-response.dto.js';
 
@@ -42,6 +46,27 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 @Controller('auth')
 export class IdentityAccessController {
   constructor(private readonly commandBus: CommandBus) {}
+
+  @Auth(AuthType.Bearer)
+  @Get('me')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get the current authenticated user',
+    description: 'Returns the identifier of the authenticated user.',
+  })
+  @ApiOkResponse({
+    description: 'The authenticated user was found.',
+    type: CurrentUserResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'A valid bearer access token is required.',
+    type: ApiErrorResponseDto,
+  })
+  getCurrentUser(
+    @CurrentUser() principal: AuthenticatedPrincipal,
+  ): CurrentUserResponseDto {
+    return { userId: principal.userId };
+  }
 
   @Auth(AuthType.None)
   @Post('login/email')
