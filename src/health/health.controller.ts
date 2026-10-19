@@ -1,8 +1,8 @@
 import { Controller, Get } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
-import { Auth } from '../contexts/identity-access/presentation/http/auth/auth.decorator.js';
-import { AuthType } from '../contexts/identity-access/presentation/http/auth/auth-type.enum.js';
+import { Auth } from '../contexts/identity-access/presentation/http/auth/decorators/auth.decorator.js';
+import { AuthType } from '../contexts/identity-access/presentation/http/auth/contracts/auth-type.enum.js';
 import { DependencyUnavailableError } from '../shared/application/errors/dependency-unavailable.error.js';
 import { normalizePrismaError } from '../prisma/errors/prisma-error-translator.js';
 

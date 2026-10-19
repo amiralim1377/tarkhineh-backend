@@ -9,10 +9,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { CommandBus } from '@nestjs/cqrs';
-import { Auth } from './auth/auth.decorator.js';
-import { AuthType } from './auth/auth-type.enum.js';
-import { CurrentUser } from './auth/current-user.decorator.js';
-import type { AuthenticatedPrincipal } from './auth/authentication-strategy.js';
+import { Auth } from '../auth/decorators/auth.decorator.js';
+import { AuthType } from '../auth/contracts/auth-type.enum.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { AuthenticatedPrincipal } from '../auth/contracts/authentication-strategy.js';
 import {
   ApiAcceptedResponse,
   ApiBearerAuth,
@@ -28,17 +28,17 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
-import { RegisterWithEmailCommand } from '../../application/commands/register-with-email/register-with-email.command.js';
-import { VerifyEmailCommand } from '../../application/commands/verify-email/verify-email.command.js';
-import { LoginWithEmailCommand } from '../../application/commands/login-with-email/login-with-email.command.js';
+import { RegisterWithEmailCommand } from '../../../application/commands/register-with-email/register-with-email.command.js';
+import { VerifyEmailCommand } from '../../../application/commands/verify-email/verify-email.command.js';
+import { LoginWithEmailCommand } from '../../../application/commands/login-with-email/login-with-email.command.js';
 
-import { RegisterWithEmailDto } from './dto/register-with-email.dto.js';
-import { VerifyEmailDto } from './dto/verify-email.dto.js';
-import { LoginWithEmailDto } from './dto/login-with-email.dto.js';
-import { LoginWithEmailResponseDto } from './dto/login-with-email-response.dto.js';
-import { CurrentUserResponseDto } from './dto/current-user-response.dto.js';
-import { AuthMessageResponseDto } from './dto/auth-message-response.dto.js';
-import { ApiErrorResponseDto } from '../../../../shared/presentation/http/api-error-response.dto.js';
+import { RegisterWithEmailDto } from '../dto/registration/register-with-email.dto.js';
+import { VerifyEmailDto } from '../dto/verification/verify-email.dto.js';
+import { LoginWithEmailDto } from '../dto/login/login-with-email.dto.js';
+import { LoginWithEmailResponseDto } from '../dto/login/login-with-email-response.dto.js';
+import { CurrentUserResponseDto } from '../dto/current-user/current-user-response.dto.js';
+import { AuthMessageResponseDto } from '../dto/common/auth-message-response.dto.js';
+import { ApiErrorResponseDto } from '../../../../../shared/presentation/http/api-error-response.dto.js';
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 

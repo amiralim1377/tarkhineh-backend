@@ -11,11 +11,11 @@ import {
   type AccessTokenIdentityReader,
 } from '../../../../application/ports/access-token-identity-reader.port.js';
 
-import { AuthType } from '../auth-type.enum.js';
+import { AuthType } from '../contracts/auth-type.enum.js';
 import type {
   AuthenticationStrategy,
   AuthenticatedPrincipal,
-} from '../authentication-strategy.js';
+} from '../contracts/authentication-strategy.js';
 
 @Injectable()
 export class BearerJwtStrategy implements AuthenticationStrategy {

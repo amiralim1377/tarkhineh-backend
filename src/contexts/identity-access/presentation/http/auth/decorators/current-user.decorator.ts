@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 
-import type { AuthenticatedPrincipal } from './authentication-strategy.js';
+import type { AuthenticatedPrincipal } from '../contracts/authentication-strategy.js';
 
 type AuthenticatedRequest = Request & {
   user?: AuthenticatedPrincipal;

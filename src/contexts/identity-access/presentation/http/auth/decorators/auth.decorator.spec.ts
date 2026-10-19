@@ -6,7 +6,7 @@ import {
   Auth,
   AUTH_TYPES_METADATA_KEY,
 } from './auth.decorator.js';
-import { AuthType } from './auth-type.enum.js';
+import { AuthType } from '../contracts/auth-type.enum.js';
 
 describe('Auth decorator', () => {
   it('stores multiple authentication types as metadata', () => {

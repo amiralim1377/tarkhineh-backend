@@ -7,13 +7,13 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { describe, expect, it, vi } from 'vitest';
 
-import { Auth } from './auth.decorator.js';
+import { Auth } from '../decorators/auth.decorator.js';
 import { AuthenticationGuard } from './authentication.guard.js';
 import type {
   AuthenticationStrategy,
   AuthenticatedPrincipal,
-} from './authentication-strategy.js';
-import { AuthType } from './auth-type.enum.js';
+} from '../contracts/authentication-strategy.js';
+import { AuthType } from '../contracts/auth-type.enum.js';
 
 function createStrategy(
   authType: AuthType,

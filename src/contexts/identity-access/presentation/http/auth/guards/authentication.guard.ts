@@ -13,9 +13,9 @@ import {
   AUTHENTICATION_STRATEGIES,
   type AuthenticationStrategy,
   type AuthenticatedPrincipal,
-} from './authentication-strategy.js';
-import { AuthType } from './auth-type.enum.js';
-import { AUTH_TYPES_METADATA_KEY } from './auth.decorator.js';
+} from '../contracts/authentication-strategy.js';
+import { AuthType } from '../contracts/auth-type.enum.js';
+import { AUTH_TYPES_METADATA_KEY } from '../decorators/auth.decorator.js';
 
 type AuthenticatedRequest = Request & {
   user?: AuthenticatedPrincipal;

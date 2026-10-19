@@ -14,12 +14,12 @@ import {
   vi,
 } from 'vitest';
 
-import { appCreate } from '../../../../app.create.js';
-import { GlobalHttpExceptionFilter } from '../../../../shared/presentation/http/global-http-exception.filter.js';
-import { InvalidEmailVerificationTokenError } from '../../application/errors/invalid-email-verification-token.error.js';
-import { InvalidCredentialsError } from '../../application/errors/invalid-credentials.error.js';
-import { VerifyEmailCommand } from '../../application/commands/verify-email/verify-email.command.js';
-import { LoginWithEmailCommand } from '../../application/commands/login-with-email/login-with-email.command.js';
+import { appCreate } from '../../../../../app.create.js';
+import { GlobalHttpExceptionFilter } from '../../../../../shared/presentation/http/global-http-exception.filter.js';
+import { InvalidEmailVerificationTokenError } from '../../../application/errors/invalid-email-verification-token.error.js';
+import { InvalidCredentialsError } from '../../../application/errors/invalid-credentials.error.js';
+import { VerifyEmailCommand } from '../../../application/commands/verify-email/verify-email.command.js';
+import { LoginWithEmailCommand } from '../../../application/commands/login-with-email/login-with-email.command.js';
 import { IdentityAccessController } from './identity-access.controller.js';
 
 const VALID_TOKEN = 'A'.repeat(43);

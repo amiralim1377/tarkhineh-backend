@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import type { LoginWithEmailResult } from '../../../application/commands/login-with-email/login-with-email.command.js';
+import type { LoginWithEmailResult } from '../../../../application/commands/login-with-email/login-with-email.command.js';
 
 export class LoginWithEmailUserResponseDto {
   @ApiProperty({

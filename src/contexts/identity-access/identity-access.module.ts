@@ -32,13 +32,13 @@ import { JwtAccessTokenValidator } from './infrastructure/security/jwt-access-to
 import { BearerJwtStrategy } from './presentation/http/auth/strategies/bearer-jwt.strategy.js';
 import { EmailVerificationProcessor } from './infrastructure/security/email-verification.processor.js';
 import { EmailOutboxDispatcher } from './infrastructure/queue/email-outbox-dispatcher.js';
-import { IdentityAccessController } from './presentation/http/identity-access.controller.js';
+import { IdentityAccessController } from './presentation/http/controllers/identity-access.controller.js';
 import { APP_GUARD } from '@nestjs/core';
-import { AuthenticationGuard } from './presentation/http/auth/authentication.guard.js';
+import { AuthenticationGuard } from './presentation/http/auth/guards/authentication.guard.js';
 import {
   AUTHENTICATION_STRATEGIES,
   type AuthenticationStrategy,
-} from './presentation/http/auth/authentication-strategy.js';
+} from './presentation/http/auth/contracts/authentication-strategy.js';
 
 @Module({
   imports: [
