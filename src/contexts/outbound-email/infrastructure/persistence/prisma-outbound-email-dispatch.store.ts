@@ -386,8 +386,7 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
       !Number.isFinite(input.queuedBefore.getTime()) ||
       !Number.isFinite(input.reconciledAt.getTime()) ||
       !Number.isFinite(input.now.getTime()) ||
-      input.queuedBefore > input.now ||
-      input.reconciledAt > input.now
+      input.queuedBefore > input.now
     ) {
       throw new RangeError('Reconciliation timestamps are invalid.');
     }
