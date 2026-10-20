@@ -8,10 +8,12 @@ import {
   OUTBOUND_EMAIL_DISPATCH_STORE,
   type OutboundEmailDispatchLane,
   type OutboundEmailDispatchStore,
+  type StaleQueuedOutboundEmailMessage,
 } from '../../application/ports/outbound-email-dispatch-store.port.js';
 
 const RECONCILE_INTERVAL_MS = 30_000;
 const STALE_QUEUE_GRACE_MS = 120_000;
+const RECONCILE_COOLDOWN_MS = 120_000;
 const RECONCILE_BATCH_SIZE = 100;
 const RETRY_DELAY_MS = 5_000;
 const JOB_ID_PREFIX = 'outbound-email-';
@@ -34,6 +36,8 @@ export class OutboundEmailReconciler {
 
   @Interval(RECONCILE_INTERVAL_MS)
   async reconcileStaleQueuedMessages(): Promise<void> {
+    // Prevent overlapping timer executions in this process.
+    // Database locking and conditional updates provide cross-instance safety.
     if (this.isRunning) {
       return;
     }
@@ -43,7 +47,7 @@ export class OutboundEmailReconciler {
     try {
       await this.reconcileLane('TRANSACTIONAL', this.transactionalQueue);
 
-      // A problem in one lane must not prevent checking the other lane.
+      // A failure in one lane must not prevent reconciliation of the other.
       await this.reconcileLane('BULK', this.bulkQueue);
     } finally {
       this.isRunning = false;
@@ -55,15 +59,21 @@ export class OutboundEmailReconciler {
     queue: Queue,
   ): Promise<void> {
     const scanTime = new Date();
+
     const queuedBefore = new Date(scanTime.getTime() - STALE_QUEUE_GRACE_MS);
 
-    let candidates;
+    const reconciledBefore = new Date(
+      scanTime.getTime() - RECONCILE_COOLDOWN_MS,
+    );
+
+    let candidates: readonly StaleQueuedOutboundEmailMessage[];
 
     try {
       candidates = await this.dispatchStore.findStaleQueuedMessages({
         lane,
         batchSize: RECONCILE_BATCH_SIZE,
         queuedBefore,
+        reconciledBefore,
         now: scanTime,
       });
     } catch (error: unknown) {
@@ -79,13 +89,16 @@ export class OutboundEmailReconciler {
     }
 
     for (const candidate of candidates) {
-      let job;
+      const jobId = `${JOB_ID_PREFIX}${candidate.messageId}`;
+
+      let jobExists: boolean;
 
       try {
-        job = await queue.getJob(`${JOB_ID_PREFIX}${candidate.messageId}`);
+        const job = await queue.getJob(jobId);
+        jobExists = job !== undefined && job !== null;
       } catch (error: unknown) {
-        // A Redis read failure is not evidence that a Job is missing.
-        // Stop this lane's scan without recovering any more messages.
+        // A Redis error is not proof that a job is missing.
+        // Do not recover this candidate or continue querying this lane.
         this.logger.error(
           {
             lane,
@@ -98,19 +111,22 @@ export class OutboundEmailReconciler {
         return;
       }
 
-      if (job !== undefined && job !== null) {
+      if (jobExists) {
+        // Leave the database state unchanged when the job still exists.
+        // The Worker owns delivery-state transitions.
         continue;
       }
 
-      const now = new Date();
+      const recoveryTime = new Date();
 
       try {
         const recovered = await this.dispatchStore.recoverMissingQueuedJob({
           messageId: candidate.messageId,
           lane,
           queuedBefore,
-          now,
-          retryAt: new Date(now.getTime() + RETRY_DELAY_MS),
+          reconciledAt: candidate.reconciledAt,
+          now: recoveryTime,
+          retryAt: new Date(recoveryTime.getTime() + RETRY_DELAY_MS),
         });
 
         if (recovered) {
@@ -124,6 +140,8 @@ export class OutboundEmailReconciler {
           );
         }
       } catch (error: unknown) {
+        // Do not modify state optimistically when persistence fails.
+        // A later reconciliation pass can retry the operation.
         this.logger.error(
           {
             lane,
