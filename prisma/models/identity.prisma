@@ -15,7 +15,6 @@ enum OtpPurpose {
 }
 
 model User {
-  emailVerificationChallenges EmailVerificationChallenge[]
   authSessions                AuthSession[]
   id                          String                       @id @default(cuid())
   email                       String?                      @unique
@@ -27,6 +26,8 @@ model User {
   status                      UserStatus                   @default(PENDING)
   createdAt                   DateTime                     @default(now())
   updatedAt                   DateTime                     @updatedAt
+  emailVerificationChallenges EmailVerificationChallenge[]
+  passwordResetChallenges     PasswordResetChallenge[]
 
   oauthAccounts              OAuthAccount[]
   roleAssignments            RoleAssignment[]         @relation("RoleAssignmentUser")
@@ -35,6 +36,21 @@ model User {
   createdPermissionOverrides UserPermissionOverride[] @relation("PermissionOverrideActor")
 
   @@index([status])
+}
+
+model PasswordResetChallenge {
+  id         String    @id @default(cuid())
+  userId     String
+  email      String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt, expiresAt])
+  @@index([email, expiresAt])
 }
 
 model OAuthAccount {
