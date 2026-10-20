@@ -52,6 +52,8 @@ import {
 } from './presentation/http/auth/contracts/authentication-strategy.js';
 import { ChangePasswordHandler } from './application/commands/change-password/change-password.handler.js';
 import { SharedModule } from '../../shared/shared.module.js';
+import { PASSWORD_RESET_REQUEST_STORE } from './application/ports/password-reset-request-store.port.js';
+import { PrismaPasswordResetRequestStore } from './infrastructure/persistence/prisma-password-reset-request.store.js';
 
 @Module({
   imports: [
@@ -95,6 +97,7 @@ import { SharedModule } from '../../shared/shared.module.js';
     EmailVerificationProcessor,
     EmailOutboxDispatcher,
     ChangePasswordHandler,
+    PrismaPasswordResetRequestStore,
     {
       provide: EMAIL_REGISTRATION_REPOSITORY,
       useExisting: PrismaEmailRegistrationRepository,
@@ -158,6 +161,10 @@ import { SharedModule } from '../../shared/shared.module.js';
     {
       provide: ACCESS_TOKEN_VALIDATOR,
       useExisting: JwtAccessTokenValidator,
+    },
+    {
+      provide: PASSWORD_RESET_REQUEST_STORE,
+      useExisting: PrismaPasswordResetRequestStore,
     },
     {
       provide: AUTHENTICATION_STRATEGIES,
