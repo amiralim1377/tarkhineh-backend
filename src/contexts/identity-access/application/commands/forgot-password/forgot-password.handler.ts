@@ -9,10 +9,6 @@ import {
   type PasswordHasher,
 } from '../../ports/password-hasher.port.js';
 import {
-  PASSWORD_VERIFIER,
-  type PasswordVerifier,
-} from '../../ports/password-verifier.port.js';
-import {
   AUTH_SESSION_REPOSITORY,
   type AuthSessionRepository,
 } from '../../../domain/ports/auth-session.repository.js';
@@ -27,22 +23,21 @@ import {
 } from './forgot-password.command.js';
 
 @CommandHandler(ForgotPasswordCommand)
-export class ChangePasswordHandler implements ICommandHandler<ForgotPasswordCommand> {
+export class ForgotPasswordHandler implements ICommandHandler<ForgotPasswordCommand> {
   constructor(
     @Inject(USER_AUTHENTICATION_REPOSITORY)
     private readonly users: UserAuthenticationRepository,
-    @Inject(PASSWORD_VERIFIER)
-    private readonly passwordVerifier: PasswordVerifier,
-    @Inject(PASSWORD_HASHER)
-    private readonly passwordHasher: PasswordHasher,
-    @Inject(AUTH_SESSION_REPOSITORY)
-    private readonly sessions: AuthSessionRepository,
     @Inject(CLOCK)
     private readonly clock: Clock,
   ) {}
 
   async execute(command: ForgotPasswordCommand): Promise<ForgotPasswordResult> {
     const user = await this.users.findByEmail(command.email);
+
+    if (user) {
+    } else {
+      // user not found here
+    }
 
     return {
       message:
