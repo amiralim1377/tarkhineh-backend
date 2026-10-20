@@ -289,4 +289,129 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
 
     expect(persistedBulk.status).toBe('PENDING');
   });
+
+  it('finds only stale queued messages that have not started processing', async () => {
+    const now = new Date();
+    const staleBefore = new Date(now.getTime() - 60_000);
+    const staleEnqueuedAt = new Date(now.getTime() - 120_000);
+    const recentEnqueuedAt = new Date(now.getTime() - 5_000);
+    const futureExpiration = new Date(now.getTime() + 60 * 60 * 1000);
+
+    const staleMessage = await createMessage('TRANSACTIONAL', futureExpiration);
+    const recentMessage = await createMessage(
+      'TRANSACTIONAL',
+      futureExpiration,
+    );
+    const processingMessage = await createMessage(
+      'TRANSACTIONAL',
+      futureExpiration,
+    );
+
+    await prisma.outboundEmailMessage.updateMany({
+      where: {
+        idempotencyKey: { in: [staleMessage.idempotencyKey] },
+      },
+      data: {
+        status: 'QUEUED',
+        enqueuedAt: staleEnqueuedAt,
+        startedAt: null,
+      },
+    });
+
+    await prisma.outboundEmailMessage.update({
+      where: { idempotencyKey: recentMessage.idempotencyKey },
+      data: {
+        status: 'QUEUED',
+        enqueuedAt: recentEnqueuedAt,
+        startedAt: null,
+      },
+    });
+
+    await prisma.outboundEmailMessage.update({
+      where: { idempotencyKey: processingMessage.idempotencyKey },
+      data: {
+        status: 'PROCESSING',
+        enqueuedAt: staleEnqueuedAt,
+        startedAt: new Date(now.getTime() - 30_000),
+      },
+    });
+
+    const candidates = await store.findStaleQueuedMessages({
+      lane: 'TRANSACTIONAL',
+      batchSize: 50,
+      queuedBefore: staleBefore,
+      now,
+    });
+
+    expect(candidates).toContainEqual({
+      messageId: staleMessage.id,
+      lane: 'TRANSACTIONAL',
+    });
+
+    expect(
+      candidates.some((candidate) => candidate.messageId === recentMessage.id),
+    ).toBe(false);
+
+    expect(
+      candidates.some(
+        (candidate) => candidate.messageId === processingMessage.id,
+      ),
+    ).toBe(false);
+  });
+
+  it('conditionally recovers a missing queued job without overwriting newer state', async () => {
+    const now = new Date();
+    const queuedBefore = new Date(now.getTime() - 60_000);
+    const enqueuedAt = new Date(now.getTime() - 120_000);
+    const retryAt = new Date(now.getTime() + 5_000);
+
+    const message = await createMessage(
+      'TRANSACTIONAL',
+      new Date(now.getTime() + 60 * 60 * 1000),
+    );
+
+    await prisma.outboundEmailMessage.update({
+      where: { idempotencyKey: message.idempotencyKey },
+      data: {
+        status: 'QUEUED',
+        enqueuedAt,
+        startedAt: null,
+      },
+    });
+
+    const recovered = await store.recoverMissingQueuedJob({
+      messageId: message.id,
+      lane: 'TRANSACTIONAL',
+      queuedBefore,
+      now,
+      retryAt,
+    });
+
+    expect(recovered).toBe(true);
+
+    const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
+      where: { idempotencyKey: message.idempotencyKey },
+    });
+
+    expect(persisted).toMatchObject({
+      status: 'RETRY_SCHEDULED',
+      availableAt: retryAt,
+      enqueuedAt: null,
+      startedAt: null,
+      lockedBy: null,
+      lockedUntil: null,
+      lastErrorCode: 'QUEUE_JOB_MISSING',
+    });
+
+    // The same stale observation cannot modify the message a second time.
+    const recoveredAgain = await store.recoverMissingQueuedJob({
+      messageId: message.id,
+      lane: 'TRANSACTIONAL',
+      queuedBefore,
+      now,
+      retryAt,
+    });
+
+    expect(recoveredAgain).toBe(false);
+  });
 });
