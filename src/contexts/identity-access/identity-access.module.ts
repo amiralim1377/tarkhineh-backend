@@ -50,9 +50,8 @@ import {
   AUTHENTICATION_STRATEGIES,
   type AuthenticationStrategy,
 } from './presentation/http/auth/contracts/authentication-strategy.js';
-import { CLOCK } from '../../shared/application/ports/clock.port.js';
-import { SystemClock } from '../../shared/infrastructure/time/system-clock.js';
 import { ChangePasswordHandler } from './application/commands/change-password/change-password.handler.js';
+import { SharedModule } from '../../shared/shared.module.js';
 
 @Module({
   imports: [
@@ -69,6 +68,7 @@ import { ChangePasswordHandler } from './application/commands/change-password/ch
     BullModule.registerQueue({
       name: 'email-verification',
     }),
+    SharedModule,
   ],
   controllers: [IdentityAccessController],
   providers: [
@@ -173,10 +173,6 @@ import { ChangePasswordHandler } from './application/commands/change-password/ch
     {
       provide: APP_GUARD,
       useClass: AuthenticationGuard,
-    },
-    {
-      provide: CLOCK,
-      useClass: SystemClock,
     },
   ],
 })
