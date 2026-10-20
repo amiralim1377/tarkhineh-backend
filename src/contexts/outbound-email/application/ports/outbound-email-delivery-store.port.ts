@@ -5,8 +5,7 @@ export const OUTBOUND_EMAIL_DELIVERY_STORE = Symbol(
 export type OutboundEmailDeliveryLane = 'TRANSACTIONAL' | 'BULK';
 
 export type OutboundEmailRetryErrorCode =
-  | 'PROVIDER_TEMPORARY_REJECTION'
-  | 'PROVIDER_NOT_READY';
+  'PROVIDER_TEMPORARY_REJECTION' | 'PROVIDER_NOT_READY';
 
 export type OutboundEmailDeadErrorCode =
   | 'PAYLOAD_MISSING'
@@ -16,13 +15,21 @@ export type OutboundEmailDeadErrorCode =
   | 'PROVIDER_PERMANENT_REJECTION';
 
 export type OutboundEmailOutcomeUnknownErrorCode =
-  | 'PROVIDER_OUTCOME_UNKNOWN'
-  | 'PROCESSING_LEASE_EXPIRED';
+  'PROVIDER_OUTCOME_UNKNOWN' | 'PROCESSING_LEASE_EXPIRED';
 
 export interface ClaimOutboundEmailForDeliveryInput {
   readonly messageId: string;
   readonly lane: OutboundEmailDeliveryLane;
   readonly workerPrefix: string;
+  readonly leaseDurationMs: number;
+}
+
+export type PrepareOutboundEmailDeliveryResult =
+  'READY' | 'EXPIRED' | 'LEASE_LOST';
+
+export interface PrepareOutboundEmailDeliveryInput {
+  readonly messageId: string;
+  readonly leaseToken: string;
   readonly leaseDurationMs: number;
 }
 
@@ -81,9 +88,7 @@ export interface OutboundEmailDeliveryStore {
    * Records confirmed Provider acceptance.
    * The current PROCESSING state and lease token must still match.
    */
-  markAccepted(
-    input: MarkOutboundEmailAcceptedInput,
-  ): Promise<boolean>;
+  markAccepted(input: MarkOutboundEmailAcceptedInput): Promise<boolean>;
 
   /**
    * Schedules a retry only when non-acceptance is known to be safe.
@@ -108,7 +113,9 @@ export interface OutboundEmailDeliveryStore {
    * Moves expired PROCESSING leases to OUTCOME_UNKNOWN.
    * An expired worker lease does not prove that sending failed.
    */
-  recoverExpiredProcessingMessages(
-    batchSize: number,
-  ): Promise<number>;
+  recoverExpiredProcessingMessages(batchSize: number): Promise<number>;
+
+  prepareForDelivery(
+    input: PrepareOutboundEmailDeliveryInput,
+  ): Promise<PrepareOutboundEmailDeliveryResult>;
 }
