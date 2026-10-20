@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
 
-import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
+import { PrismaService } from '../../../../prisma/prisma.service.js';
 
 import type {
   ClaimOutboundEmailMessagesInput,
+  FindStaleQueuedMessagesInput,
   MarkOutboundEmailQueuedInput,
   OutboundEmailDispatchLane,
   OutboundEmailDispatchLease,
   OutboundEmailDispatchStore,
-  ScheduleOutboundEmailDispatchRetryInput,
-  FindStaleQueuedMessagesInput,
   RecoverMissingQueuedJobInput,
+  ScheduleOutboundEmailDispatchRetryInput,
   StaleQueuedOutboundEmailMessage,
 } from '../../application/ports/outbound-email-dispatch-store.port.js';
 
@@ -20,6 +20,12 @@ interface ClaimedOutboundEmailRow {
   lane: OutboundEmailDispatchLane;
   leaseToken: string;
   leaseUntil: Date;
+}
+
+interface ReconciledOutboundEmailRow {
+  messageId: string;
+  lane: OutboundEmailDispatchLane;
+  reconciledAt: Date;
 }
 
 @Injectable()
@@ -61,8 +67,8 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
             )
         `;
 
-        // Lock and claim eligible rows in one atomic database statement.
-        // SKIP LOCKED lets independent dispatcher instances claim other rows.
+        // Atomically select and claim rows.
+        // SKIP LOCKED lets concurrent dispatchers claim separate messages.
         const rows = await tx.$queryRaw<ClaimedOutboundEmailRow[]>`
           WITH candidates AS (
             SELECT "id"
@@ -75,23 +81,35 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
                     'PENDING'::"OutboundEmailStatus",
                     'RETRY_SCHEDULED'::"OutboundEmailStatus"
                   )
-                  AND "availableAt" <= timezone('UTC', statement_timestamp())
+                  AND "availableAt" <= timezone(
+                    'UTC',
+                    statement_timestamp()
+                  )
                   AND (
                     "lockedUntil" IS NULL
-                    OR "lockedUntil" <= timezone('UTC', statement_timestamp())
+                    OR "lockedUntil" <= timezone(
+                      'UTC',
+                      statement_timestamp()
+                    )
                   )
                 )
                 OR (
                   "status" = 'DISPATCHING'::"OutboundEmailStatus"
                   AND (
                     "lockedUntil" IS NULL
-                    OR "lockedUntil" <= timezone('UTC', statement_timestamp())
+                    OR "lockedUntil" <= timezone(
+                      'UTC',
+                      statement_timestamp()
+                    )
                   )
                 )
               )
               AND (
                 "validUntil" IS NULL
-                OR "validUntil" > timezone('UTC', statement_timestamp())
+                OR "validUntil" > timezone(
+                  'UTC',
+                  statement_timestamp()
+                )
               )
             ORDER BY "availableAt" ASC, "createdAt" ASC, "id" ASC
             LIMIT ${input.batchSize}
@@ -101,7 +119,8 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
             UPDATE public."OutboundEmailMessage" AS message
             SET
               "status" = 'DISPATCHING'::"OutboundEmailStatus",
-              "lockedBy" = ${input.ownerPrefix} || ':' || gen_random_uuid()::text,
+              "lockedBy" =
+                ${input.ownerPrefix} || ':' || gen_random_uuid()::text,
               "lockedUntil" =
                 timezone('UTC', clock_timestamp())
                 + (${input.leaseDurationMs} * INTERVAL '1 millisecond'),
@@ -197,29 +216,58 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
     this.validateReconciliationInput(input);
 
     try {
-      const rows = await this.prisma.outboundEmailMessage.findMany({
-        where: {
-          lane: input.lane,
-          status: 'QUEUED',
-          startedAt: null,
-          enqueuedAt: {
-            not: null,
-            lte: input.queuedBefore,
-          },
-          OR: [{ validUntil: null }, { validUntil: { gt: input.now } }],
-        },
-        orderBy: [{ enqueuedAt: 'asc' }, { id: 'asc' }],
-        take: input.batchSize,
-        select: {
-          id: true,
-          lane: true,
-        },
-      });
+      return await this.prisma.$transaction(async (tx) => {
+        // Select and mark candidates in the same transaction.
+        // The persisted timestamp prevents repeatedly scanning the same
+        // healthy messages during the reconciliation cooldown.
+        const rows = await tx.$queryRaw<ReconciledOutboundEmailRow[]>`
+          WITH candidates AS (
+            SELECT "id"
+            FROM public."OutboundEmailMessage"
+            WHERE
+              "lane" = ${input.lane}::"OutboundEmailLane"
+              AND "status" = 'QUEUED'::"OutboundEmailStatus"
+              AND "startedAt" IS NULL
+              AND "enqueuedAt" IS NOT NULL
+              AND "enqueuedAt" <= ${input.queuedBefore}
+              AND (
+                "lastReconciledAt" IS NULL
+                OR "lastReconciledAt" <= ${input.reconciledBefore}
+              )
+              AND (
+                "validUntil" IS NULL
+                OR "validUntil" > ${input.now}
+              )
+            ORDER BY
+              "lastReconciledAt" ASC NULLS FIRST,
+              "enqueuedAt" ASC,
+              "id" ASC
+            LIMIT ${input.batchSize}
+            FOR UPDATE SKIP LOCKED
+          ),
+          marked AS (
+            UPDATE public."OutboundEmailMessage" AS message
+            SET
+              "lastReconciledAt" =
+                timezone('UTC', statement_timestamp()),
+              "updatedAt" =
+                timezone('UTC', statement_timestamp())
+            FROM candidates
+            WHERE
+              message."id" = candidates."id"
+              AND message."status" = 'QUEUED'::"OutboundEmailStatus"
+              AND message."startedAt" IS NULL
+            RETURNING
+              message."id" AS "messageId",
+              message."lane" AS "lane",
+              message."lastReconciledAt" AS "reconciledAt"
+          )
+          SELECT "messageId", "lane", "reconciledAt"
+          FROM marked
+        `;
 
-      return rows.map((row) => ({
-        messageId: row.id,
-        lane: row.lane,
-      }));
+        return rows;
+      });
     } catch (error: unknown) {
       throw normalizePrismaError(error);
     }
@@ -241,6 +289,7 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
             not: null,
             lte: input.queuedBefore,
           },
+          lastReconciledAt: input.reconciledAt,
           OR: [{ validUntil: null }, { validUntil: { gt: input.now } }],
         },
         data: {
@@ -253,8 +302,6 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
         },
       });
 
-      // A concurrent Worker transition or another reconciliation pass
-      // causes the predicate to stop matching. Never overwrite that state.
       return result.count === 1;
     } catch (error: unknown) {
       throw normalizePrismaError(error);
@@ -286,9 +333,7 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
       throw new TypeError('Dispatch owner prefix is invalid.');
     }
 
-    if (input.lane !== 'TRANSACTIONAL' && input.lane !== 'BULK') {
-      throw new TypeError('Dispatch lane is invalid.');
-    }
+    this.validateLane(input.lane);
   }
 
   private validateLeaseInput(messageId: string, leaseToken: string): void {
@@ -312,9 +357,7 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
       throw new RangeError('Reconciliation batch size is invalid.');
     }
 
-    if (input.lane !== 'TRANSACTIONAL' && input.lane !== 'BULK') {
-      throw new TypeError('Reconciliation lane is invalid.');
-    }
+    this.validateLane(input.lane);
 
     if (
       !Number.isFinite(input.queuedBefore.getTime()) ||
@@ -323,6 +366,13 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
     ) {
       throw new RangeError('Reconciliation timestamps are invalid.');
     }
+
+    if (
+      !Number.isFinite(input.reconciledBefore.getTime()) ||
+      input.reconciledBefore > input.now
+    ) {
+      throw new RangeError('Reconciliation cutoff is invalid.');
+    }
   }
 
   private validateRecoveryInput(input: RecoverMissingQueuedJobInput): void {
@@ -330,18 +380,29 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
       throw new TypeError('Outbound email message ID must not be empty.');
     }
 
-    this.validateReconciliationInput({
-      lane: input.lane,
-      batchSize: 1,
-      queuedBefore: input.queuedBefore,
-      now: input.now,
-    });
+    this.validateLane(input.lane);
+
+    if (
+      !Number.isFinite(input.queuedBefore.getTime()) ||
+      !Number.isFinite(input.reconciledAt.getTime()) ||
+      !Number.isFinite(input.now.getTime()) ||
+      input.queuedBefore > input.now ||
+      input.reconciledAt > input.now
+    ) {
+      throw new RangeError('Reconciliation timestamps are invalid.');
+    }
 
     if (
       !Number.isFinite(input.retryAt.getTime()) ||
       input.retryAt <= input.now
     ) {
       throw new RangeError('Reconciliation retry time is invalid.');
+    }
+  }
+
+  private validateLane(lane: OutboundEmailDispatchLane): void {
+    if (lane !== 'TRANSACTIONAL' && lane !== 'BULK') {
+      throw new TypeError('Outbound email lane is invalid.');
     }
   }
 }
