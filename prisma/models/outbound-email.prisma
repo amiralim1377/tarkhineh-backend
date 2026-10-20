@@ -62,6 +62,8 @@ model OutboundEmailMessage {
   lastErrorCode     String?
   providerMessageId String?
 
+  lastReconciledAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -69,4 +71,5 @@ model OutboundEmailMessage {
   @@index([status, lockedUntil])
   @@index([status, enqueuedAt])
   @@index([aggregateType, aggregateId, status])
+  @@index([lane, status, lastReconciledAt, enqueuedAt])
 }
