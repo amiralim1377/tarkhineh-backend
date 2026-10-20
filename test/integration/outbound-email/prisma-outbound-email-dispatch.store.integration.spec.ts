@@ -26,6 +26,7 @@ function createTestDatabaseUrl(): string {
   }
 
   url.pathname = '/tarkhineh_test';
+
   return url.toString();
 }
 
@@ -43,6 +44,7 @@ const configService = {
 
 const prisma = new PrismaService(configService);
 const store = new PrismaOutboundEmailDispatchStore(prisma);
+
 const testKeys: string[] = [];
 
 function claimInput(lane: Lane = 'TRANSACTIONAL') {
@@ -85,13 +87,17 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
   });
 
   afterEach(async () => {
-    if (testKeys.length > 0) {
-      await prisma.outboundEmailMessage.deleteMany({
-        where: {
-          idempotencyKey: { in: [...testKeys] },
-        },
-      });
-
+    try {
+      if (testKeys.length > 0) {
+        await prisma.outboundEmailMessage.deleteMany({
+          where: {
+            idempotencyKey: {
+              in: [...testKeys],
+            },
+          },
+        });
+      }
+    } finally {
       testKeys.length = 0;
     }
   });
@@ -124,7 +130,9 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     expect(lease.leaseUntil.getTime()).toBeGreaterThan(Date.now());
 
     const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
-      where: { idempotencyKey: message.idempotencyKey },
+      where: {
+        idempotencyKey: message.idempotencyKey,
+      },
     });
 
     expect(persisted).toMatchObject({
@@ -155,7 +163,9 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     expect(lease.messageId).toBe(message.id);
 
     const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
-      where: { idempotencyKey: message.idempotencyKey },
+      where: {
+        idempotencyKey: message.idempotencyKey,
+      },
     });
 
     expect(persisted.status).toBe('DISPATCHING');
@@ -174,7 +184,9 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     }
 
     await prisma.outboundEmailMessage.update({
-      where: { idempotencyKey: message.idempotencyKey },
+      where: {
+        idempotencyKey: message.idempotencyKey,
+      },
       data: {
         lockedUntil: new Date(Date.now() - 1_000),
       },
@@ -206,7 +218,9 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     expect(currentOwnerResult).toBe(true);
 
     const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
-      where: { idempotencyKey: message.idempotencyKey },
+      where: {
+        idempotencyKey: message.idempotencyKey,
+      },
     });
 
     expect(persisted.status).toBe('QUEUED');
@@ -234,7 +248,9 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     expect(updated).toBe(true);
 
     const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
-      where: { idempotencyKey: message.idempotencyKey },
+      where: {
+        idempotencyKey: message.idempotencyKey,
+      },
     });
 
     expect(persisted.status).toBe('RETRY_SCHEDULED');
@@ -264,7 +280,9 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     expect(claims.some((lease) => lease.messageId === message.id)).toBe(false);
 
     const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
-      where: { idempotencyKey: message.idempotencyKey },
+      where: {
+        idempotencyKey: message.idempotencyKey,
+      },
     });
 
     expect(persisted.status).toBe('EXPIRED');
@@ -281,10 +299,13 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     const claims = await store.claimBatch(claimInput('TRANSACTIONAL'));
 
     expect(claims.map((lease) => lease.messageId)).toContain(transactional.id);
+
     expect(claims.map((lease) => lease.messageId)).not.toContain(bulk.id);
 
     const persistedBulk = await prisma.outboundEmailMessage.findUniqueOrThrow({
-      where: { idempotencyKey: bulk.idempotencyKey },
+      where: {
+        idempotencyKey: bulk.idempotencyKey,
+      },
     });
 
     expect(persistedBulk.status).toBe('PENDING');
@@ -295,21 +316,23 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     const staleBefore = new Date(now.getTime() - 60_000);
     const staleEnqueuedAt = new Date(now.getTime() - 120_000);
     const recentEnqueuedAt = new Date(now.getTime() - 5_000);
-    const futureExpiration = new Date(now.getTime() + 60 * 60 * 1000);
+    const futureExpiration = new Date(now.getTime() + 60 * 60 * 1_000);
 
     const staleMessage = await createMessage('TRANSACTIONAL', futureExpiration);
+
     const recentMessage = await createMessage(
       'TRANSACTIONAL',
       futureExpiration,
     );
+
     const processingMessage = await createMessage(
       'TRANSACTIONAL',
       futureExpiration,
     );
 
-    await prisma.outboundEmailMessage.updateMany({
+    await prisma.outboundEmailMessage.update({
       where: {
-        idempotencyKey: { in: [staleMessage.idempotencyKey] },
+        id: staleMessage.id,
       },
       data: {
         status: 'QUEUED',
@@ -319,7 +342,9 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     });
 
     await prisma.outboundEmailMessage.update({
-      where: { idempotencyKey: recentMessage.idempotencyKey },
+      where: {
+        id: recentMessage.id,
+      },
       data: {
         status: 'QUEUED',
         enqueuedAt: recentEnqueuedAt,
@@ -328,7 +353,9 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     });
 
     await prisma.outboundEmailMessage.update({
-      where: { idempotencyKey: processingMessage.idempotencyKey },
+      where: {
+        id: processingMessage.id,
+      },
       data: {
         status: 'PROCESSING',
         enqueuedAt: staleEnqueuedAt,
@@ -340,13 +367,19 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
       lane: 'TRANSACTIONAL',
       batchSize: 50,
       queuedBefore: staleBefore,
+      reconciledBefore: new Date(now.getTime() - 120_000),
       now,
     });
 
-    expect(candidates).toContainEqual({
-      messageId: staleMessage.id,
-      lane: 'TRANSACTIONAL',
-    });
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          messageId: staleMessage.id,
+          lane: 'TRANSACTIONAL',
+          reconciledAt: expect.any(Date),
+        }),
+      ]),
+    );
 
     expect(
       candidates.some((candidate) => candidate.messageId === recentMessage.id),
@@ -362,16 +395,19 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
   it('conditionally recovers a missing queued job without overwriting newer state', async () => {
     const now = new Date();
     const queuedBefore = new Date(now.getTime() - 60_000);
+    const reconciledBefore = new Date(now.getTime() - 120_000);
     const enqueuedAt = new Date(now.getTime() - 120_000);
     const retryAt = new Date(now.getTime() + 5_000);
 
     const message = await createMessage(
       'TRANSACTIONAL',
-      new Date(now.getTime() + 60 * 60 * 1000),
+      new Date(now.getTime() + 60 * 60 * 1_000),
     );
 
     await prisma.outboundEmailMessage.update({
-      where: { idempotencyKey: message.idempotencyKey },
+      where: {
+        id: message.id,
+      },
       data: {
         status: 'QUEUED',
         enqueuedAt,
@@ -379,10 +415,28 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
       },
     });
 
+    // Obtain the actual reconciliation timestamp persisted by PostgreSQL.
+    const candidates = await store.findStaleQueuedMessages({
+      lane: 'TRANSACTIONAL',
+      batchSize: 50,
+      queuedBefore,
+      reconciledBefore,
+      now,
+    });
+
+    const candidate = candidates.find((item) => item.messageId === message.id);
+
+    if (!candidate) {
+      throw new Error(
+        'Expected the queued message to be selected for reconciliation',
+      );
+    }
+
     const recovered = await store.recoverMissingQueuedJob({
       messageId: message.id,
       lane: 'TRANSACTIONAL',
       queuedBefore,
+      reconciledAt: candidate.reconciledAt,
       now,
       retryAt,
     });
@@ -390,7 +444,9 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     expect(recovered).toBe(true);
 
     const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
-      where: { idempotencyKey: message.idempotencyKey },
+      where: {
+        id: message.id,
+      },
     });
 
     expect(persisted).toMatchObject({
@@ -403,11 +459,12 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
       lastErrorCode: 'QUEUE_JOB_MISSING',
     });
 
-    // The same stale observation cannot modify the message a second time.
+    // A repeated recovery attempt with the old observation must not match.
     const recoveredAgain = await store.recoverMissingQueuedJob({
       messageId: message.id,
       lane: 'TRANSACTIONAL',
       queuedBefore,
+      reconciledAt: candidate.reconciledAt,
       now,
       retryAt,
     });
