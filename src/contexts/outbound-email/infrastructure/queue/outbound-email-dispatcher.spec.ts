@@ -58,7 +58,7 @@ function createHarness() {
 }
 
 describe('OutboundEmailDispatcher', () => {
-  it('claims and enqueues each lane to its own queue', async () => {
+  it('claims and enqueues each lane to its own queue with stable job IDs and cleanup options', async () => {
     const { store, transactionalQueue, bulkQueue, dispatcher } =
       createHarness();
 
@@ -80,6 +80,7 @@ describe('OutboundEmailDispatcher', () => {
         lane: 'TRANSACTIONAL',
         batchSize: 50,
         leaseDurationMs: 60_000,
+        ownerPrefix: expect.stringMatching(/^outbound-email-dispatcher-/),
       }),
     );
 
@@ -89,28 +90,48 @@ describe('OutboundEmailDispatcher', () => {
         lane: 'BULK',
         batchSize: 50,
         leaseDurationMs: 60_000,
+        ownerPrefix: expect.stringMatching(/^outbound-email-dispatcher-/),
       }),
     );
 
+    expect(transactionalQueue.add).toHaveBeenCalledOnce();
     expect(transactionalQueue.add).toHaveBeenCalledWith(
       'deliver-outbound-email',
-      { outboundEmailMessageId: 'message-transactional' },
-      expect.objectContaining({
+      {
+        outboundEmailMessageId: 'message-transactional',
+      },
+      {
         jobId: 'outbound-email-message-transactional',
         attempts: 1,
-      }),
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
     );
 
+    expect(bulkQueue.add).toHaveBeenCalledOnce();
     expect(bulkQueue.add).toHaveBeenCalledWith(
       'deliver-outbound-email',
-      { outboundEmailMessageId: 'message-bulk' },
-      expect.objectContaining({
+      {
+        outboundEmailMessageId: 'message-bulk',
+      },
+      {
         jobId: 'outbound-email-message-bulk',
         attempts: 1,
-      }),
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
     );
 
     expect(store.markQueued).toHaveBeenCalledTimes(2);
+    expect(store.markQueued).toHaveBeenNthCalledWith(1, {
+      messageId: transactionalLease.messageId,
+      leaseToken: transactionalLease.leaseToken,
+    });
+    expect(store.markQueued).toHaveBeenNthCalledWith(2, {
+      messageId: bulkLease.messageId,
+      leaseToken: bulkLease.leaseToken,
+    });
+
     expect(store.scheduleRetry).not.toHaveBeenCalled();
   });
 
@@ -125,6 +146,7 @@ describe('OutboundEmailDispatcher', () => {
 
     await dispatcher.dispatchAvailableMessages();
 
+    expect(store.scheduleRetry).toHaveBeenCalledOnce();
     expect(store.scheduleRetry).toHaveBeenCalledWith({
       messageId: lease.messageId,
       leaseToken: lease.leaseToken,
@@ -135,7 +157,7 @@ describe('OutboundEmailDispatcher', () => {
     expect(store.markQueued).not.toHaveBeenCalled();
   });
 
-  it('does not schedule retry when lease ownership has already changed', async () => {
+  it('does not schedule a retry when lease ownership has already changed', async () => {
     const { store, logger, dispatcher } = createHarness();
     const lease = createLease('message-stale-lease', 'TRANSACTIONAL');
 
@@ -145,6 +167,7 @@ describe('OutboundEmailDispatcher', () => {
     await dispatcher.dispatchAvailableMessages();
 
     expect(store.scheduleRetry).not.toHaveBeenCalled();
+
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
         outboxMessageId: lease.messageId,
@@ -157,16 +180,35 @@ describe('OutboundEmailDispatcher', () => {
   it('continues processing the other lane when one lane claim fails', async () => {
     const { store, bulkQueue, dispatcher } = createHarness();
 
+    const bulkLease = createLease('bulk-after-claim-error', 'BULK');
+
     vi.mocked(store.claimBatch)
       .mockRejectedValueOnce(new Error('PostgreSQL unavailable'))
-      .mockResolvedValueOnce([createLease('bulk-after-claim-error', 'BULK')]);
+      .mockResolvedValueOnce([bulkLease]);
 
     await dispatcher.dispatchAvailableMessages();
 
     expect(bulkQueue.add).toHaveBeenCalledOnce();
+    expect(bulkQueue.add).toHaveBeenCalledWith(
+      'deliver-outbound-email',
+      {
+        outboundEmailMessageId: bulkLease.messageId,
+      },
+      expect.objectContaining({
+        jobId: 'outbound-email-bulk-after-claim-error',
+        attempts: 1,
+        removeOnComplete: true,
+        removeOnFail: true,
+      }),
+    );
+
+    expect(store.markQueued).toHaveBeenCalledWith({
+      messageId: bulkLease.messageId,
+      leaseToken: bulkLease.leaseToken,
+    });
   });
 
-  it('leaves a lease for recovery when queue-state persistence fails', async () => {
+  it('leaves the lease for recovery when queue-state persistence fails', async () => {
     const { store, logger, dispatcher } = createHarness();
     const lease = createLease('message-state-error', 'TRANSACTIONAL');
 
@@ -179,9 +221,11 @@ describe('OutboundEmailDispatcher', () => {
 
     expect(store.markQueued).toHaveBeenCalledOnce();
     expect(store.scheduleRetry).not.toHaveBeenCalled();
+
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
         outboxMessageId: lease.messageId,
+        lane: lease.lane,
         errorType: 'Error',
       }),
       'Failed to persist outbound email queued state',
