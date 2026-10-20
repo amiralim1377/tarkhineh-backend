@@ -5,7 +5,9 @@ export type OutboundEmailProviderFailureKind =
   | 'NOT_READY';
 
 export class OutboundEmailProviderError extends Error {
-  constructor(readonly kind: OutboundEmailProviderFailureKind) {
+  constructor(
+    readonly kind: OutboundEmailProviderFailureKind,
+  ) {
     super(`Outbound email provider failure: ${kind}`);
     this.name = 'OutboundEmailProviderError';
   }
