@@ -12,6 +12,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { GlobalHttpExceptionFilter } from './shared/presentation/http/global-http-exception.filter.js';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
+import { SharedModule } from './shared/shared.module.js';
 import './queue/redis-client.factory.js';
 
 @Module({
@@ -106,6 +107,7 @@ import './queue/redis-client.factory.js';
     IdentityAccessModule,
     PrismaModule,
     HealthModule,
+    SharedModule,
   ],
   controllers: [AppController],
   providers: [
