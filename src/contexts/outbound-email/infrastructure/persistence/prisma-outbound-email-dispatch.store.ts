@@ -10,6 +10,9 @@ import type {
   OutboundEmailDispatchLease,
   OutboundEmailDispatchStore,
   ScheduleOutboundEmailDispatchRetryInput,
+  FindStaleQueuedMessagesInput,
+  RecoverMissingQueuedJobInput,
+  StaleQueuedOutboundEmailMessage,
 } from '../../application/ports/outbound-email-dispatch-store.port.js';
 
 interface ClaimedOutboundEmailRow {
@@ -188,6 +191,76 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
     }
   }
 
+  async findStaleQueuedMessages(
+    input: FindStaleQueuedMessagesInput,
+  ): Promise<readonly StaleQueuedOutboundEmailMessage[]> {
+    this.validateReconciliationInput(input);
+
+    try {
+      const rows = await this.prisma.outboundEmailMessage.findMany({
+        where: {
+          lane: input.lane,
+          status: 'QUEUED',
+          startedAt: null,
+          enqueuedAt: {
+            not: null,
+            lte: input.queuedBefore,
+          },
+          OR: [{ validUntil: null }, { validUntil: { gt: input.now } }],
+        },
+        orderBy: [{ enqueuedAt: 'asc' }, { id: 'asc' }],
+        take: input.batchSize,
+        select: {
+          id: true,
+          lane: true,
+        },
+      });
+
+      return rows.map((row) => ({
+        messageId: row.id,
+        lane: row.lane,
+      }));
+    } catch (error: unknown) {
+      throw normalizePrismaError(error);
+    }
+  }
+
+  async recoverMissingQueuedJob(
+    input: RecoverMissingQueuedJobInput,
+  ): Promise<boolean> {
+    this.validateRecoveryInput(input);
+
+    try {
+      const result = await this.prisma.outboundEmailMessage.updateMany({
+        where: {
+          id: input.messageId,
+          lane: input.lane,
+          status: 'QUEUED',
+          startedAt: null,
+          enqueuedAt: {
+            not: null,
+            lte: input.queuedBefore,
+          },
+          OR: [{ validUntil: null }, { validUntil: { gt: input.now } }],
+        },
+        data: {
+          status: 'RETRY_SCHEDULED',
+          availableAt: input.retryAt,
+          enqueuedAt: null,
+          lockedBy: null,
+          lockedUntil: null,
+          lastErrorCode: 'QUEUE_JOB_MISSING',
+        },
+      });
+
+      // A concurrent Worker transition or another reconciliation pass
+      // causes the predicate to stop matching. Never overwrite that state.
+      return result.count === 1;
+    } catch (error: unknown) {
+      throw normalizePrismaError(error);
+    }
+  }
+
   private validateClaimInput(input: ClaimOutboundEmailMessagesInput): void {
     if (
       !Number.isSafeInteger(input.batchSize) ||
@@ -225,6 +298,50 @@ export class PrismaOutboundEmailDispatchStore implements OutboundEmailDispatchSt
 
     if (!leaseToken.trim() || leaseToken.length > 200) {
       throw new TypeError('Outbound email lease token is invalid.');
+    }
+  }
+
+  private validateReconciliationInput(
+    input: FindStaleQueuedMessagesInput,
+  ): void {
+    if (
+      !Number.isSafeInteger(input.batchSize) ||
+      input.batchSize < 1 ||
+      input.batchSize > 500
+    ) {
+      throw new RangeError('Reconciliation batch size is invalid.');
+    }
+
+    if (input.lane !== 'TRANSACTIONAL' && input.lane !== 'BULK') {
+      throw new TypeError('Reconciliation lane is invalid.');
+    }
+
+    if (
+      !Number.isFinite(input.queuedBefore.getTime()) ||
+      !Number.isFinite(input.now.getTime()) ||
+      input.queuedBefore > input.now
+    ) {
+      throw new RangeError('Reconciliation timestamps are invalid.');
+    }
+  }
+
+  private validateRecoveryInput(input: RecoverMissingQueuedJobInput): void {
+    if (!input.messageId.trim()) {
+      throw new TypeError('Outbound email message ID must not be empty.');
+    }
+
+    this.validateReconciliationInput({
+      lane: input.lane,
+      batchSize: 1,
+      queuedBefore: input.queuedBefore,
+      now: input.now,
+    });
+
+    if (
+      !Number.isFinite(input.retryAt.getTime()) ||
+      input.retryAt <= input.now
+    ) {
+      throw new RangeError('Reconciliation retry time is invalid.');
     }
   }
 }
