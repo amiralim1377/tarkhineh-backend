@@ -8,9 +8,12 @@ enum OutboundEmailStatus {
   DISPATCHING
   QUEUED
   PROCESSING
-  SENT
+  RETRY_SCHEDULED
+  OUTCOME_UNKNOWN
+  ACCEPTED
   DEAD
   CANCELLED
+  EXPIRED
 }
 
 model OutboundEmailMessage {
