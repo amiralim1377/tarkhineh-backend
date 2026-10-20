@@ -30,6 +30,26 @@ export interface ScheduleOutboundEmailDispatchRetryInput {
   readonly errorCode: 'QUEUE_ENQUEUE_FAILED';
 }
 
+export interface FindStaleQueuedMessagesInput {
+  readonly lane: OutboundEmailDispatchLane;
+  readonly batchSize: number;
+  readonly queuedBefore: Date;
+  readonly now: Date;
+}
+
+export interface StaleQueuedOutboundEmailMessage {
+  readonly messageId: string;
+  readonly lane: OutboundEmailDispatchLane;
+}
+
+export interface RecoverMissingQueuedJobInput {
+  readonly messageId: string;
+  readonly lane: OutboundEmailDispatchLane;
+  readonly queuedBefore: Date;
+  readonly now: Date;
+  readonly retryAt: Date;
+}
+
 export interface OutboundEmailDispatchStore {
   claimBatch(
     input: ClaimOutboundEmailMessagesInput,
@@ -39,5 +59,13 @@ export interface OutboundEmailDispatchStore {
 
   scheduleRetry(
     input: ScheduleOutboundEmailDispatchRetryInput,
+  ): Promise<boolean>;
+
+  findStaleQueuedMessages(
+    input: FindStaleQueuedMessagesInput,
+  ): Promise<readonly StaleQueuedOutboundEmailMessage[]>;
+
+  recoverMissingQueuedJob(
+    input: RecoverMissingQueuedJobInput,
   ): Promise<boolean>;
 }
