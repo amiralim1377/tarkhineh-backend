@@ -1,0 +1,64 @@
+enum OutboundEmailLane {
+  TRANSACTIONAL
+  BULK
+}
+
+enum OutboundEmailStatus {
+  PENDING
+  DISPATCHING
+  QUEUED
+  PROCESSING
+  SENT
+  DEAD
+  CANCELLED
+}
+
+model OutboundEmailMessage {
+  id String @id @default(cuid())
+
+  // Prevent duplicate logical messages.
+  idempotencyKey String @unique
+
+  // Determines which independent worker pool handles the message.
+  lane        OutboundEmailLane
+  templateKey String
+
+  // Allows future payload format changes.
+  payloadVersion Int @default(1)
+
+  // The complete message payload is encrypted at rest.
+  // It can be cleared after successful or terminal delivery.
+  encryptedPayload String?
+
+  status OutboundEmailStatus @default(PENDING)
+
+  // Keep dispatch attempts separate from delivery attempts.
+  dispatchAttempts Int @default(0)
+  deliveryAttempts Int @default(0)
+
+  // Scheduling and expiration.
+  availableAt DateTime  @default(now())
+  validUntil  DateTime?
+
+  // Used for dispatcher and worker leases.
+  lockedBy    String?
+  lockedUntil DateTime?
+
+  enqueuedAt    DateTime?
+  startedAt     DateTime?
+  lastAttemptAt DateTime?
+  sentAt        DateTime?
+  failedAt      DateTime?
+  cancelledAt   DateTime?
+
+  // Store safe error codes, never raw provider error messages.
+  lastErrorCode     String?
+  providerMessageId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lane, status, availableAt, createdAt])
+  @@index([status, lockedUntil])
+  @@index([status, enqueuedAt])
+}
