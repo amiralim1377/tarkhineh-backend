@@ -34,18 +34,21 @@ export interface FindStaleQueuedMessagesInput {
   readonly lane: OutboundEmailDispatchLane;
   readonly batchSize: number;
   readonly queuedBefore: Date;
+  readonly reconciledBefore: Date;
   readonly now: Date;
 }
 
 export interface StaleQueuedOutboundEmailMessage {
   readonly messageId: string;
   readonly lane: OutboundEmailDispatchLane;
+  readonly reconciledAt: Date;
 }
 
 export interface RecoverMissingQueuedJobInput {
   readonly messageId: string;
   readonly lane: OutboundEmailDispatchLane;
   readonly queuedBefore: Date;
+  readonly reconciledAt: Date;
   readonly now: Date;
   readonly retryAt: Date;
 }
