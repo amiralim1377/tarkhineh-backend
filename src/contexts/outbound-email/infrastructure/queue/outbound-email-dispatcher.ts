@@ -105,14 +105,8 @@ export class OutboundEmailDispatcher {
           // required; this is not an exactly-once delivery guarantee.
           jobId: `outbound-email-${lease.messageId}`,
           attempts: 1,
-          removeOnComplete: {
-            age: 86_400,
-            count: 1_000,
-          },
-          removeOnFail: {
-            age: 604_800,
-            count: 5_000,
-          },
+          removeOnComplete: true,
+          removeOnFail: true,
         },
       );
     } catch (enqueueError: unknown) {
