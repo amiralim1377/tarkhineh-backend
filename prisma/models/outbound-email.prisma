@@ -44,6 +44,10 @@ model OutboundEmailMessage {
   lockedBy    String?
   lockedUntil DateTime?
 
+  // Identify the originating domain object without coupling Outbox to it.
+  aggregateType String?
+  aggregateId   String?
+
   enqueuedAt    DateTime?
   startedAt     DateTime?
   lastAttemptAt DateTime?
@@ -61,4 +65,5 @@ model OutboundEmailMessage {
   @@index([lane, status, availableAt, createdAt])
   @@index([status, lockedUntil])
   @@index([status, enqueuedAt])
+  @@index([aggregateType, aggregateId, status])
 }
