@@ -27,6 +27,17 @@ interface ClaimedDeliveryRow {
   validUntil: Date | null;
 }
 
+interface DeliveryEligibilityRow {
+  aggregateType: string | null;
+  aggregateId: string | null;
+}
+
+interface PasswordResetChallengeEligibilityRow {
+  consumed: boolean;
+  invalidated: boolean;
+  expired: boolean;
+}
+
 interface CountRow {
   count: number;
 }
@@ -37,9 +48,7 @@ const MAX_RETRY_DELAY_MS = 3_600_000;
 const MAX_BATCH_SIZE = 500;
 
 @Injectable()
-export class PrismaOutboundEmailDeliveryStore
-  implements OutboundEmailDeliveryStore
-{
+export class PrismaOutboundEmailDeliveryStore implements OutboundEmailDeliveryStore {
   constructor(private readonly prisma: PrismaService) {}
 
   async claimForDelivery(
@@ -136,45 +145,165 @@ export class PrismaOutboundEmailDeliveryStore
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const expiredRows = await tx.$executeRaw`
-          UPDATE public."OutboundEmailMessage"
-          SET
-            "status" = 'EXPIRED'::"OutboundEmailStatus",
-            "encryptedPayload" = NULL,
-            "lockedBy" = NULL,
-            "lockedUntil" = NULL,
-            "lastErrorCode" = 'MESSAGE_EXPIRED',
-            "updatedAt" = timezone('UTC', clock_timestamp())
-          WHERE
-            "id" = ${input.messageId}
-            AND "status" = 'PROCESSING'::"OutboundEmailStatus"
-            AND "lockedBy" = ${input.leaseToken}
-            AND "lockedUntil" > timezone('UTC', clock_timestamp())
-            AND "validUntil" IS NOT NULL
-            AND "validUntil" <= timezone('UTC', clock_timestamp())
+        const messageRows = await tx.$queryRaw<DeliveryEligibilityRow[]>`
+        SELECT
+          "aggregateType",
+          "aggregateId"
+        FROM public."OutboundEmailMessage"
+        WHERE
+        "id" = ${input.messageId}
+        AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+        AND "lockedBy" = ${input.leaseToken}
+        AND "lockedUntil" > timezone('UTC', clock_timestamp())
+      `;
+
+        const message = messageRows[0];
+
+        if (!message) {
+          return 'LEASE_LOST';
+        }
+
+        let challenge: PasswordResetChallengeEligibilityRow | undefined;
+
+        if (message.aggregateType === 'PasswordResetChallenge') {
+          if (!message.aggregateId) {
+            const cancelledRows = await tx.$executeRaw`
+            UPDATE public."OutboundEmailMessage"
+            SET
+              "status" = 'CANCELLED'::"OutboundEmailStatus",
+              "cancelledAt" = timezone('UTC', clock_timestamp()),
+              "encryptedPayload" = NULL,
+              "lockedBy" = NULL,
+              "lockedUntil" = NULL,
+              "lastErrorCode" = 'CHALLENGE_INELIGIBLE',
+              "updatedAt" = timezone('UTC', clock_timestamp())
+            WHERE
+              "id" = ${input.messageId}
+              AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+              AND "lockedBy" = ${input.leaseToken}
+              AND "lockedUntil" > timezone('UTC', clock_timestamp())
+          `;
+
+            return cancelledRows === 1 ? 'CANCELLED' : 'LEASE_LOST';
+          }
+
+          const challengeOwnerRows = await tx.$queryRaw<
+            Array<{ userId: string }>
+          >`
+          SELECT "userId"
+          FROM public."PasswordResetChallenge"
+          WHERE "id" = ${message.aggregateId}
         `;
+
+          const challengeOwner = challengeOwnerRows[0];
+
+          if (challengeOwner) {
+            // Follow the same lock order as PasswordResetRequestStore:
+            // lock User before changing or validating delivery state.
+            await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id"
+            FROM public."User"
+            WHERE "id" = ${challengeOwner.userId}
+            FOR UPDATE
+          `;
+          }
+
+          const challengeRows = await tx.$queryRaw<
+            PasswordResetChallengeEligibilityRow[]
+          >`
+            SELECT
+              "consumedAt" IS NOT NULL AS "consumed",
+              "invalidatedAt" IS NOT NULL AS "invalidated",
+              "expiresAt" <= timezone('UTC', clock_timestamp()) AS "expired"
+            FROM public."PasswordResetChallenge"
+            WHERE "id" = ${message.aggregateId}
+          `;
+
+          challenge = challengeRows[0];
+        }
+
+        const expiredRows = await tx.$executeRaw`
+        UPDATE public."OutboundEmailMessage"
+        SET
+          "status" = 'EXPIRED'::"OutboundEmailStatus",
+          "encryptedPayload" = NULL,
+          "lockedBy" = NULL,
+          "lockedUntil" = NULL,
+          "lastErrorCode" = 'MESSAGE_EXPIRED',
+          "updatedAt" = timezone('UTC', clock_timestamp())
+        WHERE
+          "id" = ${input.messageId}
+          AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+          AND "lockedBy" = ${input.leaseToken}
+          AND "lockedUntil" > timezone('UTC', clock_timestamp())
+          AND "validUntil" IS NOT NULL
+          AND "validUntil" <= timezone('UTC', clock_timestamp())
+      `;
 
         if (expiredRows === 1) {
           return 'EXPIRED';
         }
 
+        if (message.aggregateType === 'PasswordResetChallenge') {
+          if (!challenge || challenge.consumed || challenge.invalidated) {
+            const cancelledRows = await tx.$executeRaw`
+            UPDATE public."OutboundEmailMessage"
+            SET
+              "status" = 'CANCELLED'::"OutboundEmailStatus",
+              "cancelledAt" = timezone('UTC', clock_timestamp()),
+              "encryptedPayload" = NULL,
+              "lockedBy" = NULL,
+              "lockedUntil" = NULL,
+              "lastErrorCode" = 'CHALLENGE_INELIGIBLE',
+              "updatedAt" = timezone('UTC', clock_timestamp())
+            WHERE
+              "id" = ${input.messageId}
+              AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+              AND "lockedBy" = ${input.leaseToken}
+              AND "lockedUntil" > timezone('UTC', clock_timestamp())
+          `;
+
+            return cancelledRows === 1 ? 'CANCELLED' : 'LEASE_LOST';
+          }
+
+          if (challenge.expired) {
+            const expiredChallengeRows = await tx.$executeRaw`
+            UPDATE public."OutboundEmailMessage"
+            SET
+              "status" = 'EXPIRED'::"OutboundEmailStatus",
+              "encryptedPayload" = NULL,
+              "lockedBy" = NULL,
+              "lockedUntil" = NULL,
+              "lastErrorCode" = 'CHALLENGE_EXPIRED',
+              "updatedAt" = timezone('UTC', clock_timestamp())
+            WHERE
+              "id" = ${input.messageId}
+              AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+              AND "lockedBy" = ${input.leaseToken}
+              AND "lockedUntil" > timezone('UTC', clock_timestamp())
+          `;
+
+            return expiredChallengeRows === 1 ? 'EXPIRED' : 'LEASE_LOST';
+          }
+        }
+
         const preparedRows = await tx.$executeRaw`
-          UPDATE public."OutboundEmailMessage"
-          SET
-            "lockedUntil" =
-              timezone('UTC', clock_timestamp())
-              + (${input.leaseDurationMs} * INTERVAL '1 millisecond'),
-            "updatedAt" = timezone('UTC', clock_timestamp())
-          WHERE
-            "id" = ${input.messageId}
-            AND "status" = 'PROCESSING'::"OutboundEmailStatus"
-            AND "lockedBy" = ${input.leaseToken}
-            AND "lockedUntil" > timezone('UTC', clock_timestamp())
-            AND (
-              "validUntil" IS NULL
-              OR "validUntil" > timezone('UTC', clock_timestamp())
-            )
-        `;
+        UPDATE public."OutboundEmailMessage"
+        SET
+          "lockedUntil" =
+            timezone('UTC', clock_timestamp())
+            + (${input.leaseDurationMs} * INTERVAL '1 millisecond'),
+          "updatedAt" = timezone('UTC', clock_timestamp())
+        WHERE
+          "id" = ${input.messageId}
+          AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+          AND "lockedBy" = ${input.leaseToken}
+          AND "lockedUntil" > timezone('UTC', clock_timestamp())
+          AND (
+            "validUntil" IS NULL
+            OR "validUntil" > timezone('UTC', clock_timestamp())
+          )
+      `;
 
         return preparedRows === 1 ? 'READY' : 'LEASE_LOST';
       });
@@ -183,9 +312,7 @@ export class PrismaOutboundEmailDeliveryStore
     }
   }
 
-  async markAccepted(
-    input: MarkOutboundEmailAcceptedInput,
-  ): Promise<boolean> {
+  async markAccepted(input: MarkOutboundEmailAcceptedInput): Promise<boolean> {
     this.validateLeaseInput(input.messageId, input.leaseToken);
     this.validateProviderMessageId(input.providerMessageId);
 
@@ -328,9 +455,7 @@ export class PrismaOutboundEmailDeliveryStore
     }
   }
 
-  async recoverExpiredProcessingMessages(
-    batchSize: number,
-  ): Promise<number> {
+  async recoverExpiredProcessingMessages(batchSize: number): Promise<number> {
     this.validateBatchSize(batchSize);
 
     try {
@@ -383,9 +508,7 @@ export class PrismaOutboundEmailDeliveryStore
     }
   }
 
-  private validateClaimInput(
-    input: ClaimOutboundEmailForDeliveryInput,
-  ): void {
+  private validateClaimInput(input: ClaimOutboundEmailForDeliveryInput): void {
     this.validateMessageId(input.messageId);
     this.validateLane(input.lane);
     this.validateLeaseDuration(input.leaseDurationMs);
