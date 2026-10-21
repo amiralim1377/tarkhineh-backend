@@ -70,14 +70,33 @@ export const envSchema = z
       .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
 
     JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
-    REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
-    AUTH_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(2592000),
+    REFRESH_TOKEN_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(604800),
+    AUTH_SESSION_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(2592000),
 
     EMAIL_VERIFICATION_TTL_SECONDS: z.coerce
       .number()
       .int()
       .positive()
       .default(1800),
+
+    PASSWORD_RESET_TOKEN_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(900),
+
+    OUTBOUND_EMAIL_PAYLOAD_ENCRYPTION_KEY: z.string().refine((value) => {
+      const decoded = Buffer.from(value, 'base64');
+      return decoded.length === 32 && decoded.toString('base64') === value;
+    }, 'OUTBOUND_EMAIL_PAYLOAD_ENCRYPTION_KEY must be a base64-encoded 32-byte key'),
 
     CORS_ORIGINS: z.string().default('http://localhost:5173'),
 
