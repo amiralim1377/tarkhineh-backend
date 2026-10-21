@@ -20,6 +20,7 @@ import { PrismaOutboundEmailDeliveryStore } from './infrastructure/persistence/p
 import { OutboundEmailDispatcher } from './infrastructure/queue/outbound-email-dispatcher.js';
 import { OutboundEmailReconciler } from './infrastructure/queue/outbound-email-reconciler.js';
 import { BullModule } from '@nestjs/bullmq';
+import { IdentityPasswordResetEmailTemplate } from './application/templates/identity-password-reset-email.template.js';
 
 @Module({
   imports: [
@@ -59,9 +60,9 @@ import { BullModule } from '@nestjs/bullmq';
     {
       provide: OutboundEmailTemplateRegistry,
       useFactory: () => {
-        // فعلاً یک آرایه خالی پاس می‌دهیم.
-        // در گام بعدی قالب 'identity.password-reset' را ساخته و اینجا قرار می‌دهیم.
-        return new OutboundEmailTemplateRegistry([]);
+        return new OutboundEmailTemplateRegistry([
+          new IdentityPasswordResetEmailTemplate(),
+        ]);
       },
     },
   ],
