@@ -43,12 +43,11 @@ describe('ForgotPasswordHandler', () => {
     configService = {
       getOrThrow: vi.fn().mockImplementation((key: string) => {
         if (key === 'PASSWORD_RESET_TOKEN_TTL_SECONDS') return TTL_SECONDS;
+        if (key === 'FRONTEND_URL') return 'https://tarkhineh.com';
+
         throw new Error(`Unexpected config key: ${key}`);
       }),
-      get: vi.fn().mockImplementation((key: string) => {
-        if (key === 'API_PUBLIC_URL') return 'https://tarkhineh.com';
-        return undefined;
-      }),
+      get: vi.fn().mockImplementation(() => undefined),
     } as unknown as Mocked<ConfigService>;
 
     handler = new ForgotPasswordHandler(
