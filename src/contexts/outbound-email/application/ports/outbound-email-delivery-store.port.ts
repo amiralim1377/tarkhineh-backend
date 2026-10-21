@@ -25,7 +25,7 @@ export interface ClaimOutboundEmailForDeliveryInput {
 }
 
 export type PrepareOutboundEmailDeliveryResult =
-  'READY' | 'EXPIRED' | 'LEASE_LOST';
+  'READY' | 'EXPIRED' | 'CANCELLED' | 'LEASE_LOST';
 
 export interface PrepareOutboundEmailDeliveryInput {
   readonly messageId: string;
