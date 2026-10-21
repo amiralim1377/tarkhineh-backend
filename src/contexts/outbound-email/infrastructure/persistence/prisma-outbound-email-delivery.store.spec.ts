@@ -178,7 +178,7 @@ describe('PrismaOutboundEmailDeliveryStore.prepareForDelivery', () => {
       expect(cancellationSql).toContain("'CHALLENGE_INELIGIBLE'");
       expect(
         harness.executeRaw.mock.calls.some((call: unknown[]) =>
-          getSql(call).includes('SET "lockedUntil"'),
+          /SET\s+"lockedUntil"\s*=/.test(getSql(call)),
         ),
       ).toBe(false);
     },

@@ -2,14 +2,7 @@ import 'dotenv/config';
 
 import { randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
 import { PrismaOutboundEmailDeliveryStore } from '../../../src/contexts/outbound-email/infrastructure/persistence/prisma-outbound-email-delivery.store.js';
@@ -42,8 +35,7 @@ function createTestDatabaseUrl(): string {
   url.pathname = '/tarkhineh_test';
 
   if (
-    decodeURIComponent(url.pathname.replace(/^\/+/, '')) !==
-    'tarkhineh_test'
+    decodeURIComponent(url.pathname.replace(/^\/+/, '')) !== 'tarkhineh_test'
   ) {
     throw new Error('Refusing to run tests against an unexpected database');
   }
@@ -153,9 +145,7 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
   it('claims a DISPATCHING message while the dispatcher lease is valid', async () => {
     const message = await createMessage({ status: 'DISPATCHING' });
 
-    const claimed = await store.claimForDelivery(
-      deliveryInput(message.id),
-    );
+    const claimed = await store.claimForDelivery(deliveryInput(message.id));
 
     expect(claimed).not.toBeNull();
 
@@ -224,9 +214,7 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
       validUntil: new Date(Date.now() - 10_000),
     });
 
-    const claimed = await store.claimForDelivery(
-      deliveryInput(message.id),
-    );
+    const claimed = await store.claimForDelivery(deliveryInput(message.id));
 
     expect(claimed).toBeNull();
 
@@ -247,9 +235,7 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
       validUntil: new Date(Date.now() + 120_000),
     });
 
-    const claimed = await store.claimForDelivery(
-      deliveryInput(message.id),
-    );
+    const claimed = await store.claimForDelivery(deliveryInput(message.id));
 
     if (!claimed) {
       throw new Error('Expected the Worker to claim the message');
@@ -278,9 +264,7 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
       validUntil: new Date(Date.now() + 120_000),
     });
 
-    const claimed = await store.claimForDelivery(
-      deliveryInput(message.id),
-    );
+    const claimed = await store.claimForDelivery(deliveryInput(message.id));
 
     if (!claimed) {
       throw new Error('Expected the Worker to claim the message');
@@ -310,12 +294,48 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
     expect(persisted.lockedBy).toBeNull();
   });
 
+  it('does not mutate a message when its delivery lease expires before preparation', async () => {
+    const message = await createMessage({
+      status: 'QUEUED',
+      validUntil: new Date(Date.now() + 120_000),
+    });
+
+    const claimed = await store.claimForDelivery(deliveryInput(message.id));
+
+    if (!claimed) {
+      throw new Error('Expected the Worker to claim the message');
+    }
+
+    // Simulate the lease expiring before preparation starts.
+    await prisma.outboundEmailMessage.update({
+      where: { idempotencyKey: message.idempotencyKey },
+      data: {
+        lockedUntil: new Date(Date.now() - 5_000),
+      },
+    });
+
+    const result = await store.prepareForDelivery({
+      messageId: message.id,
+      leaseToken: claimed.leaseToken,
+      leaseDurationMs: 60_000,
+    });
+
+    expect(result).toBe('LEASE_LOST');
+
+    const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
+      where: { idempotencyKey: message.idempotencyKey },
+    });
+
+    expect(persisted.status).toBe('PROCESSING');
+    expect(persisted.lockedBy).toBe(claimed.leaseToken);
+    expect(persisted.lockedUntil?.getTime()).toBeLessThan(Date.now());
+    expect(persisted.encryptedPayload).toBe('integration-test-ciphertext');
+  });
+
   it('records confirmed Provider acceptance and clears the encrypted payload', async () => {
     const message = await createMessage({ status: 'QUEUED' });
 
-    const claimed = await store.claimForDelivery(
-      deliveryInput(message.id),
-    );
+    const claimed = await store.claimForDelivery(deliveryInput(message.id));
 
     if (!claimed) {
       throw new Error('Expected the Worker to claim the message');
@@ -334,9 +354,7 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
     });
 
     expect(persisted.status).toBe('ACCEPTED');
-    expect(persisted.providerMessageId).toBe(
-      'integration-provider-message-id',
-    );
+    expect(persisted.providerMessageId).toBe('integration-provider-message-id');
     expect(persisted.sentAt).toBeInstanceOf(Date);
     expect(persisted.encryptedPayload).toBeNull();
     expect(persisted.lockedBy).toBeNull();
@@ -347,9 +365,7 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
   it('schedules a safe retry and releases the current delivery lease', async () => {
     const message = await createMessage({ status: 'QUEUED' });
 
-    const claimed = await store.claimForDelivery(
-      deliveryInput(message.id),
-    );
+    const claimed = await store.claimForDelivery(deliveryInput(message.id));
 
     if (!claimed) {
       throw new Error('Expected the Worker to claim the message');
@@ -369,25 +385,19 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
     });
 
     expect(persisted.status).toBe('RETRY_SCHEDULED');
-    expect(persisted.availableAt.getTime()).toBeGreaterThan(
-      Date.now() + 7_000,
-    );
+    expect(persisted.availableAt.getTime()).toBeGreaterThan(Date.now() + 7_000);
     expect(persisted.startedAt).toBeNull();
     expect(persisted.enqueuedAt).toBeNull();
     expect(persisted.lockedBy).toBeNull();
     expect(persisted.lockedUntil).toBeNull();
     expect(persisted.lastErrorCode).toBe('PROVIDER_TEMPORARY_REJECTION');
-    expect(persisted.encryptedPayload).toBe(
-      'integration-test-ciphertext',
-    );
+    expect(persisted.encryptedPayload).toBe('integration-test-ciphertext');
   });
 
   it('marks permanently undeliverable messages DEAD', async () => {
     const message = await createMessage({ status: 'QUEUED' });
 
-    const claimed = await store.claimForDelivery(
-      deliveryInput(message.id),
-    );
+    const claimed = await store.claimForDelivery(deliveryInput(message.id));
 
     if (!claimed) {
       throw new Error('Expected the Worker to claim the message');
@@ -416,9 +426,7 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
   it('records an ambiguous Provider outcome without scheduling a retry', async () => {
     const message = await createMessage({ status: 'QUEUED' });
 
-    const claimed = await store.claimForDelivery(
-      deliveryInput(message.id),
-    );
+    const claimed = await store.claimForDelivery(deliveryInput(message.id));
 
     if (!claimed) {
       throw new Error('Expected the Worker to claim the message');
@@ -442,9 +450,7 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
     expect(persisted.lockedUntil).toBeNull();
 
     // Keep the encrypted payload for later investigation/reconciliation.
-    expect(persisted.encryptedPayload).toBe(
-      'integration-test-ciphertext',
-    );
+    expect(persisted.encryptedPayload).toBe('integration-test-ciphertext');
   });
 
   it('moves expired processing leases to OUTCOME_UNKNOWN instead of retrying', async () => {
