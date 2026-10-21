@@ -40,6 +40,18 @@ const optionalPublicUrl = z.preprocess(
     .optional(),
 );
 
+const frontendUrl = z.preprocess(
+  emptyToUndefined,
+  z
+    .string()
+    .url()
+    .refine((value) => {
+      const url = new URL(value);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    }, 'FRONTEND_URL must use HTTP or HTTPS')
+    .default('http://localhost:5173'),
+);
+
 export const envSchema = z
   .object({
     NODE_ENV: z
@@ -128,8 +140,20 @@ export const envSchema = z
     SMTP_PASSWORD: optionalSecret,
     SMTP_FROM: optionalText,
     API_PUBLIC_URL: optionalPublicUrl,
+    FRONTEND_URL: frontendUrl,
   })
   .superRefine((env, ctx) => {
+    if (
+      env.NODE_ENV === 'production' &&
+      new URL(env.FRONTEND_URL).protocol !== 'https:'
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['FRONTEND_URL'],
+        message: 'FRONTEND_URL must use HTTPS in production',
+      });
+    }
+
     const smtpConfigured = [
       env.SMTP_HOST,
       env.SMTP_USER,
