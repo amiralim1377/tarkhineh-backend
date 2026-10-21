@@ -14,6 +14,14 @@ interface CreateMessageOptions {
   readonly lane?: Lane;
   readonly status?: InitialStatus;
   readonly validUntil?: Date | null;
+  readonly aggregateType?: string | null;
+  readonly aggregateId?: string | null;
+}
+
+interface CreatePasswordResetChallengeOptions {
+  readonly expiresAt?: Date;
+  readonly consumedAt?: Date | null;
+  readonly invalidatedAt?: Date | null;
 }
 
 function createTestDatabaseUrl(): string {
@@ -59,6 +67,7 @@ const prisma = new PrismaService(configService);
 const store = new PrismaOutboundEmailDeliveryStore(prisma);
 
 const testKeys: string[] = [];
+const testUserIds: string[] = [];
 
 function deliveryInput(messageId: string, lane: Lane = 'TRANSACTIONAL') {
   return {
@@ -87,6 +96,8 @@ async function createMessage(options: CreateMessageOptions = {}) {
       status,
       availableAt: new Date(now - 5_000),
       validUntil: options.validUntil ?? null,
+      aggregateType: options.aggregateType ?? null,
+      aggregateId: options.aggregateId ?? null,
 
       ...(status === 'DISPATCHING'
         ? {
@@ -117,6 +128,42 @@ async function createMessage(options: CreateMessageOptions = {}) {
   });
 }
 
+async function createPasswordResetChallenge(
+  options: CreatePasswordResetChallengeOptions = {},
+) {
+  const email = `outbound-email-test-${randomUUID()}@example.test`;
+
+  const user = await prisma.user.create({
+    data: { email },
+    select: { id: true },
+  });
+
+  testUserIds.push(user.id);
+
+  const challenge = await prisma.passwordResetChallenge.create({
+    data: {
+      userId: user.id,
+      email,
+      tokenHash: `integration-test-token:${randomUUID()}`,
+      expiresAt: options.expiresAt ?? new Date(Date.now() + 10 * 60_000),
+      consumedAt: options.consumedAt ?? null,
+      invalidatedAt: options.invalidatedAt ?? null,
+    },
+    select: { id: true },
+  });
+
+  return challenge;
+}
+async function claimMessage(messageId: string) {
+  const claimed = await store.claimForDelivery(deliveryInput(messageId));
+
+  if (!claimed) {
+    throw new Error('Expected the Worker to claim the message');
+  }
+
+  return claimed;
+}
+
 describe('PrismaOutboundEmailDeliveryStore integration', () => {
   beforeAll(async () => {
     await prisma.$connect();
@@ -133,11 +180,21 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
           },
         });
       }
+
+      if (testUserIds.length > 0) {
+        await prisma.user.deleteMany({
+          where: {
+            id: {
+              in: [...testUserIds],
+            },
+          },
+        });
+      }
     } finally {
       testKeys.length = 0;
+      testUserIds.length = 0;
     }
   });
-
   afterAll(async () => {
     await prisma.$disconnect();
   });
@@ -292,6 +349,149 @@ describe('PrismaOutboundEmailDeliveryStore integration', () => {
     expect(persisted.status).toBe('EXPIRED');
     expect(persisted.encryptedPayload).toBeNull();
     expect(persisted.lockedBy).toBeNull();
+  });
+  it('prepares delivery for a valid password-reset challenge', async () => {
+    const challenge = await createPasswordResetChallenge();
+
+    const message = await createMessage({
+      status: 'QUEUED',
+      validUntil: new Date(Date.now() + 5 * 60_000),
+      aggregateType: 'PasswordResetChallenge',
+      aggregateId: challenge.id,
+    });
+
+    const claimed = await claimMessage(message.id);
+
+    const result = await store.prepareForDelivery({
+      messageId: message.id,
+      leaseToken: claimed.leaseToken,
+      leaseDurationMs: 60_000,
+    });
+
+    expect(result).toBe('READY');
+
+    const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
+      where: { idempotencyKey: message.idempotencyKey },
+    });
+
+    expect(persisted.status).toBe('PROCESSING');
+    expect(persisted.lockedBy).toBe(claimed.leaseToken);
+    expect(persisted.encryptedPayload).toBe('integration-test-ciphertext');
+
+    const persistedChallenge =
+      await prisma.passwordResetChallenge.findUniqueOrThrow({
+        where: { id: challenge.id },
+      });
+
+    expect(persistedChallenge.consumedAt).toBeNull();
+    expect(persistedChallenge.invalidatedAt).toBeNull();
+  });
+
+  it.each(['consumed', 'invalidated'] as const)(
+    'cancels delivery when the challenge is %s',
+    async (state) => {
+      const challenge = await createPasswordResetChallenge(
+        state === 'consumed'
+          ? { consumedAt: new Date() }
+          : { invalidatedAt: new Date() },
+      );
+
+      const message = await createMessage({
+        status: 'QUEUED',
+        validUntil: new Date(Date.now() + 5 * 60_000),
+        aggregateType: 'PasswordResetChallenge',
+        aggregateId: challenge.id,
+      });
+
+      const claimed = await claimMessage(message.id);
+
+      const result = await store.prepareForDelivery({
+        messageId: message.id,
+        leaseToken: claimed.leaseToken,
+        leaseDurationMs: 60_000,
+      });
+
+      expect(result).toBe('CANCELLED');
+
+      const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
+        where: { idempotencyKey: message.idempotencyKey },
+      });
+
+      expect(persisted.status).toBe('CANCELLED');
+      expect(persisted.cancelledAt).toBeInstanceOf(Date);
+      expect(persisted.encryptedPayload).toBeNull();
+      expect(persisted.lockedBy).toBeNull();
+      expect(persisted.lockedUntil).toBeNull();
+      expect(persisted.lastErrorCode).toBe('CHALLENGE_INELIGIBLE');
+    },
+  );
+
+  it('expires delivery when the password-reset challenge has expired', async () => {
+    const challenge = await createPasswordResetChallenge({
+      expiresAt: new Date(Date.now() - 5_000),
+    });
+
+    const message = await createMessage({
+      status: 'QUEUED',
+      validUntil: new Date(Date.now() + 5 * 60_000),
+      aggregateType: 'PasswordResetChallenge',
+      aggregateId: challenge.id,
+    });
+
+    const claimed = await claimMessage(message.id);
+
+    const result = await store.prepareForDelivery({
+      messageId: message.id,
+      leaseToken: claimed.leaseToken,
+      leaseDurationMs: 60_000,
+    });
+
+    expect(result).toBe('EXPIRED');
+
+    const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
+      where: { idempotencyKey: message.idempotencyKey },
+    });
+
+    expect(persisted.status).toBe('EXPIRED');
+    expect(persisted.encryptedPayload).toBeNull();
+    expect(persisted.lockedBy).toBeNull();
+    expect(persisted.lockedUntil).toBeNull();
+    expect(persisted.lastErrorCode).toBe('CHALLENGE_EXPIRED');
+  });
+
+  it('cancels delivery when the password-reset challenge was deleted', async () => {
+    const challenge = await createPasswordResetChallenge();
+
+    const message = await createMessage({
+      status: 'QUEUED',
+      validUntil: new Date(Date.now() + 5 * 60_000),
+      aggregateType: 'PasswordResetChallenge',
+      aggregateId: challenge.id,
+    });
+
+    const claimed = await claimMessage(message.id);
+
+    await prisma.passwordResetChallenge.delete({
+      where: { id: challenge.id },
+    });
+
+    const result = await store.prepareForDelivery({
+      messageId: message.id,
+      leaseToken: claimed.leaseToken,
+      leaseDurationMs: 60_000,
+    });
+
+    expect(result).toBe('CANCELLED');
+
+    const persisted = await prisma.outboundEmailMessage.findUniqueOrThrow({
+      where: { idempotencyKey: message.idempotencyKey },
+    });
+
+    expect(persisted.status).toBe('CANCELLED');
+    expect(persisted.encryptedPayload).toBeNull();
+    expect(persisted.lockedBy).toBeNull();
+    expect(persisted.lockedUntil).toBeNull();
+    expect(persisted.lastErrorCode).toBe('CHALLENGE_INELIGIBLE');
   });
 
   it('does not mutate a message when its delivery lease expires before preparation', async () => {
