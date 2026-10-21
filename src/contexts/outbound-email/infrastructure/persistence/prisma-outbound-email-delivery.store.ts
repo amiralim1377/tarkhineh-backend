@@ -301,7 +301,31 @@ export class PrismaOutboundEmailDeliveryStore implements OutboundEmailDeliverySt
             )
         `;
 
-        return preparedRows === 1 ? 'READY' : 'LEASE_LOST';
+        if (preparedRows === 1) {
+          return 'READY';
+        }
+
+        // The message may have expired between the earlier check
+        // and the lease-renewal query.
+        const expiredAfterPreparationRows = await tx.$executeRaw`
+          UPDATE public."OutboundEmailMessage"
+          SET
+            "status" = 'EXPIRED'::"OutboundEmailStatus",
+            "encryptedPayload" = NULL,
+            "lockedBy" = NULL,
+            "lockedUntil" = NULL,
+            "lastErrorCode" = 'MESSAGE_EXPIRED',
+            "updatedAt" = timezone('UTC', clock_timestamp())
+          WHERE
+            "id" = ${input.messageId}
+            AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+            AND "lockedBy" = ${input.leaseToken}
+            AND "lockedUntil" > timezone('UTC', clock_timestamp())
+            AND "validUntil" IS NOT NULL
+            AND "validUntil" <= timezone('UTC', clock_timestamp())
+        `;
+
+        return expiredAfterPreparationRows === 1 ? 'EXPIRED' : 'LEASE_LOST';
       });
     } catch (error: unknown) {
       throw normalizePrismaError(error);
