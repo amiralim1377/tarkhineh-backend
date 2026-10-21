@@ -52,6 +52,8 @@ import { ApiErrorResponseDto } from '../../../../../shared/presentation/http/api
 import { BadRequestException } from '@nestjs/common';
 import { ChangePasswordDto } from '../dto/change-password.dto.js';
 import { ChangePasswordCommand } from '../../../application/commands/change-password/change-password.command.js';
+import { ForgotPasswordDto } from '../dto/forgot-password.dto.js';
+import { ForgotPasswordCommand } from '../../../application/commands/forgot-password/forgot-password.command.js';
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -411,5 +413,37 @@ export class IdentityAccessController {
     });
 
     return result;
+  }
+
+  @Auth(AuthType.None)
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Request a password reset link',
+    description:
+      'Generates a secure password reset challenge and sends an email if the account exists.',
+  })
+  @ApiBody({ type: ForgotPasswordDto })
+  @ApiOkResponse({
+    description:
+      'Returns a generic success message regardless of whether the email exists, preventing enumeration.',
+    type: AuthMessageResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'The request body is invalid or missing the email field.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+    type: ApiErrorResponseDto,
+  })
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+  ): Promise<AuthMessageResponseDto> {
+    const result = await this.commandBus.execute(
+      new ForgotPasswordCommand(dto.email),
+    );
+
+    return { message: result.message };
   }
 }
