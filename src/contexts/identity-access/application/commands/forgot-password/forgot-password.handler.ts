@@ -50,13 +50,15 @@ export class ForgotPasswordHandler implements ICommandHandler<ForgotPasswordComm
     const token = this.tokenFactory.create();
 
     // 2. Build the payload (Frontend URL with the raw token)
-    const baseUrl =
-      this.configService.get<string>('API_PUBLIC_URL') ||
-      'http://localhost:5173';
+    const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
 
-    const resetUrl = `${baseUrl}/reset-password?token=${token.rawToken}&email=${encodeURIComponent(command.email)}`;
+    const resetUrl = new URL('/reset-password', frontendUrl);
+    resetUrl.searchParams.set('token', token.rawToken);
+    resetUrl.searchParams.set('email', command.email);
 
-    const payload = JSON.stringify({ resetUrl });
+    const payload = JSON.stringify({
+      resetUrl: resetUrl.toString(),
+    });
 
     // 3. Encrypt the payload so it is secure at rest in the Outbox
     const encryptedPayload = this.encryptor.encrypt(payload);
