@@ -7,6 +7,7 @@ const validBaseEnv = {
   DATABASE_URL: 'postgresql://user:password@localhost:5432/test',
   JWT_ACCESS_SECRET: 'a'.repeat(32),
   EMAIL_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
+  OUTBOUND_EMAIL_PAYLOAD_ENCRYPTION_KEY: Buffer.alloc(32, 2).toString('base64'),
 };
 
 describe('envSchema', () => {
@@ -103,5 +104,51 @@ describe('envSchema', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it('defaults the frontend URL for development', () => {
+    const result = envSchema.safeParse(validBaseEnv);
+
+    expect(result.success).toBe(true);
+
+    if (result.success) {
+      expect(result.data.FRONTEND_URL).toBe('http://localhost:5173');
+    }
+  });
+
+  it('rejects HTTP frontend URLs in production', () => {
+    const result = envSchema.safeParse({
+      ...validBaseEnv,
+      NODE_ENV: 'production',
+      FRONTEND_URL: 'http://tarkhineh.com',
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_USER: 'mailer',
+      SMTP_PASSWORD: 'test-password',
+      SMTP_FROM: 'noreply@example.com',
+      API_PUBLIC_URL: 'https://api.example.com',
+    });
+
+    expect(result.success).toBe(false);
+
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) => issue.path[0] === 'FRONTEND_URL'),
+      ).toBe(true);
+    }
+  });
+
+  it('accepts HTTPS frontend URLs in production', () => {
+    const result = envSchema.safeParse({
+      ...validBaseEnv,
+      NODE_ENV: 'production',
+      FRONTEND_URL: 'https://tarkhineh.com',
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_USER: 'mailer',
+      SMTP_PASSWORD: 'test-password',
+      SMTP_FROM: 'noreply@example.com',
+      API_PUBLIC_URL: 'https://api.example.com',
+    });
+
+    expect(result.success).toBe(true);
   });
 });
