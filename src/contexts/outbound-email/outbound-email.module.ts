@@ -19,15 +19,25 @@ import { PrismaOutboundEmailDispatchStore } from './infrastructure/persistence/p
 import { PrismaOutboundEmailDeliveryStore } from './infrastructure/persistence/prisma-outbound-email-delivery.store.js';
 import { OutboundEmailDispatcher } from './infrastructure/queue/outbound-email-dispatcher.js';
 import { OutboundEmailReconciler } from './infrastructure/queue/outbound-email-reconciler.js';
+import { BullModule } from '@nestjs/bullmq';
 
 @Module({
-  imports: [ConfigModule, PrismaModule],
+  imports: [
+    ConfigModule,
+    PrismaModule,
+    BullModule.registerQueue({
+      name: 'email-transactional',
+    }),
+    BullModule.registerQueue({
+      name: 'email-bulk',
+    }),
+  ],
   providers: [
     AesGcmOutboundEmailPayloadEncryptor,
     SmtpOutboundEmailProvider,
     PrismaOutboundEmailDispatchStore,
     PrismaOutboundEmailDeliveryStore,
-    OutboundEmailTemplateRegistry,
+
     OutboundEmailDispatcher,
     OutboundEmailReconciler,
     {
@@ -45,6 +55,14 @@ import { OutboundEmailReconciler } from './infrastructure/queue/outbound-email-r
     {
       provide: OUTBOUND_EMAIL_DELIVERY_STORE,
       useExisting: PrismaOutboundEmailDeliveryStore,
+    },
+    {
+      provide: OutboundEmailTemplateRegistry,
+      useFactory: () => {
+        // فعلاً یک آرایه خالی پاس می‌دهیم.
+        // در گام بعدی قالب 'identity.password-reset' را ساخته و اینجا قرار می‌دهیم.
+        return new OutboundEmailTemplateRegistry([]);
+      },
     },
   ],
   exports: [OUTBOUND_EMAIL_PAYLOAD_ENCRYPTOR, OutboundEmailTemplateRegistry],
