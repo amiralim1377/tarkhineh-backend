@@ -20,6 +20,7 @@ interface HarnessOptions {
   challengeOwnerRows: Array<{ userId: string }>;
   challengeRows: ChallengeRow[];
   messageExpirationUpdateCount: number;
+  lateMessageExpirationUpdateCount: number;
   cancellationUpdateCount: number;
   challengeExpirationUpdateCount: number;
   renewLeaseUpdateCount: number;
@@ -35,6 +36,7 @@ const defaultOptions: HarnessOptions = {
   challengeOwnerRows: [{ userId: 'user-1' }],
   challengeRows: [{ consumed: false, invalidated: false, expired: false }],
   messageExpirationUpdateCount: 0,
+  lateMessageExpirationUpdateCount: 0,
   cancellationUpdateCount: 1,
   challengeExpirationUpdateCount: 1,
   renewLeaseUpdateCount: 1,
@@ -83,11 +85,18 @@ function createHarness(overrides: Partial<HarnessOptions> = {}) {
     throw new Error(`Unexpected query in test: ${sql}`);
   });
 
+  let messageExpirationUpdateCalls = 0;
+
   executeRaw.mockImplementation(async (template: TemplateStringsArray) => {
     const sql = template.join(' ');
 
     if (sql.includes('"validUntil" IS NOT NULL')) {
-      return options.messageExpirationUpdateCount;
+      const isLateExpirationUpdate = messageExpirationUpdateCalls > 0;
+      messageExpirationUpdateCalls += 1;
+
+      return isLateExpirationUpdate
+        ? options.lateMessageExpirationUpdateCount
+        : options.messageExpirationUpdateCount;
     }
 
     if (sql.includes("'CHALLENGE_EXPIRED'")) {
@@ -271,5 +280,40 @@ describe('PrismaOutboundEmailDeliveryStore.prepareForDelivery', () => {
     );
     expect(initialRead).toContain('"lockedBy" =');
     expect(initialRead).toContain('"lockedUntil" > timezone');
+  });
+
+  it('expires the message when it expires between the initial check and lease renewal', async () => {
+    const harness = createHarness({
+      renewLeaseUpdateCount: 0,
+      lateMessageExpirationUpdateCount: 1,
+    });
+
+    await expect(harness.store.prepareForDelivery(prepareInput)).resolves.toBe(
+      'EXPIRED',
+    );
+
+    expect(harness.executeRaw).toHaveBeenCalledTimes(3);
+
+    const lateExpirationCall = harness.executeRaw.mock.calls[2] as unknown[];
+    const sql = getSql(lateExpirationCall);
+
+    expect(sql).toContain('\'EXPIRED\'::"OutboundEmailStatus"');
+    expect(sql).toContain('"encryptedPayload" = NULL');
+    expect(sql).toContain('"lockedBy" = NULL');
+    expect(sql).toContain('"lockedUntil" = NULL');
+    expect(sql).toContain("'MESSAGE_EXPIRED'");
+  });
+
+  it('returns LEASE_LOST when lease renewal fails and the message has not expired', async () => {
+    const harness = createHarness({
+      renewLeaseUpdateCount: 0,
+      lateMessageExpirationUpdateCount: 0,
+    });
+
+    await expect(harness.store.prepareForDelivery(prepareInput)).resolves.toBe(
+      'LEASE_LOST',
+    );
+
+    expect(harness.executeRaw).toHaveBeenCalledTimes(3);
   });
 });
