@@ -21,6 +21,11 @@ import { OutboundEmailDispatcher } from './infrastructure/queue/outbound-email-d
 import { OutboundEmailReconciler } from './infrastructure/queue/outbound-email-reconciler.js';
 import { BullModule } from '@nestjs/bullmq';
 import { IdentityPasswordResetEmailTemplate } from './application/templates/identity-password-reset-email.template.js';
+import {
+  BulkOutboundEmailDeliveryWorker,
+  OutboundEmailDeliveryHandler,
+  TransactionalOutboundEmailDeliveryWorker,
+} from './infrastructure/queue/outbound-email-delivery.worker.js';
 
 @Module({
   imports: [
@@ -38,7 +43,9 @@ import { IdentityPasswordResetEmailTemplate } from './application/templates/iden
     SmtpOutboundEmailProvider,
     PrismaOutboundEmailDispatchStore,
     PrismaOutboundEmailDeliveryStore,
-
+    OutboundEmailDeliveryHandler,
+    TransactionalOutboundEmailDeliveryWorker,
+    BulkOutboundEmailDeliveryWorker,
     OutboundEmailDispatcher,
     OutboundEmailReconciler,
     {
