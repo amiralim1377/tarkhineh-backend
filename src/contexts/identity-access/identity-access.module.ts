@@ -54,6 +54,8 @@ import { ChangePasswordHandler } from './application/commands/change-password/ch
 import { SharedModule } from '../../shared/shared.module.js';
 import { PASSWORD_RESET_REQUEST_STORE } from './application/ports/password-reset-request-store.port.js';
 import { PrismaPasswordResetRequestStore } from './infrastructure/persistence/prisma-password-reset-request.store.js';
+import { OutboundEmailModule } from '../outbound-email/outbound-email.module.js';
+import { ForgotPasswordHandler } from './application/commands/forgot-password/forgot-password.handler.js';
 
 @Module({
   imports: [
@@ -71,6 +73,7 @@ import { PrismaPasswordResetRequestStore } from './infrastructure/persistence/pr
       name: 'email-verification',
     }),
     SharedModule,
+    OutboundEmailModule,
   ],
   controllers: [IdentityAccessController],
   providers: [
@@ -98,6 +101,7 @@ import { PrismaPasswordResetRequestStore } from './infrastructure/persistence/pr
     EmailOutboxDispatcher,
     ChangePasswordHandler,
     PrismaPasswordResetRequestStore,
+    ForgotPasswordHandler,
     {
       provide: EMAIL_REGISTRATION_REPOSITORY,
       useExisting: PrismaEmailRegistrationRepository,
