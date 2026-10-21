@@ -13,6 +13,7 @@ import { GlobalHttpExceptionFilter } from './shared/presentation/http/global-htt
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SharedModule } from './shared/shared.module.js';
+import { OutboundEmailModule } from './contexts/outbound-email/outbound-email.module.js';
 import './queue/redis-client.factory.js';
 
 @Module({
@@ -108,6 +109,7 @@ import './queue/redis-client.factory.js';
     PrismaModule,
     HealthModule,
     SharedModule,
+    OutboundEmailModule,
   ],
   controllers: [AppController],
   providers: [
