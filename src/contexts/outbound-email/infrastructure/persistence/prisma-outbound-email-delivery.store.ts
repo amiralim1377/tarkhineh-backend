@@ -145,17 +145,20 @@ export class PrismaOutboundEmailDeliveryStore implements OutboundEmailDeliverySt
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // Read only a message that is still owned by this worker's active lease.
+        // Do not lock the message before the User row: password-reset creation
+        // follows the lock order User -> PasswordResetChallenge/OutboundEmailMessage.
         const messageRows = await tx.$queryRaw<DeliveryEligibilityRow[]>`
-        SELECT
-          "aggregateType",
-          "aggregateId"
-        FROM public."OutboundEmailMessage"
-        WHERE
-        "id" = ${input.messageId}
-        AND "status" = 'PROCESSING'::"OutboundEmailStatus"
-        AND "lockedBy" = ${input.leaseToken}
-        AND "lockedUntil" > timezone('UTC', clock_timestamp())
-      `;
+          SELECT
+            "aggregateType",
+            "aggregateId"
+          FROM public."OutboundEmailMessage"
+          WHERE
+            "id" = ${input.messageId}
+            AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+            AND "lockedBy" = ${input.leaseToken}
+            AND "lockedUntil" > timezone('UTC', clock_timestamp())
+        `;
 
         const message = messageRows[0];
 
@@ -165,47 +168,29 @@ export class PrismaOutboundEmailDeliveryStore implements OutboundEmailDeliverySt
 
         let challenge: PasswordResetChallengeEligibilityRow | undefined;
 
-        if (message.aggregateType === 'PasswordResetChallenge') {
-          if (!message.aggregateId) {
-            const cancelledRows = await tx.$executeRaw`
-            UPDATE public."OutboundEmailMessage"
-            SET
-              "status" = 'CANCELLED'::"OutboundEmailStatus",
-              "cancelledAt" = timezone('UTC', clock_timestamp()),
-              "encryptedPayload" = NULL,
-              "lockedBy" = NULL,
-              "lockedUntil" = NULL,
-              "lastErrorCode" = 'CHALLENGE_INELIGIBLE',
-              "updatedAt" = timezone('UTC', clock_timestamp())
-            WHERE
-              "id" = ${input.messageId}
-              AND "status" = 'PROCESSING'::"OutboundEmailStatus"
-              AND "lockedBy" = ${input.leaseToken}
-              AND "lockedUntil" > timezone('UTC', clock_timestamp())
-          `;
-
-            return cancelledRows === 1 ? 'CANCELLED' : 'LEASE_LOST';
-          }
-
+        if (
+          message.aggregateType === 'PasswordResetChallenge' &&
+          message.aggregateId
+        ) {
+          // This first read discovers the owner only. Challenge eligibility is
+          // re-read after acquiring the User lock, so it cannot rely on stale data.
           const challengeOwnerRows = await tx.$queryRaw<
             Array<{ userId: string }>
           >`
-          SELECT "userId"
-          FROM public."PasswordResetChallenge"
-          WHERE "id" = ${message.aggregateId}
-        `;
+            SELECT "userId"
+            FROM public."PasswordResetChallenge"
+            WHERE "id" = ${message.aggregateId}
+          `;
 
           const challengeOwner = challengeOwnerRows[0];
 
           if (challengeOwner) {
-            // Follow the same lock order as PasswordResetRequestStore:
-            // lock User before changing or validating delivery state.
             await tx.$queryRaw<Array<{ id: string }>>`
-            SELECT "id"
-            FROM public."User"
-            WHERE "id" = ${challengeOwner.userId}
-            FOR UPDATE
-          `;
+              SELECT "id"
+              FROM public."User"
+              WHERE "id" = ${challengeOwner.userId}
+              FOR UPDATE
+            `;
           }
 
           const challengeRows = await tx.$queryRaw<
@@ -222,88 +207,99 @@ export class PrismaOutboundEmailDeliveryStore implements OutboundEmailDeliverySt
           challenge = challengeRows[0];
         }
 
+        // Message-level expiration takes precedence over challenge eligibility.
+        // This update is lease-guarded and only runs after any required User lock
+        // has been acquired, preserving the shared lock order.
         const expiredRows = await tx.$executeRaw`
-        UPDATE public."OutboundEmailMessage"
-        SET
-          "status" = 'EXPIRED'::"OutboundEmailStatus",
-          "encryptedPayload" = NULL,
-          "lockedBy" = NULL,
-          "lockedUntil" = NULL,
-          "lastErrorCode" = 'MESSAGE_EXPIRED',
-          "updatedAt" = timezone('UTC', clock_timestamp())
-        WHERE
-          "id" = ${input.messageId}
-          AND "status" = 'PROCESSING'::"OutboundEmailStatus"
-          AND "lockedBy" = ${input.leaseToken}
-          AND "lockedUntil" > timezone('UTC', clock_timestamp())
-          AND "validUntil" IS NOT NULL
-          AND "validUntil" <= timezone('UTC', clock_timestamp())
-      `;
+          UPDATE public."OutboundEmailMessage"
+          SET
+            "status" = 'EXPIRED'::"OutboundEmailStatus",
+            "encryptedPayload" = NULL,
+            "lockedBy" = NULL,
+            "lockedUntil" = NULL,
+            "lastErrorCode" = 'MESSAGE_EXPIRED',
+            "updatedAt" = timezone('UTC', clock_timestamp())
+          WHERE
+            "id" = ${input.messageId}
+            AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+            AND "lockedBy" = ${input.leaseToken}
+            AND "lockedUntil" > timezone('UTC', clock_timestamp())
+            AND "validUntil" IS NOT NULL
+            AND "validUntil" <= timezone('UTC', clock_timestamp())
+        `;
 
         if (expiredRows === 1) {
           return 'EXPIRED';
         }
 
         if (message.aggregateType === 'PasswordResetChallenge') {
-          if (!challenge || challenge.consumed || challenge.invalidated) {
+          // A missing aggregateId, deleted challenge, consumed challenge, or
+          // invalidated challenge must never result in sending the email.
+          if (
+            !message.aggregateId ||
+            !challenge ||
+            challenge.consumed ||
+            challenge.invalidated
+          ) {
             const cancelledRows = await tx.$executeRaw`
-            UPDATE public."OutboundEmailMessage"
-            SET
-              "status" = 'CANCELLED'::"OutboundEmailStatus",
-              "cancelledAt" = timezone('UTC', clock_timestamp()),
-              "encryptedPayload" = NULL,
-              "lockedBy" = NULL,
-              "lockedUntil" = NULL,
-              "lastErrorCode" = 'CHALLENGE_INELIGIBLE',
-              "updatedAt" = timezone('UTC', clock_timestamp())
-            WHERE
-              "id" = ${input.messageId}
-              AND "status" = 'PROCESSING'::"OutboundEmailStatus"
-              AND "lockedBy" = ${input.leaseToken}
-              AND "lockedUntil" > timezone('UTC', clock_timestamp())
-          `;
+              UPDATE public."OutboundEmailMessage"
+              SET
+                "status" = 'CANCELLED'::"OutboundEmailStatus",
+                "cancelledAt" = timezone('UTC', clock_timestamp()),
+                "encryptedPayload" = NULL,
+                "lockedBy" = NULL,
+                "lockedUntil" = NULL,
+                "lastErrorCode" = 'CHALLENGE_INELIGIBLE',
+                "updatedAt" = timezone('UTC', clock_timestamp())
+              WHERE
+                "id" = ${input.messageId}
+                AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+                AND "lockedBy" = ${input.leaseToken}
+                AND "lockedUntil" > timezone('UTC', clock_timestamp())
+            `;
 
             return cancelledRows === 1 ? 'CANCELLED' : 'LEASE_LOST';
           }
 
           if (challenge.expired) {
             const expiredChallengeRows = await tx.$executeRaw`
-            UPDATE public."OutboundEmailMessage"
-            SET
-              "status" = 'EXPIRED'::"OutboundEmailStatus",
-              "encryptedPayload" = NULL,
-              "lockedBy" = NULL,
-              "lockedUntil" = NULL,
-              "lastErrorCode" = 'CHALLENGE_EXPIRED',
-              "updatedAt" = timezone('UTC', clock_timestamp())
-            WHERE
-              "id" = ${input.messageId}
-              AND "status" = 'PROCESSING'::"OutboundEmailStatus"
-              AND "lockedBy" = ${input.leaseToken}
-              AND "lockedUntil" > timezone('UTC', clock_timestamp())
-          `;
+              UPDATE public."OutboundEmailMessage"
+              SET
+                "status" = 'EXPIRED'::"OutboundEmailStatus",
+                "encryptedPayload" = NULL,
+                "lockedBy" = NULL,
+                "lockedUntil" = NULL,
+                "lastErrorCode" = 'CHALLENGE_EXPIRED',
+                "updatedAt" = timezone('UTC', clock_timestamp())
+              WHERE
+                "id" = ${input.messageId}
+                AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+                AND "lockedBy" = ${input.leaseToken}
+                AND "lockedUntil" > timezone('UTC', clock_timestamp())
+            `;
 
             return expiredChallengeRows === 1 ? 'EXPIRED' : 'LEASE_LOST';
           }
         }
 
+        // Renew the lease only if it is still active and still owned by us.
         const preparedRows = await tx.$executeRaw`
-        UPDATE public."OutboundEmailMessage"
-        SET
-          "lockedUntil" =
-            timezone('UTC', clock_timestamp())
-            + (${input.leaseDurationMs} * INTERVAL '1 millisecond'),
-          "updatedAt" = timezone('UTC', clock_timestamp())
-        WHERE
-          "id" = ${input.messageId}
-          AND "status" = 'PROCESSING'::"OutboundEmailStatus"
-          AND "lockedBy" = ${input.leaseToken}
-          AND "lockedUntil" > timezone('UTC', clock_timestamp())
-          AND (
-            "validUntil" IS NULL
-            OR "validUntil" > timezone('UTC', clock_timestamp())
-          )
-      `;
+          UPDATE public."OutboundEmailMessage"
+          SET
+            "lockedUntil" =
+              timezone('UTC', clock_timestamp())
+              + (${input.leaseDurationMs} * INTERVAL '1 millisecond'),
+            "updatedAt" = timezone('UTC', clock_timestamp())
+          WHERE
+            "id" = ${input.messageId}
+            AND "status" = 'PROCESSING'::"OutboundEmailStatus"
+            AND "lockedBy" = ${input.leaseToken}
+            AND "lockedUntil" > timezone('UTC', clock_timestamp())
+            AND (
+              "validUntil" IS NULL
+              OR "validUntil" > timezone('UTC', clock_timestamp())
+            )
+        `;
 
         return preparedRows === 1 ? 'READY' : 'LEASE_LOST';
       });
