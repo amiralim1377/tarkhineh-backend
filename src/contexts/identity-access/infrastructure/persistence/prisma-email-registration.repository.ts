@@ -32,12 +32,12 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
   async createPendingRegistration(
     input: CreatePendingEmailRegistration,
   ): Promise<boolean> {
-    const { user } = input;
+    const { user, tokenHash, expiresAt, encryptedPayload, now } = input;
     const email = user.email;
     const passwordHash = user.passwordHash;
 
-    // This repository operation accepts only a new, pending email identity.
-    // Keep this guard outside the Prisma error-normalization block.
+    // This operation accepts only a new, pending email identity.
+    // Validate its input before entering the Prisma error-normalization block.
     if (
       email === null ||
       email.trim().length === 0 ||
@@ -45,36 +45,106 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
       user.status !== 'PENDING' ||
       user.emailVerifiedAt !== null
     ) {
-      throw new Error(
+      throw new TypeError(
         'createPendingRegistration requires a pending email identity user.',
       );
     }
 
+    if (typeof tokenHash !== 'string' || tokenHash.trim().length === 0) {
+      throw new TypeError('Email verification token hash is invalid.');
+    }
+
+    if (
+      typeof encryptedPayload !== 'string' ||
+      encryptedPayload.trim().length === 0
+    ) {
+      throw new TypeError('Encrypted email verification payload is invalid.');
+    }
+
+    if (
+      !(now instanceof Date) ||
+      !Number.isFinite(now.getTime()) ||
+      !(expiresAt instanceof Date) ||
+      !Number.isFinite(expiresAt.getTime()) ||
+      expiresAt <= now
+    ) {
+      throw new TypeError('Email verification timestamps are invalid.');
+    }
+
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // Create the Outbound Email record through the same transaction
+        // that creates the User and EmailVerificationChallenge.
+        const enqueueVerificationEmail = async (
+          challengeId: string,
+        ): Promise<void> => {
+          await tx.outboundEmailMessage.create({
+            data: {
+              idempotencyKey: `email-verification:${challengeId}`,
+              lane: 'TRANSACTIONAL',
+              templateKey: 'identity.email-verification',
+              payloadVersion: 1,
+              encryptedPayload,
+              status: 'PENDING',
+              availableAt: now,
+              validUntil: expiresAt,
+              aggregateType: 'EmailVerificationChallenge',
+              aggregateId: challengeId,
+            },
+          });
+        };
+
         const existingUser = await tx.user.findUnique({
           where: { email },
           select: {
             id: true,
-            emailVerifiedAt: true,
-            status: true,
           },
         });
 
         if (existingUser) {
-          // Keep the existing anti-enumeration behavior:
-          // verified or non-pending accounts do not get a new challenge.
+          // Acquire the User lock before changing challenges or outbound
+          // messages. This follows the lock order used by the email
+          // verification and password-reset delivery flows.
+          const lockedUsers = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id"
+            FROM public."User"
+            WHERE "id" = ${existingUser.id}
+            FOR UPDATE
+          `;
+
+          if (lockedUsers.length !== 1) {
+            return false;
+          }
+
+          // Re-read the account after acquiring the lock. The state observed
+          // by the initial lookup might have changed while waiting for it.
+          const currentUser = await tx.user.findUnique({
+            where: {
+              id: existingUser.id,
+            },
+            select: {
+              id: true,
+              email: true,
+              emailVerifiedAt: true,
+              status: true,
+            },
+          });
+
           if (
-            existingUser.emailVerifiedAt !== null ||
-            existingUser.status !== 'PENDING'
+            !currentUser ||
+            currentUser.email !== email ||
+            currentUser.emailVerifiedAt !== null ||
+            currentUser.status !== 'PENDING'
           ) {
+            // Keep the registration response independent of whether this
+            // email belongs to an already verified or ineligible account.
             return false;
           }
 
           const previousChallenges =
             await tx.emailVerificationChallenge.findMany({
               where: {
-                userId: existingUser.id,
+                userId: currentUser.id,
                 consumedAt: null,
               },
               select: {
@@ -86,60 +156,62 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
             (challenge) => challenge.id,
           );
 
-          // Cancel pending jobs that belong to the old challenges.
           if (previousChallengeIds.length > 0) {
-            await tx.emailOutboxMessage.updateMany({
+            // Cancel messages that have not entered the delivery-processing
+            // stage. Do not forcibly cancel PROCESSING or OUTCOME_UNKNOWN:
+            // the provider outcome may already be in progress or ambiguous.
+            await tx.outboundEmailMessage.updateMany({
               where: {
-                challengeId: {
+                aggregateType: 'EmailVerificationChallenge',
+                aggregateId: {
                   in: previousChallengeIds,
                 },
                 status: {
-                  in: ['PENDING', 'QUEUED'],
+                  in: ['PENDING', 'DISPATCHING', 'QUEUED', 'RETRY_SCHEDULED'],
                 },
               },
               data: {
                 status: 'CANCELLED',
-                encryptedToken: null,
+                cancelledAt: now,
+                encryptedPayload: null,
+                lockedBy: null,
+                lockedUntil: null,
+                lastErrorCode: 'CHALLENGE_INELIGIBLE',
+                updatedAt: now,
               },
             });
           }
 
-          // Invalidate any old verification links.
+          // Invalidate previous verification links inside this transaction.
           await tx.emailVerificationChallenge.updateMany({
             where: {
-              userId: existingUser.id,
+              userId: currentUser.id,
               consumedAt: null,
             },
             data: {
-              consumedAt: new Date(),
+              consumedAt: now,
             },
           });
 
           const challenge = await tx.emailVerificationChallenge.create({
             data: {
-              userId: existingUser.id,
+              userId: currentUser.id,
               email,
-              tokenHash: input.tokenHash,
-              expiresAt: input.expiresAt,
+              tokenHash,
+              expiresAt,
             },
             select: {
               id: true,
             },
           });
 
-          // The challenge and email job are committed together.
-          await tx.emailOutboxMessage.create({
-            data: {
-              challengeId: challenge.id,
-              encryptedToken: input.encryptedToken,
-            },
-          });
+          // Persist the new challenge and its outbound email atomically.
+          await enqueueVerificationEmail(challenge.id);
 
           return true;
         }
 
-        // Persist the identity created by the Domain Entity.
-        // The ID and initial status are no longer independently chosen here.
+        // Persist the pending identity created by the Domain Entity.
         const createdUser = await tx.user.create({
           data: {
             id: user.id,
@@ -157,25 +229,23 @@ export class PrismaEmailRegistrationRepository implements EmailRegistrationRepos
           data: {
             userId: createdUser.id,
             email,
-            tokenHash: input.tokenHash,
-            expiresAt: input.expiresAt,
+            tokenHash,
+            expiresAt,
           },
           select: {
             id: true,
           },
         });
 
-        await tx.emailOutboxMessage.create({
-          data: {
-            challengeId: challenge.id,
-            encryptedToken: input.encryptedToken,
-          },
-        });
+        // User, Challenge, and Outbound Email commit or roll back together.
+        await enqueueVerificationEmail(challenge.id);
 
         return true;
       });
     } catch (error: unknown) {
       if (isEmailUniqueConstraintError(error)) {
+        // A concurrent registration may have inserted the same email
+        // after the initial lookup. Preserve the anti-enumeration behavior.
         return false;
       }
 
