@@ -5,10 +5,11 @@ export const EMAIL_REGISTRATION_REPOSITORY = Symbol(
 );
 
 export interface CreatePendingEmailRegistration {
-  user: IdentityUser;
-  tokenHash: string;
-  expiresAt: Date;
-  encryptedToken: string;
+  readonly user: IdentityUser;
+  readonly tokenHash: string;
+  readonly expiresAt: Date;
+  readonly encryptedPayload: string;
+  readonly now: Date;
 }
 
 export interface EmailRegistrationRepository {
