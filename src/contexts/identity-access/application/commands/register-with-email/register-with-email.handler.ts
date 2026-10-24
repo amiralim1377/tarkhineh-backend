@@ -1,11 +1,5 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
-
-import {
-  EMAIL_REGISTRATION_REPOSITORY,
-  type EmailRegistrationRepository,
-} from '../../../domain/ports/email-registration.repository.js';
-
 import {
   PASSWORD_HASHER,
   type PasswordHasher,
@@ -26,6 +20,14 @@ import {
   type EmailTokenEncryptor,
 } from '../../ports/email-token-encryptor.port.js';
 import { IdentityUser } from '../../../domain/entities/identity-user.js';
+import {
+  CLOCK,
+  type Clock,
+} from '../../../../../shared/application/ports/clock.port.js';
+import {
+  EMAIL_REGISTRATION_REPOSITORY,
+  type EmailRegistrationRepository,
+} from '../../../domain/ports/email-registration.repository.js';
 
 const REGISTRATION_MESSAGE =
   'If this email can be registered, a verification email will be sent.';
@@ -41,6 +43,8 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
     private readonly tokenFactory: EmailVerificationTokenFactory,
     @Inject(EMAIL_TOKEN_ENCRYPTOR)
     private readonly tokenEncryptor: EmailTokenEncryptor,
+    @Inject(CLOCK)
+    private readonly clock: Clock,
   ) {}
 
   async execute(
@@ -84,7 +88,8 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
       user,
       tokenHash: token.tokenHash,
       expiresAt: token.expiresAt,
-      encryptedToken,
+      encryptedPayload: encryptedToken,
+      now: this.clock.now(),
     });
 
     return { message: REGISTRATION_MESSAGE };
