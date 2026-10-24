@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { Prisma } from '../../../../generated/prisma/client.js';
-import { PrismaService } from '../../../../prisma/prisma.service.js';
+import type { PrismaService } from '../../../../prisma/prisma.service.js';
 import { DependencyUnavailableError } from '../../../../shared/application/errors/dependency-unavailable.error.js';
 
 import { IdentityUser } from '../../domain/entities/identity-user.js';
@@ -36,16 +36,16 @@ function createPendingIdentityUser(
   });
 }
 
-describe('Prisma repositories: error handling and email outbox', () => {
+describe('Prisma repositories: error handling and email registration', () => {
   it('handles a duplicate email without exposing database errors', async () => {
     const duplicateEmailError = createPrismaError('P2002', ['email']);
-
     const user = createPendingIdentityUser(
       'customer@example.com',
       'test-hash',
       'Customer',
       'user-123',
     );
+    const now = new Date();
 
     const tx = {
       user: {
@@ -57,10 +57,11 @@ describe('Prisma repositories: error handling and email outbox', () => {
         updateMany: vi.fn(),
         create: vi.fn(),
       },
-      emailOutboxMessage: {
+      outboundEmailMessage: {
         updateMany: vi.fn(),
         create: vi.fn(),
       },
+      $queryRaw: vi.fn(),
     };
 
     const prisma = {
@@ -75,26 +76,27 @@ describe('Prisma repositories: error handling and email outbox', () => {
     const result = await repository.createPendingRegistration({
       user,
       tokenHash: 'test-token-hash',
-      encryptedToken: 'v1:encrypted-test-payload',
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      encryptedPayload: 'v1:encrypted-test-payload',
+      expiresAt: new Date(now.getTime() + 30 * 60 * 1000),
+      now,
     });
 
     expect(result).toBe(false);
     expect(prisma.$transaction).toHaveBeenCalledOnce();
     expect(tx.user.create).toHaveBeenCalledOnce();
     expect(tx.emailVerificationChallenge.create).not.toHaveBeenCalled();
-    expect(tx.emailOutboxMessage.create).not.toHaveBeenCalled();
+    expect(tx.outboundEmailMessage.create).not.toHaveBeenCalled();
   });
 
   it('does not swallow a duplicate token-hash error as a duplicate email', async () => {
     const duplicateTokenError = createPrismaError('P2002', ['tokenHash']);
-
     const user = createPendingIdentityUser(
       'customer@example.com',
       'test-hash',
       'Customer',
       'user-123',
     );
+    const now = new Date();
 
     const tx = {
       user: {
@@ -106,10 +108,11 @@ describe('Prisma repositories: error handling and email outbox', () => {
         updateMany: vi.fn(),
         create: vi.fn().mockRejectedValue(duplicateTokenError),
       },
-      emailOutboxMessage: {
+      outboundEmailMessage: {
         updateMany: vi.fn(),
         create: vi.fn(),
       },
+      $queryRaw: vi.fn(),
     };
 
     const prisma = {
@@ -125,19 +128,21 @@ describe('Prisma repositories: error handling and email outbox', () => {
       repository.createPendingRegistration({
         user,
         tokenHash: 'test-token-hash',
-        encryptedToken: 'v1:encrypted-test-payload',
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        encryptedPayload: 'v1:encrypted-test-payload',
+        expiresAt: new Date(now.getTime() + 30 * 60 * 1000),
+        now,
       }),
     ).rejects.toBe(duplicateTokenError);
 
     expect(tx.user.create).toHaveBeenCalledOnce();
     expect(tx.emailVerificationChallenge.create).toHaveBeenCalledOnce();
-    expect(tx.emailOutboxMessage.create).not.toHaveBeenCalled();
+    expect(tx.outboundEmailMessage.create).not.toHaveBeenCalled();
   });
 
-  it('creates the user, verification challenge and outbox message in one transaction', async () => {
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
-
+  it('creates the user, verification challenge and outbound email message in one transaction', async () => {
+    const now = new Date('2026-10-24T10:00:00.000Z');
+    const expiresAt = new Date(now.getTime() + 30 * 60 * 1000);
+    const encryptedPayload = 'v1:encrypted-test-payload';
     const user = createPendingIdentityUser(
       'customer@example.com',
       'test-hash',
@@ -155,10 +160,11 @@ describe('Prisma repositories: error handling and email outbox', () => {
         updateMany: vi.fn(),
         create: vi.fn().mockResolvedValue({ id: 'challenge-123' }),
       },
-      emailOutboxMessage: {
+      outboundEmailMessage: {
         updateMany: vi.fn(),
-        create: vi.fn().mockResolvedValue({ id: 'outbox-123' }),
+        create: vi.fn().mockResolvedValue({ id: 'outbound-message-123' }),
       },
+      $queryRaw: vi.fn(),
     };
 
     const prisma = {
@@ -173,8 +179,9 @@ describe('Prisma repositories: error handling and email outbox', () => {
     const result = await repository.createPendingRegistration({
       user,
       tokenHash: 'test-token-hash',
-      encryptedToken: 'v1:encrypted-test-payload',
+      encryptedPayload,
       expiresAt,
+      now,
     });
 
     expect(result).toBe(true);
@@ -201,15 +208,26 @@ describe('Prisma repositories: error handling and email outbox', () => {
       select: { id: true },
     });
 
-    expect(tx.emailOutboxMessage.create).toHaveBeenCalledWith({
+    expect(tx.outboundEmailMessage.create).toHaveBeenCalledWith({
       data: {
-        challengeId: 'challenge-123',
-        encryptedToken: 'v1:encrypted-test-payload',
+        idempotencyKey: 'email-verification:challenge-123',
+        lane: 'TRANSACTIONAL',
+        templateKey: 'identity.email-verification',
+        payloadVersion: 1,
+        encryptedPayload,
+        status: 'PENDING',
+        availableAt: now,
+        validUntil: expiresAt,
+        aggregateType: 'EmailVerificationChallenge',
+        aggregateId: 'challenge-123',
       },
     });
   });
 
-  it('cancels old outbox messages before creating a replacement challenge', async () => {
+  it('cancels old outbound email messages before creating a replacement challenge', async () => {
+    const now = new Date('2026-10-24T10:00:00.000Z');
+    const expiresAt = new Date(now.getTime() + 30 * 60 * 1000);
+    const encryptedPayload = 'v1:new-encrypted-payload';
     const user = createPendingIdentityUser(
       'customer@example.com',
       'new-test-hash',
@@ -219,26 +237,29 @@ describe('Prisma repositories: error handling and email outbox', () => {
 
     const tx = {
       user: {
-        findUnique: vi.fn().mockResolvedValue({
-          id: user.id,
-          emailVerifiedAt: null,
-          status: 'PENDING',
-        }),
+        // First read locates the existing user by email; the second read
+        // refreshes eligibility after the User row lock has been acquired.
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ id: user.id })
+          .mockResolvedValueOnce({
+            id: user.id,
+            email: 'customer@example.com',
+            emailVerifiedAt: null,
+            status: 'PENDING',
+          }),
         create: vi.fn(),
       },
       emailVerificationChallenge: {
         findMany: vi.fn().mockResolvedValue([{ id: 'old-challenge-123' }]),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        create: vi.fn().mockResolvedValue({
-          id: 'new-challenge-123',
-        }),
+        create: vi.fn().mockResolvedValue({ id: 'new-challenge-123' }),
       },
-      emailOutboxMessage: {
+      outboundEmailMessage: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        create: vi.fn().mockResolvedValue({
-          id: 'new-outbox-123',
-        }),
+        create: vi.fn().mockResolvedValue({ id: 'new-outbound-message-123' }),
       },
+      $queryRaw: vi.fn().mockResolvedValue([{ id: user.id }]),
     };
 
     const prisma = {
@@ -253,59 +274,85 @@ describe('Prisma repositories: error handling and email outbox', () => {
     const result = await repository.createPendingRegistration({
       user,
       tokenHash: 'new-test-token-hash',
-      encryptedToken: 'v1:new-encrypted-payload',
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      encryptedPayload,
+      expiresAt,
+      now,
     });
 
     expect(result).toBe(true);
     expect(tx.user.create).not.toHaveBeenCalled();
 
-    expect(tx.emailVerificationChallenge.findMany).toHaveBeenCalledWith({
-      where: {
-        userId: 'user-123',
-        consumedAt: null,
-      },
-      select: {
-        id: true,
-      },
+    expect(tx.user.findUnique).toHaveBeenNthCalledWith(1, {
+      where: { email: 'customer@example.com' },
+      select: { id: true },
     });
 
-    expect(tx.emailOutboxMessage.updateMany).toHaveBeenCalledWith({
+    expect(tx.$queryRaw).toHaveBeenCalledOnce();
+    const lockSql = (tx.$queryRaw.mock.calls[0] as unknown[])[0] as
+      TemplateStringsArray | string;
+    expect(
+      Array.isArray(lockSql) ? lockSql.join(' ') : String(lockSql),
+    ).toContain('FOR UPDATE');
+
+    expect(tx.emailVerificationChallenge.findMany).toHaveBeenCalledWith({
       where: {
-        challengeId: {
-          in: ['old-challenge-123'],
-        },
+        userId: user.id,
+        consumedAt: null,
+      },
+      select: { id: true },
+    });
+
+    expect(tx.outboundEmailMessage.updateMany).toHaveBeenCalledWith({
+      where: {
+        aggregateType: 'EmailVerificationChallenge',
+        aggregateId: { in: ['old-challenge-123'] },
         status: {
-          in: ['PENDING', 'QUEUED'],
+          in: ['PENDING', 'DISPATCHING', 'QUEUED', 'RETRY_SCHEDULED'],
         },
       },
       data: {
         status: 'CANCELLED',
-        encryptedToken: null,
+        cancelledAt: now,
+        encryptedPayload: null,
+        lockedBy: null,
+        lockedUntil: null,
+        lastErrorCode: 'CHALLENGE_INELIGIBLE',
+        updatedAt: now,
       },
     });
 
     expect(tx.emailVerificationChallenge.updateMany).toHaveBeenCalledWith({
       where: {
-        userId: 'user-123',
+        userId: user.id,
         consumedAt: null,
       },
-      data: {
-        consumedAt: expect.any(Date),
-      },
+      data: { consumedAt: now },
     });
 
-    expect(tx.emailOutboxMessage.create).toHaveBeenCalledWith({
+    expect(tx.outboundEmailMessage.create).toHaveBeenCalledWith({
       data: {
-        challengeId: 'new-challenge-123',
-        encryptedToken: 'v1:new-encrypted-payload',
+        idempotencyKey: 'email-verification:new-challenge-123',
+        lane: 'TRANSACTIONAL',
+        templateKey: 'identity.email-verification',
+        payloadVersion: 1,
+        encryptedPayload,
+        status: 'PENDING',
+        availableAt: now,
+        validUntil: expiresAt,
+        aggregateType: 'EmailVerificationChallenge',
+        aggregateId: 'new-challenge-123',
       },
     });
 
     expect(
-      tx.emailOutboxMessage.updateMany.mock.invocationCallOrder[0],
+      tx.outboundEmailMessage.updateMany.mock.invocationCallOrder[0],
     ).toBeLessThan(
       tx.emailVerificationChallenge.updateMany.mock.invocationCallOrder[0],
+    );
+    expect(
+      tx.emailVerificationChallenge.updateMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      tx.emailVerificationChallenge.create.mock.invocationCallOrder[0],
     );
   });
 
