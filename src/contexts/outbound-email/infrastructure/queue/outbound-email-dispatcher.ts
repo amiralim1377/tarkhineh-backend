@@ -13,9 +13,9 @@ import {
   type OutboundEmailDispatchStore,
 } from '../../application/ports/outbound-email-dispatch-store.port.js';
 
+const DISPATCH_INTERVAL_MS = 5_000;
 const BATCH_SIZE = 50;
 const LEASE_DURATION_MS = 60_000;
-const DISPATCH_INTERVAL_MS = 5_000;
 const ENQUEUE_RETRY_DELAY_MS = 5_000;
 const JOB_NAME = 'deliver-outbound-email';
 
