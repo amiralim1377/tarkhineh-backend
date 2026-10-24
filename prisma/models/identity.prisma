@@ -91,8 +91,7 @@ model EmailVerificationChallenge {
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
 
-  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  outboxMessage EmailOutboxMessage?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
   @@index([email, expiresAt])
