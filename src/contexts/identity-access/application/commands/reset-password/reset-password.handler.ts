@@ -23,6 +23,10 @@ import {
 } from '../../ports/password-reset-completion-store.port.js';
 import { PasswordPolicy } from '../../../domain/services/password-policy.js';
 import { PasswordResetInvalidError } from '../../errors/password-reset.error.js';
+import {
+  PasswordPolicyViolationError,
+  PasswordRequiredError,
+} from '../../errors/password-policy.error.js';
 
 const message = 'Your password has been reset successfully.';
 
