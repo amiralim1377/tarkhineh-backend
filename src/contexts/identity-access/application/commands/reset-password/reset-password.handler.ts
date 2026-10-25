@@ -26,9 +26,9 @@ import { PasswordResetInvalidError } from '../../errors/password-reset.error.js'
 import {
   PasswordPolicyViolationError,
   PasswordRequiredError,
-} from '../../../../../shared/application/errors/password-policy.error.js';
+} from '../../errors/ password-policy.error.js';
 
-const message = 'Password has been changed successfully.';
+const message = 'Your password has been reset successfully.';
 
 @CommandHandler(ResetPasswordCommand)
 export class ResetPasswordHandler implements ICommandHandler<ResetPasswordCommand> {
