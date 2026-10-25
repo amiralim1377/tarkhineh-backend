@@ -21,9 +21,11 @@ import {
   PASSWORD_RESET_COMPLETION_STORE,
   type PasswordResetCompletionStore,
 } from '../../ports/password-reset-completion-store.port.js';
+import { PasswordPolicy } from '../../../domain/services/password-policy.js';
 import {
+  PasswordPolicyViolationError,
+  PasswordRequiredError,
   PasswordResetInvalidError,
-  PasswordResetPasswordInvalidError,
 } from '../../errors/password-reset.error.js';
 
 const message = 'Password has been changed successfully.';
@@ -39,17 +41,18 @@ export class ResetPasswordHandler implements ICommandHandler<ResetPasswordComman
     private readonly passwordHasher: PasswordHasher,
     @Inject(PASSWORD_RESET_COMPLETION_STORE)
     private readonly passwordResetStore: PasswordResetCompletionStore,
+    @Inject(PasswordPolicy)
+    private readonly passwordPolicy: PasswordPolicy,
   ) {}
 
   async execute(command: ResetPasswordCommand): Promise<ResetPasswordResult> {
-    if (!command.recoveryToken) {
-      throw new PasswordResetInvalidError();
-    }
-
     if (!command.newPassword) {
-      throw new PasswordResetPasswordInvalidError();
+      throw new PasswordRequiredError();
     }
 
+    if (!this.passwordPolicy.isValid(command.newPassword)) {
+      throw new PasswordPolicyViolationError();
+    }
     const now = this.clock.now();
     const tokenHash = this.tokenFactory.hash(command.recoveryToken);
     const passwordHash = await this.passwordHasher.hash(command.newPassword);
