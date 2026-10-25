@@ -1,5 +1,6 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
+
 import {
   ResetPasswordCommand,
   type ResetPasswordResult,
@@ -20,9 +21,13 @@ import {
   PASSWORD_RESET_COMPLETION_STORE,
   type PasswordResetCompletionStore,
 } from '../../ports/password-reset-completion-store.port.js';
-import { PasswordResetInvalidError } from '../../errors/password-reset.error.js';
+import {
+  PasswordResetInvalidError,
+  PasswordResetPasswordInvalidError,
+} from '../../errors/password-reset.error.js';
 
 const message = 'Password has been changed successfully.';
+
 @CommandHandler(ResetPasswordCommand)
 export class ResetPasswordHandler implements ICommandHandler<ResetPasswordCommand> {
   constructor(
@@ -42,11 +47,10 @@ export class ResetPasswordHandler implements ICommandHandler<ResetPasswordComman
     }
 
     if (!command.newPassword) {
-      throw new PasswordResetInvalidError();
+      throw new PasswordResetPasswordInvalidError();
     }
 
     const now = this.clock.now();
-
     const tokenHash = this.tokenFactory.hash(command.recoveryToken);
     const passwordHash = await this.passwordHasher.hash(command.newPassword);
 
