@@ -22,11 +22,11 @@ import {
   type PasswordResetCompletionStore,
 } from '../../ports/password-reset-completion-store.port.js';
 import { PasswordPolicy } from '../../../domain/services/password-policy.js';
+import { PasswordResetInvalidError } from '../../errors/password-reset.error.js';
 import {
   PasswordPolicyViolationError,
   PasswordRequiredError,
-  PasswordResetInvalidError,
-} from '../../errors/password-reset.error.js';
+} from '../../../../../shared/application/errors/password-policy.error.js';
 
 const message = 'Password has been changed successfully.';
 
@@ -46,6 +46,10 @@ export class ResetPasswordHandler implements ICommandHandler<ResetPasswordComman
   ) {}
 
   async execute(command: ResetPasswordCommand): Promise<ResetPasswordResult> {
+    if (!command.recoveryToken) {
+      throw new PasswordResetInvalidError();
+    }
+
     if (!command.newPassword) {
       throw new PasswordRequiredError();
     }
