@@ -91,6 +91,10 @@ import { PasswordPolicy } from './domain/services/password-policy.js';
     PrismaPasswordResetRequestStore,
     ForgotPasswordHandler,
     {
+      provide: PasswordPolicy,
+      useFactory: () => new PasswordPolicy(),
+    },
+    {
       provide: EMAIL_REGISTRATION_REPOSITORY,
       useExisting: PrismaEmailRegistrationRepository,
     },
