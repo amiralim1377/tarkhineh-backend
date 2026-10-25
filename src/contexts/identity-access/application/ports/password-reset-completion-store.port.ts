@@ -4,7 +4,7 @@ export const PASSWORD_RESET_COMPLETION_STORE = Symbol(
 
 export interface PasswordResetCompletionStoreInput {
   readonly tokenHash: string;
-  readonly newPasswordHash: string;
+  readonly passwordHash: string;
   readonly now: Date;
 }
 
