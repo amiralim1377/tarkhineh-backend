@@ -9,3 +9,12 @@ export class PasswordResetInvalidError extends ApplicationError {
     super('The password reset token is invalid or has expired.');
   }
 }
+
+export class PasswordResetPasswordInvalidError extends ApplicationError {
+  readonly code = 'IDENTITY.PASSWORD_RESET_PASSWORD_INVALID';
+  readonly category = ERROR_CATEGORY.REQUEST_ERROR;
+
+  constructor() {
+    super('The new password is invalid.');
+  }
+}
