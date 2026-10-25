@@ -49,6 +49,7 @@ import { PASSWORD_RESET_REQUEST_STORE } from './application/ports/password-reset
 import { PrismaPasswordResetRequestStore } from './infrastructure/persistence/prisma-password-reset-request.store.js';
 import { OutboundEmailModule } from '../outbound-email/outbound-email.module.js';
 import { ForgotPasswordHandler } from './application/commands/forgot-password/forgot-password.handler.js';
+import { PasswordPolicy } from './domain/services/password-policy.js';
 
 @Module({
   imports: [
