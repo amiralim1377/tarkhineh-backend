@@ -1,7 +1,10 @@
-import { OutboundEmailTemplateError } from '../errors/outbound-email-template.error.js';
+import { createElement } from 'react';
+import { render as renderEmail } from 'react-email';
 
+import { OutboundEmailTemplateError } from '../errors/outbound-email-template.error.js';
 import type { OutboundEmailContent } from '../ports/outbound-email-provider.port.js';
 import type { OutboundEmailTemplate } from './outbound-email-template.js';
+import { IdentityPasswordResetEmailView } from './components/identity/password-reset/identity-password-reset-email.view.js';
 
 const TEMPLATE_KEY = 'identity.password-reset';
 const TEMPLATE_VERSION = 1;
@@ -19,27 +22,24 @@ export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate
   readonly key = TEMPLATE_KEY;
   readonly version = TEMPLATE_VERSION;
 
-  render(payload: unknown): OutboundEmailContent {
+  async render(payload: unknown): Promise<OutboundEmailContent> {
     const validatedPayload = this.validatePayload(payload);
-
     const { email, resetUrl } = validatedPayload;
+
+    const element = createElement(IdentityPasswordResetEmailView, {
+      resetUrl,
+    });
+
+    const [html, text] = await Promise.all([
+      renderEmail(element),
+      renderEmail(element, { plainText: true }),
+    ]);
 
     return {
       to: email,
       subject: 'Reset your Tarkhineh password',
-      text: [
-        'Hello,',
-        '',
-        'We received a request to reset your Tarkhineh password.',
-        'Use the following link to choose a new password:',
-        '',
-        resetUrl,
-        '',
-        'If you did not request a password reset, you can ignore this email.',
-        '',
-        'For security reasons, this link expires automatically.',
-      ].join('\n'),
-      html: this.renderHtml(resetUrl),
+      text,
+      html,
     };
   }
 
@@ -117,39 +117,5 @@ export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate
       value === value.trim() &&
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
     );
-  }
-
-  private renderHtml(resetUrl: string): string {
-    const safeResetUrl = this.escapeHtml(resetUrl);
-
-    return [
-      '<!doctype html>',
-      '<html lang="en">',
-      '<head>',
-      '<meta charset="utf-8">',
-      '<meta name="viewport" content="width=device-width, initial-scale=1">',
-      '<title>Reset your Tarkhineh password</title>',
-      '</head>',
-      '<body>',
-      '<main>',
-      '<h1>Reset your password</h1>',
-      '<p>We received a request to reset your Tarkhineh password.</p>',
-      '<p>Use the link below to choose a new password.</p>',
-      `<p><a href="${safeResetUrl}">Reset password</a></p>`,
-      '<p>If you did not request a password reset, you can ignore this email.</p>',
-      '<p>For security reasons, this link expires automatically.</p>',
-      '</main>',
-      '</body>',
-      '</html>',
-    ].join('');
-  }
-
-  private escapeHtml(value: string): string {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
   }
 }
