@@ -40,6 +40,18 @@ const optionalPublicUrl = z.preprocess(
     .optional(),
 );
 
+const optionalHttpsUrl = z.preprocess(
+  emptyToUndefined,
+  z
+    .string()
+    .url()
+    .refine((value) => {
+      const url = new URL(value);
+      return url.protocol === 'https:';
+    }, 'OUTBOUND_EMAIL_LOGO_URL must use HTTPS')
+    .optional(),
+);
+
 const frontendUrl = z.preprocess(
   emptyToUndefined,
   z
@@ -140,6 +152,7 @@ export const envSchema = z
     SMTP_PASSWORD: optionalSecret,
     SMTP_FROM: optionalText,
     API_PUBLIC_URL: optionalPublicUrl,
+    OUTBOUND_EMAIL_LOGO_URL: optionalHttpsUrl,
     FRONTEND_URL: frontendUrl,
   })
   .superRefine((env, ctx) => {
@@ -167,6 +180,7 @@ export const envSchema = z
       ['SMTP_PASSWORD', env.SMTP_PASSWORD],
       ['SMTP_FROM', env.SMTP_FROM],
       ['API_PUBLIC_URL', env.API_PUBLIC_URL],
+      ['OUTBOUND_EMAIL_LOGO_URL', env.OUTBOUND_EMAIL_LOGO_URL],
     ] as const;
 
     if (env.NODE_ENV === 'production' && !smtpConfigured) {
