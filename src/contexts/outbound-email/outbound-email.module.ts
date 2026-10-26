@@ -24,6 +24,7 @@ import {
   TransactionalOutboundEmailDeliveryWorker,
 } from './infrastructure/queue/outbound-email-delivery.worker.js';
 import { IdentityEmailVerificationEmailTemplate } from './application/templates/identity/email-verification/email-verification.template.js';
+import { PasswordChangedEmailTemplate } from './application/templates/identity/password-changed/password-changed.template.js';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { IdentityEmailVerificationEmailTemplate } from './application/templates/
         return new OutboundEmailTemplateRegistry([
           new IdentityPasswordResetEmailTemplate(configService),
           new IdentityEmailVerificationEmailTemplate(configService),
+          new PasswordChangedEmailTemplate(configService),
         ]);
       },
     },
