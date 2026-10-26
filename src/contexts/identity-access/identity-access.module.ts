@@ -53,6 +53,8 @@ import { PasswordPolicy } from './domain/services/password-policy.js';
 import { PASSWORD_RESET_COMPLETION_STORE } from './application/ports/password-reset-completion-store.port.js';
 import { PrismaPasswordResetCompletionStore } from './infrastructure/persistence/prisma-password-reset-completion.store.js';
 import { ResetPasswordHandler } from './application/commands/reset-password/reset-password.handler.js';
+import { PASSWORD_CHANGE_STORE } from './application/ports/password-change-store.port.js';
+import { PrismaPasswordChangeStore } from './infrastructure/persistence/prisma-password-change.store.js';
 
 @Module({
   imports: [
@@ -95,6 +97,7 @@ import { ResetPasswordHandler } from './application/commands/reset-password/rese
     ForgotPasswordHandler,
     ResetPasswordHandler,
     PrismaPasswordResetCompletionStore,
+    PrismaPasswordChangeStore,
     {
       provide: PasswordPolicy,
       useFactory: () => new PasswordPolicy(),
@@ -134,6 +137,10 @@ import { ResetPasswordHandler } from './application/commands/reset-password/rese
     {
       provide: REFRESH_TOKEN_FACTORY,
       useExisting: SecureRefreshTokenFactory,
+    },
+    {
+      provide: PASSWORD_CHANGE_STORE,
+      useExisting: PrismaPasswordChangeStore,
     },
     {
       provide: AUTH_SESSION_POLICY,
