@@ -36,24 +36,26 @@ import {
   ChangePasswordCredentialsError,
   PasswordUnchangedError,
 } from '../../errors/change-password.errors.js';
+import { PasswordPolicy } from '../../../domain/services/password-policy.js';
+import {
+  PasswordPolicyViolationError,
+  PasswordRequiredError,
+} from '../../errors/password-policy.error.js';
 
 @CommandHandler(ChangePasswordCommand)
 export class ChangePasswordHandler implements ICommandHandler<ChangePasswordCommand> {
   constructor(
     @Inject(USER_AUTHENTICATION_REPOSITORY)
     private readonly users: UserAuthenticationRepository,
-
     @Inject(PASSWORD_VERIFIER)
     private readonly passwordVerifier: PasswordVerifier,
-
     @Inject(PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
-
     @Inject(PASSWORD_CHANGE_STORE)
     private readonly passwordChangeStore: PasswordChangeStore,
-
     @Inject(CLOCK)
     private readonly clock: Clock,
+    private readonly passwordPolicy: PasswordPolicy,
   ) {}
 
   async execute(command: ChangePasswordCommand): Promise<ChangePasswordResult> {
@@ -82,6 +84,14 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
 
     if (newPasswordMatchesCurrent) {
       throw new PasswordUnchangedError();
+    }
+
+    if (!command.newPassword || !command.newPassword.trim()) {
+      throw new PasswordRequiredError();
+    }
+
+    if (!this.passwordPolicy.isValid(command.newPassword)) {
+      throw new PasswordPolicyViolationError();
     }
 
     // 4. Hash before entering the database transaction.
