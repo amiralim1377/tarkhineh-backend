@@ -32,11 +32,9 @@ export interface EmailLayoutProps {
 const styles: Record<string, CSSProperties> = {
   body: {
     backgroundColor: '#EDEDED',
-    direction: 'rtl',
     fontFamily: '"Estedad", Tahoma, Arial, sans-serif',
     margin: '0',
     padding: '24px 12px',
-    textAlign: 'right',
   },
 
   container: {
@@ -48,9 +46,7 @@ const styles: Record<string, CSSProperties> = {
 
   content: {
     backgroundColor: '#FFFFFF',
-    direction: 'rtl',
     padding: '32px 24px',
-    textAlign: 'right',
   },
 };
 
@@ -62,17 +58,31 @@ export function EmailLayout({
   lang = 'fa',
   dir = 'rtl',
 }: EmailLayoutProps) {
+  const alignment = dir === 'rtl' ? 'right' : 'left';
+
+  const bodyStyle: CSSProperties = {
+    ...styles.body,
+    direction: dir,
+    textAlign: alignment,
+  };
+
+  const contentStyle: CSSProperties = {
+    ...styles.content,
+    direction: dir,
+    textAlign: alignment,
+  };
+
   return (
     <Html lang={lang} dir={dir}>
       <Head />
 
       <Preview>{previewText}</Preview>
 
-      <Body dir={dir} style={styles.body}>
+      <Body lang={lang} dir={dir} style={bodyStyle}>
         <Container style={styles.container}>
           <TarkhinehEmailHeader logoUrl={logoUrl} />
 
-          <Section dir={dir} style={styles.content}>
+          <Section lang={lang} dir={dir} style={contentStyle}>
             {children}
           </Section>
 
