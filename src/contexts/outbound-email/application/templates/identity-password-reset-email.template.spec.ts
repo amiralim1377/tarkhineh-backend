@@ -24,10 +24,12 @@ describe('IdentityPasswordResetEmailTemplate', () => {
     const content = await template.render({ resetUrl });
 
     expect(content.to).toBe('user@example.com');
-    expect(content.subject).toBe('Reset your Tarkhineh password');
+    expect(content.subject).toBe('بازیابی رمز عبور ترخینه');
     expect(content.text).toContain(resetUrl);
-    expect(content.text).toContain('If you did not request a password reset');
-    expect(content.html).toContain('Reset password');
+    expect(content.text).toContain(
+      'اگر شما درخواست بازیابی رمز عبور نداده‌اید',
+    );
+    expect(content.html).toContain('بازیابی رمز عبور');
     expect(content.html).toContain(
       'href="https://frontend.example/reset-password?token=opaque-token_123&amp;email=user%40example.com"',
     );
