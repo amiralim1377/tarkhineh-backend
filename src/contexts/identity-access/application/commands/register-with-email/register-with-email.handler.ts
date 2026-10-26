@@ -29,6 +29,13 @@ import {
   type OutboundEmailPayloadEncryptor,
 } from '../../../../outbound-email/application/ports/outbound-email-payload-encryptor.port.js';
 
+import {
+  PasswordPolicyViolationError,
+  PasswordRequiredError,
+} from '../../errors/password-policy.error.js';
+
+import { PasswordPolicy } from '../../../domain/services/password-policy.js';
+
 const REGISTRATION_MESSAGE =
   'If this email can be registered, a verification email will be sent.';
 
@@ -46,6 +53,8 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
     @Inject(CLOCK)
     private readonly clock: Clock,
     private readonly configService: ConfigService,
+    @Inject(PasswordPolicy)
+    private readonly passwordPolicy: PasswordPolicy,
   ) {}
 
   async execute(
@@ -54,6 +63,14 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
     const now = this.clock.now();
     const email = command.email.trim().toLowerCase();
     const displayName = command.displayName?.trim() || null;
+
+    if (!command.password.trim()) {
+      throw new PasswordRequiredError();
+    }
+
+    if (!this.passwordPolicy.isValid(command.password)) {
+      throw new PasswordPolicyViolationError();
+    }
 
     if (command.password.length < 8) {
       throw new InputValidationError([
