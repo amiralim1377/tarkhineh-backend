@@ -40,7 +40,19 @@ const validChallenge = {
   invalidatedAt: null,
 };
 
+const cancellableStatuses = [
+  'PENDING',
+  'DISPATCHING',
+  'QUEUED',
+  'RETRY_SCHEDULED',
+];
+
 function createHarness() {
+  const payloadEncryptor = {
+    encrypt: vi.fn((_plaintext: string) => 'encrypted-payload'),
+    decrypt: vi.fn((ciphertext: string) => ciphertext),
+  };
+
   const tx = {
     passwordResetChallenge: {
       findUnique: vi.fn().mockResolvedValue(candidate),
@@ -62,6 +74,7 @@ function createHarness() {
 
     outboundEmailMessage: {
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      create: vi.fn().mockResolvedValue({ id: 'outbound-email-1' }),
     },
 
     $queryRaw: vi
@@ -80,181 +93,306 @@ function createHarness() {
   } as unknown as PrismaService;
 
   return {
-    store: new PrismaPasswordResetCompletionStore(prisma),
+    store: new PrismaPasswordResetCompletionStore(prisma, payloadEncryptor),
     tx,
     transaction,
+    payloadEncryptor,
   };
 }
 
 describe('PrismaPasswordResetCompletionStore', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+
     normalizePrismaErrorMock.mockReset();
     normalizePrismaErrorMock.mockImplementation((error: unknown) => error);
   });
 
-  it('updates the password, consumes the challenge, and revokes sessions in one transaction', async () => {
-    // Arrange
-    const sut = createHarness();
-    // Act
-    const result = await sut.store.completePasswordReset(validInput);
-    // Assert
+  describe('successful password reset', () => {
+    it('updates the password, consumes the challenge, revokes sessions, and creates the notification in one transaction', async () => {
+      const sut = createHarness();
 
-    expect(result).toBe(true);
+      const result = await sut.store.completePasswordReset(validInput);
 
-    expect(sut.transaction).toHaveBeenCalledOnce();
+      expect(result).toBe(true);
+      expect(sut.transaction).toHaveBeenCalledOnce();
 
-    expect(sut.tx.passwordResetChallenge.findUnique).toHaveBeenCalledWith({
-      where: {
-        tokenHash: validInput.tokenHash,
-      },
-      select: {
-        id: true,
-        userId: true,
-      },
-    });
-
-    expect(sut.tx.$queryRaw).toHaveBeenCalledTimes(2);
-
-    expect(sut.tx.passwordResetChallenge.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: candidate.id,
-        userId: eligibleUser.id,
-        tokenHash: validInput.tokenHash,
-        consumedAt: null,
-        invalidatedAt: null,
-        expiresAt: {
-          gt: validInput.now,
+      expect(sut.tx.passwordResetChallenge.findUnique).toHaveBeenCalledWith({
+        where: {
+          tokenHash: validInput.tokenHash,
         },
-      },
-      data: {
-        consumedAt: validInput.now,
-      },
+        select: {
+          id: true,
+          userId: true,
+        },
+      });
+
+      expect(sut.tx.$queryRaw).toHaveBeenCalledTimes(2);
+
+      expect(sut.tx.passwordResetChallenge.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: candidate.id,
+          userId: eligibleUser.id,
+          tokenHash: validInput.tokenHash,
+          consumedAt: null,
+          invalidatedAt: null,
+          expiresAt: {
+            gt: validInput.now,
+          },
+        },
+        data: {
+          consumedAt: validInput.now,
+        },
+      });
+
+      expect(sut.tx.user.update).toHaveBeenCalledWith({
+        where: {
+          id: eligibleUser.id,
+        },
+        data: {
+          passwordHash: validInput.passwordHash,
+        },
+      });
+
+      expect(sut.tx.authSession.updateMany).toHaveBeenCalledWith({
+        where: {
+          userId: eligibleUser.id,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: validInput.now,
+          revocationReason: 'SECURITY_ACTION',
+        },
+      });
+
+      expect(sut.tx.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: {
+          revokedAt: null,
+          session: {
+            is: {
+              userId: eligibleUser.id,
+            },
+          },
+        },
+        data: {
+          revokedAt: validInput.now,
+        },
+      });
+
+      expect(sut.tx.authSession.updateMany).toHaveBeenCalledOnce();
+      expect(sut.tx.refreshToken.updateMany).toHaveBeenCalledOnce();
+
+      // There are two cleanup queries when there are no other challenges:
+      // pending delivery and unknown provider outcome for the consumed challenge.
+      expect(sut.tx.outboundEmailMessage.updateMany).toHaveBeenCalledTimes(2);
+
+      expect(sut.payloadEncryptor.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({
+          email: eligibleUser.email,
+        }),
+      );
+
+      expect(sut.tx.outboundEmailMessage.create).toHaveBeenCalledWith({
+        data: {
+          idempotencyKey: `password-changed:reset:${candidate.id}`,
+          lane: 'TRANSACTIONAL',
+          templateKey: 'identity.password-changed',
+          payloadVersion: 1,
+          encryptedPayload: 'encrypted-payload',
+          status: 'PENDING',
+          availableAt: validInput.now,
+          aggregateType: 'User',
+          aggregateId: eligibleUser.id,
+        },
+      });
+
+      expect(sut.tx.outboundEmailMessage.create).toHaveBeenCalledOnce();
+      expect(normalizePrismaErrorMock).not.toHaveBeenCalled();
     });
-
-    expect(sut.tx.user.update).toHaveBeenCalledWith({
-      where: {
-        id: eligibleUser.id,
-      },
-      data: {
-        passwordHash: validInput.passwordHash,
-      },
-    });
-
-    expect(sut.tx.authSession.updateMany).toHaveBeenCalledOnce();
-    expect(sut.tx.refreshToken.updateMany).toHaveBeenCalledOnce();
-
-    expect(sut.tx.outboundEmailMessage.updateMany).toHaveBeenCalledTimes(2);
-  });
-
-  it('returns false when the password reset challenge does not exist', async () => {
-    // arrange
-    const sut = createHarness();
-
-    sut.tx.passwordResetChallenge.findUnique.mockResolvedValueOnce(null);
-
-    // act
-    const result = await sut.store.completePasswordReset(validInput);
-
-    // assert
-
-    expect(result).toBe(false);
-    expect(sut.transaction).toHaveBeenCalledOnce();
-
-    expect(sut.tx.$queryRaw).not.toHaveBeenCalled();
-    expect(sut.tx.passwordResetChallenge.updateMany).not.toHaveBeenCalled();
-    expect(sut.tx.user.update).not.toHaveBeenCalled();
-    expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
-    expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
   });
 
   describe('input validation', () => {
     it('rejects an invalid token hash before opening a transaction', async () => {
-      // Arrange
       const sut = createHarness();
-      const input = { ...validInput, tokenHash: 'invalid-hash' };
+      const input = {
+        ...validInput,
+        tokenHash: 'invalid-hash',
+      };
 
-      // Act
-      // TODO: Call completePasswordReset with input.
+      await expect(
+        sut.store.completePasswordReset(input),
+      ).rejects.toMatchObject({
+        name: 'TypeError',
+        message: 'Password reset token hash is invalid.',
+      });
 
-      // Assert
-      // TODO: Expect the correct TypeError.
-      // TODO: Expect the transaction not to be called.
+      expect(sut.transaction).not.toHaveBeenCalled();
+      expect(normalizePrismaErrorMock).not.toHaveBeenCalled();
     });
 
     it('rejects an empty password hash before opening a transaction', async () => {
-      // Arrange
       const sut = createHarness();
-      const input = { ...validInput, passwordHash: '   ' };
+      const input = {
+        ...validInput,
+        passwordHash: '   ',
+      };
 
-      // Act
-      // TODO: Call completePasswordReset with input.
+      await expect(
+        sut.store.completePasswordReset(input),
+      ).rejects.toMatchObject({
+        name: 'TypeError',
+        message: 'Password reset password hash must not be empty.',
+      });
 
-      // Assert
-      // TODO: Expect the correct TypeError.
-      // TODO: Expect the transaction not to be called.
+      expect(sut.transaction).not.toHaveBeenCalled();
+      expect(normalizePrismaErrorMock).not.toHaveBeenCalled();
     });
 
     it('rejects an invalid date before opening a transaction', async () => {
-      // Arrange
       const sut = createHarness();
-      const input = { ...validInput, now: new Date('invalid') };
+      const input = {
+        ...validInput,
+        now: new Date('invalid'),
+      };
 
-      // Act
-      // TODO: Call completePasswordReset with input.
+      await expect(
+        sut.store.completePasswordReset(input),
+      ).rejects.toMatchObject({
+        name: 'RangeError',
+        message: 'Password reset timestamp is invalid.',
+      });
 
-      // Assert
-      // TODO: Expect the correct RangeError.
-      // TODO: Expect the transaction not to be called.
+      expect(sut.transaction).not.toHaveBeenCalled();
+      expect(normalizePrismaErrorMock).not.toHaveBeenCalled();
     });
   });
 
-  describe('challenge validation', () => {
-    it('returns false when the challenge does not exist', async () => {
-      // Arrange
+  describe('challenge and user validation', () => {
+    it('returns false when the password reset challenge does not exist', async () => {
       const sut = createHarness();
+
       sut.tx.passwordResetChallenge.findUnique.mockResolvedValueOnce(null);
 
-      // Act
       const result = await sut.store.completePasswordReset(validInput);
 
-      // Assert
-      // TODO: Expect result to be false.
-      // TODO: Verify that no user query or database update occurred.
+      expect(result).toBe(false);
+      expect(sut.transaction).toHaveBeenCalledOnce();
+
+      expect(sut.tx.$queryRaw).not.toHaveBeenCalled();
+      expect(sut.tx.passwordResetChallenge.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.user.update).not.toHaveBeenCalled();
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
     });
 
     it('returns false when the user does not exist', async () => {
-      // Arrange
       const sut = createHarness();
 
       sut.tx.$queryRaw.mockReset().mockResolvedValueOnce([]);
 
-      // Act
       const result = await sut.store.completePasswordReset(validInput);
 
-      // Assert
-      // TODO: Expect result to be false.
-      // TODO: Verify no Challenge update, password update, or session revocation.
+      expect(result).toBe(false);
+      expect(sut.tx.$queryRaw).toHaveBeenCalledOnce();
+
+      expect(sut.payloadEncryptor.encrypt).not.toHaveBeenCalled();
+
+      expect(sut.tx.passwordResetChallenge.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.user.update).not.toHaveBeenCalled();
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
     });
 
     it('returns false when the user is not eligible for password login', async () => {
-      // Arrange
+      const sut = createHarness();
+
+      sut.tx.$queryRaw.mockReset().mockResolvedValueOnce([
+        {
+          ...eligibleUser,
+          status: 'SUSPENDED',
+        },
+      ]);
+
+      const result = await sut.store.completePasswordReset(validInput);
+
+      expect(result).toBe(false);
+      expect(sut.tx.$queryRaw).toHaveBeenCalledOnce();
+
+      // The challenge must not be locked or consumed for an ineligible user.
+      expect(sut.tx.passwordResetChallenge.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.user.update).not.toHaveBeenCalled();
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
+    });
+
+    it('returns false when the user has no email address', async () => {
+      const sut = createHarness();
+
+      sut.tx.$queryRaw.mockReset().mockResolvedValueOnce([
+        {
+          ...eligibleUser,
+          email: null,
+        },
+      ]);
+
+      const result = await sut.store.completePasswordReset(validInput);
+
+      expect(result).toBe(false);
+      expect(sut.tx.$queryRaw).toHaveBeenCalledOnce();
+
+      expect(sut.tx.passwordResetChallenge.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.user.update).not.toHaveBeenCalled();
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
+    });
+
+    it('returns false when the challenge no longer exists when re-read under lock', async () => {
       const sut = createHarness();
 
       sut.tx.$queryRaw
         .mockReset()
-        .mockResolvedValueOnce([{ ...eligibleUser, status: 'SUSPENDED' }]);
+        .mockResolvedValueOnce([eligibleUser])
+        .mockResolvedValueOnce([]);
 
-      // Act
       const result = await sut.store.completePasswordReset(validInput);
 
-      // Assert
-      // TODO: Expect result to be false.
-      // TODO: Verify the Challenge was not locked or consumed.
-      // TODO: Verify the password and sessions were not changed.
+      expect(result).toBe(false);
+      expect(sut.tx.$queryRaw).toHaveBeenCalledTimes(2);
+
+      expect(sut.tx.passwordResetChallenge.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.user.update).not.toHaveBeenCalled();
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
+    });
+
+    it('returns false when the locked challenge belongs to a different user', async () => {
+      const sut = createHarness();
+
+      sut.tx.$queryRaw
+        .mockReset()
+        .mockResolvedValueOnce([eligibleUser])
+        .mockResolvedValueOnce([
+          {
+            ...validChallenge,
+            userId: 'different-user',
+          },
+        ]);
+
+      const result = await sut.store.completePasswordReset(validInput);
+
+      expect(result).toBe(false);
+      expect(sut.tx.passwordResetChallenge.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.user.update).not.toHaveBeenCalled();
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
     });
 
     it('returns false when the challenge has expired', async () => {
-      // Arrange
       const sut = createHarness();
 
       const expiredChallenge = {
@@ -267,16 +405,17 @@ describe('PrismaPasswordResetCompletionStore', () => {
         .mockResolvedValueOnce([eligibleUser])
         .mockResolvedValueOnce([expiredChallenge]);
 
-      // Act
       const result = await sut.store.completePasswordReset(validInput);
 
-      // Assert
-      // TODO: Expect result to be false.
-      // TODO: Verify no Challenge consumption or password update.
+      expect(result).toBe(false);
+      expect(sut.tx.passwordResetChallenge.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.user.update).not.toHaveBeenCalled();
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
     });
 
     it('returns false when the challenge has already been consumed', async () => {
-      // Arrange
       const sut = createHarness();
 
       const consumedChallenge = {
@@ -289,16 +428,17 @@ describe('PrismaPasswordResetCompletionStore', () => {
         .mockResolvedValueOnce([eligibleUser])
         .mockResolvedValueOnce([consumedChallenge]);
 
-      // Act
       const result = await sut.store.completePasswordReset(validInput);
 
-      // Assert
-      // TODO: Expect result to be false.
-      // TODO: Verify no password or session updates occurred.
+      expect(result).toBe(false);
+      expect(sut.tx.passwordResetChallenge.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.user.update).not.toHaveBeenCalled();
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
     });
 
     it('returns false when the challenge has been invalidated', async () => {
-      // Arrange
       const sut = createHarness();
 
       const invalidatedChallenge = {
@@ -311,47 +451,58 @@ describe('PrismaPasswordResetCompletionStore', () => {
         .mockResolvedValueOnce([eligibleUser])
         .mockResolvedValueOnce([invalidatedChallenge]);
 
-      // Act
       const result = await sut.store.completePasswordReset(validInput);
 
-      // Assert
-      // TODO: Expect result to be false.
-      // TODO: Verify no password or session updates occurred.
+      expect(result).toBe(false);
+      expect(sut.tx.passwordResetChallenge.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.user.update).not.toHaveBeenCalled();
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
     });
 
     it('returns false when conditional challenge consumption affects no rows', async () => {
-      // Arrange
       const sut = createHarness();
 
       sut.tx.passwordResetChallenge.updateMany.mockResolvedValueOnce({
         count: 0,
       });
 
-      // Act
       const result = await sut.store.completePasswordReset(validInput);
 
-      // Assert
-      // TODO: Expect result to be false.
-      // TODO: Verify the password and sessions were not updated.
+      expect(result).toBe(false);
+      expect(sut.tx.passwordResetChallenge.updateMany).toHaveBeenCalledOnce();
+
+      expect(sut.tx.user.update).not.toHaveBeenCalled();
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
     });
   });
 
   describe('transaction failures', () => {
-    it('propagates an error when updating the password fails', async () => {
-      // Arrange
+    it('normalizes and rethrows an error when updating the password fails', async () => {
       const sut = createHarness();
       const databaseError = new Error('Password update failed');
 
       sut.tx.user.update.mockRejectedValueOnce(databaseError);
 
-      // Act & Assert
-      // TODO: Expect completePasswordReset to reject with databaseError.
-      // TODO: Verify the password update was attempted.
-      // TODO: Verify session revocation did not continue.
+      await expect(sut.store.completePasswordReset(validInput)).rejects.toBe(
+        databaseError,
+      );
+
+      expect(sut.tx.user.update).toHaveBeenCalledOnce();
+
+      // Session revocation and notification creation must not continue.
+      expect(sut.tx.authSession.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(sut.tx.outboundEmailMessage.create).not.toHaveBeenCalled();
+
+      expect(normalizePrismaErrorMock).toHaveBeenCalledWith(databaseError);
     });
 
     it('normalizes and rethrows transaction errors', async () => {
-      // Arrange
       const sut = createHarness();
       const databaseError = new Error('Database failure');
       const normalizedError = new Error('Normalized persistence failure');
@@ -359,31 +510,129 @@ describe('PrismaPasswordResetCompletionStore', () => {
       sut.transaction.mockRejectedValueOnce(databaseError);
       normalizePrismaErrorMock.mockReturnValueOnce(normalizedError);
 
-      // Act & Assert
-      // TODO: Expect completePasswordReset to reject with normalizedError.
-      // TODO: Verify normalizePrismaErrorMock received databaseError.
+      await expect(sut.store.completePasswordReset(validInput)).rejects.toBe(
+        normalizedError,
+      );
+
+      expect(normalizePrismaErrorMock).toHaveBeenCalledWith(databaseError);
+    });
+
+    it('normalizes and rethrows an error when creating the notification fails', async () => {
+      const sut = createHarness();
+      const notificationError = new Error('Notification insert failed');
+
+      sut.tx.outboundEmailMessage.create.mockRejectedValueOnce(
+        notificationError,
+      );
+
+      await expect(sut.store.completePasswordReset(validInput)).rejects.toBe(
+        notificationError,
+      );
+
+      expect(sut.tx.user.update).toHaveBeenCalledOnce();
+      expect(sut.tx.authSession.updateMany).toHaveBeenCalledOnce();
+      expect(sut.tx.refreshToken.updateMany).toHaveBeenCalledOnce();
+
+      expect(sut.tx.outboundEmailMessage.create).toHaveBeenCalledOnce();
+      expect(normalizePrismaErrorMock).toHaveBeenCalledWith(notificationError);
     });
   });
 
   describe('previous challenges and outbound emails', () => {
-    it('invalidates previous challenges and handles their outbound messages', async () => {
-      // Arrange
+    it('invalidates previous challenges and cancels their pending outbound messages', async () => {
       const sut = createHarness();
 
+      const previousChallengeIds = ['challenge-old-1', 'challenge-old-2'];
+
       sut.tx.passwordResetChallenge.findMany.mockResolvedValueOnce([
-        { id: 'challenge-old-1' },
-        { id: 'challenge-old-2' },
+        { id: previousChallengeIds[0] },
+        { id: previousChallengeIds[1] },
       ]);
 
-      // Act
       const result = await sut.store.completePasswordReset(validInput);
 
-      // Assert
-      // TODO: Expect result to be true.
-      // TODO: Verify previous challenges were invalidated.
-      // TODO: Verify pending messages were cancelled and their payloads cleared.
-      // TODO: Verify OUTCOME_UNKNOWN messages had their payloads cleared.
-      // TODO: Verify password update and session revocation occurred.
+      expect(result).toBe(true);
+
+      expect(sut.tx.passwordResetChallenge.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: eligibleUser.id,
+          id: {
+            not: candidate.id,
+          },
+          consumedAt: null,
+          invalidatedAt: null,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      expect(sut.tx.passwordResetChallenge.updateMany).toHaveBeenNthCalledWith(
+        2,
+        {
+          where: {
+            id: {
+              in: previousChallengeIds,
+            },
+            consumedAt: null,
+            invalidatedAt: null,
+          },
+          data: {
+            invalidatedAt: validInput.now,
+          },
+        },
+      );
+
+      expect(sut.tx.outboundEmailMessage.updateMany).toHaveBeenNthCalledWith(
+        1,
+        {
+          where: {
+            aggregateType: 'PasswordResetChallenge',
+            aggregateId: {
+              in: previousChallengeIds,
+            },
+            status: {
+              in: cancellableStatuses,
+            },
+          },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: validInput.now,
+            encryptedPayload: null,
+            lockedBy: null,
+            lockedUntil: null,
+            lastErrorCode: 'CHALLENGE_SUPERSEDED',
+          },
+        },
+      );
+
+      expect(sut.tx.outboundEmailMessage.updateMany).toHaveBeenNthCalledWith(
+        2,
+        {
+          where: {
+            aggregateType: 'PasswordResetChallenge',
+            aggregateId: {
+              in: previousChallengeIds,
+            },
+            status: 'OUTCOME_UNKNOWN',
+          },
+          data: {
+            encryptedPayload: null,
+          },
+        },
+      );
+
+      // Two additional cleanup queries apply to the consumed challenge.
+      expect(sut.tx.outboundEmailMessage.updateMany).toHaveBeenCalledTimes(4);
+
+      expect(sut.tx.user.update).toHaveBeenCalledOnce();
+      expect(sut.tx.authSession.updateMany).toHaveBeenCalledOnce();
+      expect(sut.tx.refreshToken.updateMany).toHaveBeenCalledOnce();
+
+      expect(sut.payloadEncryptor.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ email: eligibleUser.email }),
+      );
+      expect(sut.tx.outboundEmailMessage.create).toHaveBeenCalledOnce();
     });
   });
 });
