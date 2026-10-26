@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { OutboundEmailTemplateError } from '../errors/outbound-email-template.error.js';
 import { IdentityPasswordResetEmailTemplate } from './identity-password-reset-email.template.js';
+import { ConfigService } from '@nestjs/config';
 
 describe('IdentityPasswordResetEmailTemplate', () => {
-  const template = new IdentityPasswordResetEmailTemplate();
+  const configService = new ConfigService({
+    OUTBOUND_EMAIL_LOGO_URL:
+      'https://assets.example.test/tarkhineh-logo-white.png',
+  });
+
+  const template = new IdentityPasswordResetEmailTemplate(configService);
 
   const resetUrl =
     'https://frontend.example/reset-password?token=opaque-token_123&email=user%40example.com';
