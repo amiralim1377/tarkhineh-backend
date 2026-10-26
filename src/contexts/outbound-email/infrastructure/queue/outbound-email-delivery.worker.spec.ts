@@ -7,6 +7,7 @@ import type { OutboundEmailDeliveryStore } from '../../application/ports/outboun
 import type { OutboundEmailPayloadEncryptor } from '../../application/ports/outbound-email-payload-encryptor.port.js';
 import type { OutboundEmailProvider } from '../../application/ports/outbound-email-provider.port.js';
 import { OutboundEmailDeliveryHandler } from './outbound-email-delivery.worker.js';
+import { ConfigService } from '@nestjs/config';
 
 const MESSAGE_ID = 'outbound-email-test-1';
 const LEASE_TOKEN = 'worker-test:lease-1';
@@ -69,7 +70,12 @@ function createHarness() {
   };
 
   const templateRegistry = new OutboundEmailTemplateRegistry([
-    new IdentityPasswordResetEmailTemplate(),
+    new IdentityPasswordResetEmailTemplate(
+      new ConfigService({
+        OUTBOUND_EMAIL_LOGO_URL:
+          'https://assets.example.test/tarkhineh-logo-white.png',
+      }),
+    ),
   ]);
 
   const handler = new OutboundEmailDeliveryHandler(
