@@ -68,7 +68,7 @@ import { IdentityEmailVerificationEmailTemplate } from './application/templates/
       useFactory: (configService: ConfigService) => {
         return new OutboundEmailTemplateRegistry([
           new IdentityPasswordResetEmailTemplate(configService),
-          new IdentityEmailVerificationEmailTemplate(),
+          new IdentityEmailVerificationEmailTemplate(configService),
         ]);
       },
     },
