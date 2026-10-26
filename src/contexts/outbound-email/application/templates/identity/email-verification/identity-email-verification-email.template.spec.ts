@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { describe, expect, it } from 'vitest';
 
-import { OutboundEmailTemplateError } from '../errors/outbound-email-template.error.js';
+import { OutboundEmailTemplateError } from '../../../errors/outbound-email-template.error.js';
 import { IdentityEmailVerificationEmailTemplate } from './identity-email-verification-email.template.js';
 
 describe('IdentityEmailVerificationEmailTemplate', () => {

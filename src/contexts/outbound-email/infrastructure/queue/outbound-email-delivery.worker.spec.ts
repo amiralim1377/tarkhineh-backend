@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OutboundEmailProviderError } from '../../application/errors/outbound-email-provider.error.js';
 import { OutboundEmailTemplateRegistry } from '../../application/templates/outbound-email-template.registry.js';
-import { IdentityPasswordResetEmailTemplate } from '../../application/templates/identity-password-reset-email.template.js';
+import { IdentityPasswordResetEmailTemplate } from '../../application/templates/identity/password-reset/identity-password-reset-email.template.js';
 import type { OutboundEmailDeliveryStore } from '../../application/ports/outbound-email-delivery-store.port.js';
 import type { OutboundEmailPayloadEncryptor } from '../../application/ports/outbound-email-payload-encryptor.port.js';
 import type { OutboundEmailProvider } from '../../application/ports/outbound-email-provider.port.js';

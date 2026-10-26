@@ -1,7 +1,7 @@
 import { Button, Heading, Hr, Section, Text } from 'react-email';
 import type { CSSProperties } from 'react';
 
-import { EmailLayout } from '../../components/layout/email-layout.js';
+import { EmailLayout } from '../../shared/layout/email-layout.js';
 
 export interface IdentityPasswordResetEmailViewProps {
   /**

@@ -10,7 +10,7 @@ import { OUTBOUND_EMAIL_DISPATCH_STORE } from './application/ports/outbound-emai
 import { OUTBOUND_EMAIL_DELIVERY_STORE } from './application/ports/outbound-email-delivery-store.port.js';
 
 import { OutboundEmailTemplateRegistry } from './application/templates/outbound-email-template.registry.js';
-import { IdentityPasswordResetEmailTemplate } from './application/templates/identity-password-reset-email.template.js';
+import { IdentityPasswordResetEmailTemplate } from './application/templates/identity/password-reset/identity-password-reset-email.template.js';
 
 import { AesGcmOutboundEmailPayloadEncryptor } from './infrastructure/security/aes-gcm-outbound-email-payload-encryptor.js';
 import { SmtpOutboundEmailProvider } from './infrastructure/providers/smtp-outbound-email.provider.js';
@@ -23,7 +23,7 @@ import {
   OutboundEmailDeliveryHandler,
   TransactionalOutboundEmailDeliveryWorker,
 } from './infrastructure/queue/outbound-email-delivery.worker.js';
-import { IdentityEmailVerificationEmailTemplate } from './application/templates/identity-email-verification-email.template.js';
+import { IdentityEmailVerificationEmailTemplate } from './application/templates/identity/email-verification/identity-email-verification-email.template.js';
 
 @Module({
   imports: [

@@ -1,25 +1,25 @@
 import { createElement } from 'react';
 import { render as renderEmail } from 'react-email';
-
-import { OutboundEmailTemplateError } from '../errors/outbound-email-template.error.js';
-import type { OutboundEmailContent } from '../ports/outbound-email-provider.port.js';
-import type { OutboundEmailTemplate } from './outbound-email-template.js';
-import { IdentityPasswordResetEmailView } from './identity/password-reset/identity-password-reset-email.view.js';
 import type { ConfigService } from '@nestjs/config';
 
-const TEMPLATE_KEY = 'identity.password-reset';
+import { OutboundEmailTemplateError } from '../../../errors/outbound-email-template.error.js';
+import type { OutboundEmailContent } from '../../../ports/outbound-email-provider.port.js';
+import type { OutboundEmailTemplate } from '../../outbound-email-template.js';
+import { IdentityEmailVerificationEmailView } from './identity-email-verification-email.view.js';
+
+const TEMPLATE_KEY = 'identity.email-verification';
 const TEMPLATE_VERSION = 1;
 
-const MAX_RESET_URL_LENGTH = 4096;
+const MAX_VERIFICATION_URL_LENGTH = 4096;
 const MAX_TOKEN_LENGTH = 2048;
 const MAX_EMAIL_LENGTH = 254;
 
-interface ValidatedResetPayload {
+interface ValidatedVerificationPayload {
   readonly email: string;
-  readonly resetUrl: string;
+  readonly verificationUrl: string;
 }
 
-export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate {
+export class IdentityEmailVerificationEmailTemplate implements OutboundEmailTemplate {
   readonly key = TEMPLATE_KEY;
   readonly version = TEMPLATE_VERSION;
 
@@ -27,19 +27,18 @@ export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate
 
   async render(payload: unknown): Promise<OutboundEmailContent> {
     const validatedPayload = this.validatePayload(payload);
-    const { email, resetUrl } = validatedPayload;
+    const { email, verificationUrl } = validatedPayload;
+
     const logoUrl = this.configService
       .get<string>('OUTBOUND_EMAIL_LOGO_URL')
       ?.trim();
 
     if (!logoUrl) {
-      throw new Error(
-        'OUTBOUND_EMAIL_LOGO_URL must be configured to render email templates.',
-      );
+      throw new OutboundEmailTemplateError('RENDER_FAILED');
     }
 
-    const element = createElement(IdentityPasswordResetEmailView, {
-      resetUrl,
+    const element = createElement(IdentityEmailVerificationEmailView, {
+      verificationUrl,
       logoUrl,
     });
 
@@ -50,13 +49,13 @@ export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate
 
     return {
       to: email,
-      subject: 'بازیابی رمز عبور ترخینه',
+      subject: 'تأیید ایمیل ترخینه',
       text,
       html,
     };
   }
 
-  private validatePayload(payload: unknown): ValidatedResetPayload {
+  private validatePayload(payload: unknown): ValidatedVerificationPayload {
     if (
       typeof payload !== 'object' ||
       payload === null ||
@@ -66,12 +65,15 @@ export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate
     }
 
     const record = payload as Record<string, unknown>;
-    const resetUrlValue = record.resetUrl;
+    const emailValue = record.email;
+    const verificationUrlValue = record.verificationUrl;
 
     if (
-      typeof resetUrlValue !== 'string' ||
-      resetUrlValue.length === 0 ||
-      resetUrlValue.length > MAX_RESET_URL_LENGTH
+      typeof emailValue !== 'string' ||
+      !this.isValidEmail(emailValue) ||
+      typeof verificationUrlValue !== 'string' ||
+      verificationUrlValue.length === 0 ||
+      verificationUrlValue.length > MAX_VERIFICATION_URL_LENGTH
     ) {
       throw new OutboundEmailTemplateError('PAYLOAD_INVALID');
     }
@@ -79,7 +81,7 @@ export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate
     let url: URL;
 
     try {
-      url = new URL(resetUrlValue);
+      url = new URL(verificationUrlValue);
     } catch {
       throw new OutboundEmailTemplateError('PAYLOAD_INVALID');
     }
@@ -88,39 +90,29 @@ export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate
       (url.protocol !== 'https:' && url.protocol !== 'http:') ||
       url.username.length > 0 ||
       url.password.length > 0 ||
-      url.pathname !== '/reset-password' ||
+      url.pathname !== '/auth/verify-email' ||
       url.hash.length > 0
     ) {
       throw new OutboundEmailTemplateError('PAYLOAD_INVALID');
     }
 
     const tokenValues = url.searchParams.getAll('token');
-    const emailValues = url.searchParams.getAll('email');
     const queryKeys = [...url.searchParams.keys()];
+    const token = tokenValues[0];
 
     if (
       tokenValues.length !== 1 ||
-      emailValues.length !== 1 ||
-      queryKeys.length !== 2 ||
-      queryKeys.some((key) => key !== 'token' && key !== 'email')
-    ) {
-      throw new OutboundEmailTemplateError('PAYLOAD_INVALID');
-    }
-
-    const token = tokenValues[0];
-    const email = emailValues[0];
-
-    if (
+      queryKeys.length !== 1 ||
+      queryKeys[0] !== 'token' ||
       !token ||
-      token.length > MAX_TOKEN_LENGTH ||
-      !this.isValidEmail(email)
+      token.length > MAX_TOKEN_LENGTH
     ) {
       throw new OutboundEmailTemplateError('PAYLOAD_INVALID');
     }
 
     return {
-      email,
-      resetUrl: url.toString(),
+      email: emailValue,
+      verificationUrl: url.toString(),
     };
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { OutboundEmailTemplateError } from '../errors/outbound-email-template.error.js';
+import { OutboundEmailTemplateError } from '../../../errors/outbound-email-template.error.js';
 import { IdentityPasswordResetEmailTemplate } from './identity-password-reset-email.template.js';
 import { ConfigService } from '@nestjs/config';
 
