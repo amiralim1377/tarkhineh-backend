@@ -5,6 +5,7 @@ import { OutboundEmailTemplateError } from '../errors/outbound-email-template.er
 import type { OutboundEmailContent } from '../ports/outbound-email-provider.port.js';
 import type { OutboundEmailTemplate } from './outbound-email-template.js';
 import { IdentityPasswordResetEmailView } from './components/identity/password-reset/identity-password-reset-email.view.js';
+import type { ConfigService } from '@nestjs/config';
 
 const TEMPLATE_KEY = 'identity.password-reset';
 const TEMPLATE_VERSION = 1;
@@ -22,10 +23,14 @@ export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate
   readonly key = TEMPLATE_KEY;
   readonly version = TEMPLATE_VERSION;
 
+  constructor(private readonly configService: ConfigService) {}
+
   async render(payload: unknown): Promise<OutboundEmailContent> {
     const validatedPayload = this.validatePayload(payload);
     const { email, resetUrl } = validatedPayload;
-    const logoUrl = process.env.OUTBOUND_EMAIL_LOGO_URL?.trim();
+    const logoUrl = this.configService
+      .get<string>('OUTBOUND_EMAIL_LOGO_URL')
+      ?.trim();
 
     if (!logoUrl) {
       throw new Error(
