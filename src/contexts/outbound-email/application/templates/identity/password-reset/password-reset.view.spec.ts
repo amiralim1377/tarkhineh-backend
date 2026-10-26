@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { render } from 'react-email';
 
-import { IdentityPasswordResetEmailView } from './identity-password-reset-email.view.js';
+import { IdentityPasswordResetEmailView } from './password-reset.view.js';
 
 describe('IdentityPasswordResetEmailView', () => {
   const resetUrl =

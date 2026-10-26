@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { render } from 'react-email';
 
-import { IdentityEmailVerificationEmailView } from './identity-email-verification-email.view.js';
+import { IdentityEmailVerificationEmailView } from './email-verification.view.js';
 
 describe('IdentityEmailVerificationEmailView', () => {
   const verificationUrl =
