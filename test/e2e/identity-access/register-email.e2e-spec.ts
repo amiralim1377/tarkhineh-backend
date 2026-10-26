@@ -16,9 +16,9 @@ import {
 
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
 
-import { EMAIL_VERIFICATION_SENDER } from '../../../src/contexts/identity-access/application/ports/email-verification-sender.port.js';
+import { OUTBOUND_EMAIL_PROVIDER } from '../../../src/contexts/outbound-email/application/ports/outbound-email-provider.port.js';
 
-import { EmailOutboxDispatcher } from '../../../src/contexts/identity-access/infrastructure/queue/email-outbox-dispatcher.js';
+import { OutboundEmailDispatcher } from '../../../src/contexts/outbound-email/infrastructure/queue/outbound-email-dispatcher.js';
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const originalBullMqPrefix = process.env.BULLMQ_PREFIX;
@@ -60,13 +60,15 @@ function restoreEnvironmentVariable(
 describe('Email registration flow (E2E)', () => {
   let app: INestApplication | undefined;
   let prisma: PrismaService;
-  let dispatcher: EmailOutboxDispatcher;
+  let dispatcher: OutboundEmailDispatcher;
 
   const testEmails = new Set<string>();
 
-  const emailSenderMock = vi
-    .fn<(email: string, rawToken: string) => Promise<void>>()
-    .mockResolvedValue(undefined);
+  const outboundEmailProviderMock = {
+    send: vi.fn().mockResolvedValue({
+      providerMessageId: 'e2e-provider-message-id',
+    }),
+  };
 
   beforeAll(async () => {
     // Restrict all database writes to the isolated test database.
@@ -82,10 +84,8 @@ describe('Email registration flow (E2E)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(EMAIL_VERIFICATION_SENDER)
-      .useValue({
-        sendVerificationEmail: emailSenderMock,
-      })
+      .overrideProvider(OUTBOUND_EMAIL_PROVIDER)
+      .useValue(outboundEmailProviderMock)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -102,7 +102,7 @@ describe('Email registration flow (E2E)', () => {
 
     prisma = app.get(PrismaService);
 
-    dispatcher = app.get(EmailOutboxDispatcher, {
+    dispatcher = app.get(OutboundEmailDispatcher, {
       strict: false,
     });
   });
@@ -120,7 +120,7 @@ describe('Email registration flow (E2E)', () => {
       testEmails.clear();
     }
 
-    emailSenderMock.mockClear();
+    outboundEmailProviderMock.send.mockClear();
   });
 
   afterAll(async () => {
@@ -136,26 +136,29 @@ describe('Email registration flow (E2E)', () => {
     }
   });
 
-  async function waitForOutboxToBeSent(outboxMessageId: string): Promise<void> {
+  async function waitForOutboxToBeAccepted(
+    outboxMessageId: string,
+  ): Promise<void> {
     const deadline = Date.now() + 15_000;
 
     while (Date.now() < deadline) {
-      const message = await prisma.emailOutboxMessage.findUnique({
-        where: {
-          id: outboxMessageId,
-        },
-        select: {
-          status: true,
-        },
+      const message = await prisma.outboundEmailMessage.findUnique({
+        where: { id: outboxMessageId },
+        select: { status: true },
       });
 
-      if (message?.status === 'SENT') {
+      if (message?.status === 'ACCEPTED') {
         return;
       }
 
-      if (message?.status === 'DEAD' || message?.status === 'CANCELLED') {
+      if (
+        message?.status === 'DEAD' ||
+        message?.status === 'CANCELLED' ||
+        message?.status === 'EXPIRED' ||
+        message?.status === 'OUTCOME_UNKNOWN'
+      ) {
         throw new Error(
-          `Email outbox message reached unexpected status: ${message.status}`,
+          `Outbound email message reached unexpected status: ${message.status}`,
         );
       }
 
@@ -163,7 +166,7 @@ describe('Email registration flow (E2E)', () => {
     }
 
     throw new Error(
-      'Timed out waiting for the email outbox message to be sent',
+      'Timed out waiting for the outbound email message to be accepted',
     );
   }
 
@@ -210,52 +213,74 @@ describe('Email registration flow (E2E)', () => {
 
     // 3. Find the verification challenge and associated Outbox message.
     const challenge = await prisma.emailVerificationChallenge.findFirst({
-      where: {
-        email,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      where: { email },
+      orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         tokenHash: true,
         consumedAt: true,
-        outboxMessage: {
-          select: {
-            id: true,
-          },
-        },
       },
     });
 
-    expect(challenge).not.toBeNull();
-
-    if (!challenge?.outboxMessage) {
+    if (!challenge) {
       throw new Error(
-        'Expected registration to create an email outbox message',
+        'Expected registration to create a verification challenge',
       );
     }
 
-    const outboxMessageId = challenge.outboxMessage.id;
+    const outboxMessage = await prisma.outboundEmailMessage.findFirst({
+      where: {
+        aggregateType: 'EmailVerificationChallenge',
+        aggregateId: challenge.id,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!outboxMessage) {
+      throw new Error(
+        'Expected registration to create an outbound email message',
+      );
+    }
+
+    const outboxMessageId = outboxMessage.id;
 
     // 4. Dispatch the persisted Outbox message to the real BullMQ queue.
-    await dispatcher.dispatchPendingMessages();
+    await dispatcher.dispatchAvailableMessages();
 
     // 5. Wait until the real Worker finishes processing the message.
     // The email sender is mocked, so no real email is sent.
-    await waitForOutboxToBeSent(outboxMessageId);
+    await waitForOutboxToBeAccepted(outboxMessageId);
 
-    const callsForThisEmail = emailSenderMock.mock.calls.filter(
-      ([recipient]) => recipient === email,
+    const callsForThisEmail = outboundEmailProviderMock.send.mock.calls.filter(
+      ([content]) => content.to === email,
     );
 
     expect(callsForThisEmail).toHaveLength(1);
 
-    const rawToken = callsForThisEmail[0]?.[1];
+    const providerCall = callsForThisEmail[0];
+
+    if (!providerCall) {
+      throw new Error('The Provider mock did not receive the email content');
+    }
+
+    // Find the token in the rendered email and match it against the stored
+    // challenge hash. This verifies the token that the Provider was given.
+    const renderedContent = JSON.stringify(providerCall[0]);
+    const rawToken = renderedContent
+      .match(/[A-Za-z0-9_-]{32,128}/g)
+      ?.find(
+        (candidate) =>
+          createHash('sha256').update(candidate).digest('hex') ===
+          challenge.tokenHash,
+      );
 
     if (!rawToken) {
       throw new Error(
-        'The email sender mock did not receive a verification token',
+        'The rendered email did not contain the challenge verification token',
       );
     }
 
@@ -264,23 +289,25 @@ describe('Email registration flow (E2E)', () => {
       challenge.tokenHash,
     );
 
-    const sentOutbox = await prisma.emailOutboxMessage.findUnique({
-      where: {
-        id: outboxMessageId,
-      },
+    const acceptedOutbox = await prisma.outboundEmailMessage.findUnique({
+      where: { id: outboxMessageId },
       select: {
         status: true,
-        attempts: true,
+        dispatchAttempts: true,
+        deliveryAttempts: true,
         sentAt: true,
-        encryptedToken: true,
+        encryptedPayload: true,
+        providerMessageId: true,
       },
     });
 
-    expect(sentOutbox).toMatchObject({
-      status: 'SENT',
-      attempts: 1,
+    expect(acceptedOutbox).toMatchObject({
+      status: 'ACCEPTED',
+      dispatchAttempts: 1,
+      deliveryAttempts: 1,
       sentAt: expect.any(Date),
-      encryptedToken: null,
+      encryptedPayload: null,
+      providerMessageId: 'e2e-provider-message-id',
     });
 
     // 7. Submit the token through the real HTTP verification endpoint.

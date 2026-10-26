@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ERROR_CATEGORY } from '../../errors/error-category.js';
 import {
+  createPublicProblemDetails,
   ERROR_CATEGORY_TO_HTTP_STATUS,
   mapSafeHttpException,
 } from './http-error-mapper.js';
@@ -24,6 +25,41 @@ describe('HTTP error mapper', () => {
     expect(Object.values(ERROR_CATEGORY_TO_HTTP_STATUS)).toHaveLength(
       Object.keys(ERROR_CATEGORY).length,
     );
+  });
+
+  it('creates an RFC 9457 Problem Details document and preserves safe extensions', () => {
+    expect(
+      createPublicProblemDetails(422, 'request-123', {
+        code: 'TEST.EXAMPLE_FAILURE',
+        category: ERROR_CATEGORY.BUSINESS_RULE,
+        params: { min: 2 },
+      }),
+    ).toEqual({
+      type: 'about:blank',
+      title: 'Unprocessable Content',
+      status: 422,
+      instance: '/problem-occurrences/request-123',
+      code: 'TEST.EXAMPLE_FAILURE',
+      category: ERROR_CATEGORY.BUSINESS_RULE,
+      requestId: 'request-123',
+      params: { min: 2 },
+    });
+  });
+
+  it('uses the current HTTP reason phrase for common status titles', () => {
+    expect(
+      createPublicProblemDetails(HttpStatus.BAD_REQUEST, 'req-400', {
+        code: 'COMMON.INVALID_REQUEST',
+        category: ERROR_CATEGORY.VALIDATION,
+      }),
+    ).toMatchObject({ type: 'about:blank', title: 'Bad Request', status: 400 });
+
+    expect(
+      createPublicProblemDetails(HttpStatus.PAYLOAD_TOO_LARGE, 'req-413', {
+        code: 'COMMON.INVALID_REQUEST',
+        category: ERROR_CATEGORY.VALIDATION,
+      }),
+    ).toMatchObject({ title: 'Content Too Large', status: 413 });
   });
 
   it('maps standard HTTP exceptions without exposing exception messages', () => {

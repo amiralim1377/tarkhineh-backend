@@ -16,30 +16,24 @@ import {
 
 import { AppModule } from '../../../src/app.module.js';
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
-import { EMAIL_VERIFICATION_SENDER } from '../../../src/contexts/identity-access/application/ports/email-verification-sender.port.js';
+import { OUTBOUND_EMAIL_PROVIDER } from '../../../src/contexts/outbound-email/application/ports/outbound-email-provider.port.js';
 
 function createTestDatabaseUrl(): string {
   const configuredUrl = process.env.DATABASE_URL;
 
   if (!configuredUrl) {
-    throw new Error(
-      'DATABASE_URL must be configured for E2E tests',
-    );
+    throw new Error('DATABASE_URL must be configured for E2E tests');
   }
 
   const url = new URL(configuredUrl);
-  const databaseName = decodeURIComponent(
-    url.pathname.replace(/^\/+/, ''),
-  );
+  const databaseName = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
 
   if (databaseName === 'tarkhineh_test') {
     return url.toString();
   }
 
   if (databaseName !== 'tarkhineh_db') {
-    throw new Error(
-      'Refusing to run E2E tests against an unexpected database',
-    );
+    throw new Error('Refusing to run E2E tests against an unexpected database');
   }
 
   url.pathname = '/tarkhineh_test';
@@ -53,8 +47,10 @@ describe('POST /auth/verify-email (E2E)', () => {
 
   const testEmails = new Set<string>();
 
-  const emailSender = {
-    sendVerificationEmail: vi.fn().mockResolvedValue(undefined),
+  const outboundEmailProviderMock = {
+    send: vi.fn().mockResolvedValue({
+      providerMessageId: 'e2e-provider-message-id',
+    }),
   };
 
   beforeAll(async () => {
@@ -64,8 +60,8 @@ describe('POST /auth/verify-email (E2E)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(EMAIL_VERIFICATION_SENDER)
-      .useValue(emailSender)
+      .overrideProvider(OUTBOUND_EMAIL_PROVIDER)
+      .useValue(outboundEmailProviderMock)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -95,7 +91,7 @@ describe('POST /auth/verify-email (E2E)', () => {
       testEmails.clear();
     }
 
-    emailSender.sendVerificationEmail.mockClear();
+    outboundEmailProviderMock.send.mockClear();
   });
 
   afterAll(async () => {
@@ -111,9 +107,7 @@ describe('POST /auth/verify-email (E2E)', () => {
   }> {
     const email = `verify-e2e-${randomUUID()}@example.com`;
     const rawToken = randomBytes(32).toString('base64url');
-    const tokenHash = createHash('sha256')
-      .update(rawToken)
-      .digest('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
 
     testEmails.add(email);
 
@@ -141,8 +135,7 @@ describe('POST /auth/verify-email (E2E)', () => {
   }
 
   it('activates a pending user when a valid token is submitted', async () => {
-    const { email, rawToken, tokenHash } =
-      await createPendingUser();
+    const { email, rawToken, tokenHash } = await createPendingUser();
 
     const response = await request(app!.getHttpServer())
       .post('/auth/verify-email')
@@ -166,11 +159,10 @@ describe('POST /auth/verify-email (E2E)', () => {
       emailVerifiedAt: expect.any(Date),
     });
 
-    const challenge =
-      await prisma.emailVerificationChallenge.findUnique({
-        where: { tokenHash },
-        select: { consumedAt: true },
-      });
+    const challenge = await prisma.emailVerificationChallenge.findUnique({
+      where: { tokenHash },
+      select: { consumedAt: true },
+    });
 
     expect(challenge?.consumedAt).toBeInstanceOf(Date);
   });

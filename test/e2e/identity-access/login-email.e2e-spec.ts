@@ -18,7 +18,7 @@ import {
 
 import { appCreate } from '../../../src/app.create.js';
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
-import { EMAIL_VERIFICATION_SENDER } from '../../../src/contexts/identity-access/application/ports/email-verification-sender.port.js';
+import { OUTBOUND_EMAIL_PROVIDER } from '../../../src/contexts/outbound-email/application/ports/outbound-email-provider.port.js';
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const originalBullMqPrefix = process.env.BULLMQ_PREFIX;
@@ -62,8 +62,10 @@ describe('Identity access authentication (E2E)', () => {
 
   const testEmails = new Set<string>();
 
-  const emailSenderMock = {
-    sendVerificationEmail: vi.fn().mockResolvedValue(undefined),
+  const outboundEmailProviderMock = {
+    send: vi.fn().mockResolvedValue({
+      providerMessageId: 'e2e-provider-message-id',
+    }),
   };
 
   beforeAll(async () => {
@@ -79,8 +81,8 @@ describe('Identity access authentication (E2E)', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(EMAIL_VERIFICATION_SENDER)
-      .useValue(emailSenderMock)
+      .overrideProvider(OUTBOUND_EMAIL_PROVIDER)
+      .useValue(outboundEmailProviderMock)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -104,7 +106,7 @@ describe('Identity access authentication (E2E)', () => {
       testEmails.clear();
     }
 
-    emailSenderMock.sendVerificationEmail.mockClear();
+    outboundEmailProviderMock.send.mockClear();
   });
 
   afterAll(async () => {

@@ -125,7 +125,7 @@ describe('OutboundEmailDeliveryHandler', () => {
     expect(provider.send).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'user@example.com',
-        subject: 'Reset your Tarkhineh password',
+        subject: 'بازیابی رمز عبور ترخینه',
       }),
     );
 
