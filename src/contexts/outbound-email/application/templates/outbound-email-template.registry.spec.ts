@@ -16,7 +16,9 @@ function createTemplate(
   options: {
     readonly key?: string;
     readonly version?: number;
-    readonly render?: (payload: unknown) => OutboundEmailContent;
+    readonly render?: (
+      payload: unknown,
+    ) => OutboundEmailContent | Promise<OutboundEmailContent>;
   } = {},
 ): OutboundEmailTemplate {
   return {
@@ -33,15 +35,12 @@ function createRegistry(
 }
 
 describe('OutboundEmailTemplateRegistry', () => {
-  it('renders a registered template version', () => {
+  it('renders a registered template version', async () => {
     const render = vi.fn().mockReturnValue(validContent);
-    const registry = createRegistry([
-      createTemplate({ render }),
-    ]);
-
+    const registry = createRegistry([createTemplate({ render })]);
     const payload = { userName: 'Test User' };
 
-    const result = registry.render({
+    const result = await registry.render({
       templateKey: 'identity.example',
       payloadVersion: 1,
       payload,
@@ -51,7 +50,28 @@ describe('OutboundEmailTemplateRegistry', () => {
     expect(render).toHaveBeenCalledWith(payload);
   });
 
-  it('supports multiple versions of the same template key', () => {
+  it('supports asynchronous template rendering', async () => {
+    const registry = createRegistry([
+      createTemplate({
+        render: async () => ({
+          ...validContent,
+          subject: 'Asynchronous result',
+        }),
+      }),
+    ]);
+
+    await expect(
+      registry.render({
+        templateKey: 'identity.example',
+        payloadVersion: 1,
+        payload: {},
+      }),
+    ).resolves.toMatchObject({
+      subject: 'Asynchronous result',
+    });
+  });
+
+  it('supports multiple versions of the same template key', async () => {
     const versionOne = createTemplate({
       version: 1,
       render: vi.fn().mockReturnValue({
@@ -70,33 +90,33 @@ describe('OutboundEmailTemplateRegistry', () => {
 
     const registry = createRegistry([versionOne, versionTwo]);
 
-    expect(
+    await expect(
       registry.render({
         templateKey: 'identity.example',
         payloadVersion: 1,
         payload: {},
-      }).subject,
-    ).toBe('Version one');
+      }),
+    ).resolves.toMatchObject({ subject: 'Version one' });
 
-    expect(
+    await expect(
       registry.render({
         templateKey: 'identity.example',
         payloadVersion: 2,
         payload: {},
-      }).subject,
-    ).toBe('Version two');
+      }),
+    ).resolves.toMatchObject({ subject: 'Version two' });
   });
 
-  it('rejects an unregistered template key', () => {
+  it('rejects an unregistered template key', async () => {
     const registry = createRegistry();
 
-    expect(() =>
+    await expect(
       registry.render({
         templateKey: 'identity.unknown',
         payloadVersion: 1,
         payload: {},
       }),
-    ).toThrowError(
+    ).rejects.toThrowError(
       expect.objectContaining({
         name: 'OutboundEmailTemplateError',
         kind: 'UNSUPPORTED_TEMPLATE',
@@ -104,16 +124,16 @@ describe('OutboundEmailTemplateRegistry', () => {
     );
   });
 
-  it('rejects an unsupported template version', () => {
+  it('rejects an unsupported template version', async () => {
     const registry = createRegistry();
 
-    expect(() =>
+    await expect(
       registry.render({
         templateKey: 'identity.example',
         payloadVersion: 2,
         payload: {},
       }),
-    ).toThrowError(
+    ).rejects.toThrowError(
       expect.objectContaining({
         name: 'OutboundEmailTemplateError',
         kind: 'UNSUPPORTED_TEMPLATE_VERSION',
@@ -121,16 +141,16 @@ describe('OutboundEmailTemplateRegistry', () => {
     );
   });
 
-  it('rejects an invalid version number', () => {
+  it('rejects an invalid version number', async () => {
     const registry = createRegistry();
 
-    expect(() =>
+    await expect(
       registry.render({
         templateKey: 'identity.example',
         payloadVersion: 0,
         payload: {},
       }),
-    ).toThrowError(
+    ).rejects.toThrowError(
       expect.objectContaining({
         kind: 'UNSUPPORTED_TEMPLATE_VERSION',
       }),
@@ -138,32 +158,24 @@ describe('OutboundEmailTemplateRegistry', () => {
   });
 
   it('rejects duplicate registrations of the same key and version', () => {
-    expect(
-      () =>
-        createRegistry([
-          createTemplate(),
-          createTemplate(),
-        ]),
-    ).toThrow('Duplicate outbound email template registration.');
+    expect(() => createRegistry([createTemplate(), createTemplate()])).toThrow(
+      'Duplicate outbound email template registration.',
+    );
   });
 
   it('rejects an invalid template key during registration', () => {
     expect(() =>
-      createRegistry([
-        createTemplate({ key: 'Invalid Key' }),
-      ]),
+      createRegistry([createTemplate({ key: 'Invalid Key' })]),
     ).toThrow('Outbound email template key is invalid.');
   });
 
   it('rejects an invalid template version during registration', () => {
-    expect(() =>
-      createRegistry([
-        createTemplate({ version: 0 }),
-      ]),
-    ).toThrow('Outbound email template version is invalid.');
+    expect(() => createRegistry([createTemplate({ version: 0 })])).toThrow(
+      'Outbound email template version is invalid.',
+    );
   });
 
-  it('preserves a known payload validation error', () => {
+  it('preserves a known payload validation error', async () => {
     const registry = createRegistry([
       createTemplate({
         render: () => {
@@ -172,13 +184,13 @@ describe('OutboundEmailTemplateRegistry', () => {
       }),
     ]);
 
-    expect(() =>
+    await expect(
       registry.render({
         templateKey: 'identity.example',
         payloadVersion: 1,
         payload: { unexpected: true },
       }),
-    ).toThrowError(
+    ).rejects.toThrowError(
       expect.objectContaining({
         name: 'OutboundEmailTemplateError',
         kind: 'PAYLOAD_INVALID',
@@ -186,36 +198,41 @@ describe('OutboundEmailTemplateRegistry', () => {
     );
   });
 
-  it('does not expose an unexpected renderer error', () => {
+  it('does not expose an unexpected renderer error', async () => {
     const registry = createRegistry([
       createTemplate({
-        render: () => {
+        render: async () => {
           throw new Error('Sensitive internal details');
         },
       }),
     ]);
 
-    try {
+    await expect(
       registry.render({
         templateKey: 'identity.example',
         payloadVersion: 1,
         payload: {},
-      });
+      }),
+    ).rejects.toMatchObject({
+      name: 'OutboundEmailTemplateError',
+      kind: 'RENDER_FAILED',
+      message: 'Outbound email template rendering failed.',
+    });
 
-      throw new Error('Expected template rendering to fail');
-    } catch (error: unknown) {
-      expect(error).toBeInstanceOf(OutboundEmailTemplateError);
-      expect(error).toMatchObject({
-        kind: 'RENDER_FAILED',
-        message: 'Outbound email template rendering failed.',
+    try {
+      await registry.render({
+        templateKey: 'identity.example',
+        payloadVersion: 1,
+        payload: {},
       });
+    } catch (error: unknown) {
       expect((error as Error).message).not.toContain(
         'Sensitive internal details',
       );
     }
   });
 
-  it('rejects invalid rendered content before the Provider can receive it', () => {
+  it('rejects invalid rendered content before the Provider can receive it', async () => {
     const registry = createRegistry([
       createTemplate({
         render: () => ({
@@ -225,20 +242,18 @@ describe('OutboundEmailTemplateRegistry', () => {
       }),
     ]);
 
-    expect(() =>
+    await expect(
       registry.render({
         templateKey: 'identity.example',
         payloadVersion: 1,
         payload: {},
       }),
-    ).toThrowError(
-      expect.objectContaining({
-        kind: 'RENDER_FAILED',
-      }),
-    );
+    ).rejects.toMatchObject({
+      kind: 'RENDER_FAILED',
+    });
   });
 
-  it('rejects empty message bodies', () => {
+  it('rejects empty message bodies', async () => {
     const registry = createRegistry([
       createTemplate({
         render: () => ({
@@ -248,16 +263,14 @@ describe('OutboundEmailTemplateRegistry', () => {
       }),
     ]);
 
-    expect(() =>
+    await expect(
       registry.render({
         templateKey: 'identity.example',
         payloadVersion: 1,
         payload: {},
       }),
-    ).toThrowError(
-      expect.objectContaining({
-        kind: 'RENDER_FAILED',
-      }),
-    );
+    ).rejects.toMatchObject({
+      kind: 'RENDER_FAILED',
+    });
   });
 });

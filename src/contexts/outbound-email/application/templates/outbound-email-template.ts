@@ -11,5 +11,7 @@ export interface OutboundEmailTemplate {
   readonly key: string;
   readonly version: number;
 
-  render(payload: unknown): OutboundEmailContent;
+  render(
+    payload: unknown,
+  ): OutboundEmailContent | Promise<OutboundEmailContent>;
 }

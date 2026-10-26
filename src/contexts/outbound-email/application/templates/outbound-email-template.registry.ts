@@ -8,8 +8,7 @@ export interface RenderOutboundEmailTemplateInput {
   readonly payload: unknown;
 }
 
-const TEMPLATE_KEY_PATTERN =
-  /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
+const TEMPLATE_KEY_PATTERN = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
 
 const MAX_TEMPLATE_KEY_LENGTH = 120;
 const MAX_TEMPLATE_VERSION = 2_147_483_647;
@@ -26,7 +25,9 @@ export class OutboundEmailTemplateRegistry {
     }
   }
 
-  render(input: RenderOutboundEmailTemplateInput): OutboundEmailContent {
+  async render(
+    input: RenderOutboundEmailTemplateInput,
+  ): Promise<OutboundEmailContent> {
     const { templateKey, payloadVersion, payload } = input;
 
     if (
@@ -48,23 +49,19 @@ export class OutboundEmailTemplateRegistry {
       payloadVersion < 1 ||
       payloadVersion > MAX_TEMPLATE_VERSION
     ) {
-      throw new OutboundEmailTemplateError(
-        'UNSUPPORTED_TEMPLATE_VERSION',
-      );
+      throw new OutboundEmailTemplateError('UNSUPPORTED_TEMPLATE_VERSION');
     }
 
     const template = versions.get(payloadVersion);
 
     if (!template) {
-      throw new OutboundEmailTemplateError(
-        'UNSUPPORTED_TEMPLATE_VERSION',
-      );
+      throw new OutboundEmailTemplateError('UNSUPPORTED_TEMPLATE_VERSION');
     }
 
     let content: OutboundEmailContent;
 
     try {
-      content = template.render(payload);
+      content = await template.render(payload);
     } catch (error: unknown) {
       if (error instanceof OutboundEmailTemplateError) {
         throw error;
@@ -114,9 +111,7 @@ export class OutboundEmailTemplateRegistry {
     versions.set(definition.version, definition);
   }
 
-  private validateRenderedContent(
-    content: OutboundEmailContent,
-  ): void {
+  private validateRenderedContent(content: OutboundEmailContent): void {
     if (
       !content ||
       typeof content !== 'object' ||

@@ -103,7 +103,7 @@ export class OutboundEmailDeliveryHandler {
     let content;
 
     try {
-      content = this.templateRegistry.render({
+      content = await this.templateRegistry.render({
         templateKey: delivery.templateKey,
         payloadVersion: delivery.payloadVersion,
         payload,
