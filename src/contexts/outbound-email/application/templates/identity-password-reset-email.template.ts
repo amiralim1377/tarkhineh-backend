@@ -25,9 +25,17 @@ export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate
   async render(payload: unknown): Promise<OutboundEmailContent> {
     const validatedPayload = this.validatePayload(payload);
     const { email, resetUrl } = validatedPayload;
+    const logoUrl = process.env.OUTBOUND_EMAIL_LOGO_URL?.trim();
+
+    if (!logoUrl) {
+      throw new Error(
+        'OUTBOUND_EMAIL_LOGO_URL must be configured to render email templates.',
+      );
+    }
 
     const element = createElement(IdentityPasswordResetEmailView, {
       resetUrl,
+      logoUrl,
     });
 
     const [html, text] = await Promise.all([
