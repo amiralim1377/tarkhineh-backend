@@ -171,16 +171,17 @@ describe('Email verification with PostgreSQL', () => {
   });
 
   it('does not activate a user with an expired token', async () => {
-    const now = new Date();
+    const createdAt = new Date();
 
-    const { email, tokenHash } = await createPendingUser(
-      now,
-      new Date(now.getTime() - 60 * 1000),
-    );
+    const expiresAt = new Date(createdAt.getTime() + 60 * 1000);
+
+    const verificationNow = new Date(createdAt.getTime() + 2 * 60 * 1000);
+
+    const { email, tokenHash } = await createPendingUser(createdAt, expiresAt);
 
     const result = await verificationRepository.verifyByTokenHash(
       tokenHash,
-      now,
+      verificationNow,
     );
 
     expect(result).toBe(false);
