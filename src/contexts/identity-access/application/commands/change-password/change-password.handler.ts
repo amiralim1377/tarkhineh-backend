@@ -77,6 +77,15 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
     }
 
     // 3. Prevent reusing the current password.
+
+    if (!command.newPassword || !command.newPassword.trim()) {
+      throw new PasswordRequiredError();
+    }
+    // 4. Validate the new password policy.
+    if (!this.passwordPolicy.isValid(command.newPassword)) {
+      throw new PasswordPolicyViolationError();
+    }
+
     const newPasswordMatchesCurrent = await this.passwordVerifier.verify(
       user.passwordHash,
       command.newPassword,
@@ -86,18 +95,10 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
       throw new PasswordUnchangedError();
     }
 
-    if (!command.newPassword || !command.newPassword.trim()) {
-      throw new PasswordRequiredError();
-    }
-
-    if (!this.passwordPolicy.isValid(command.newPassword)) {
-      throw new PasswordPolicyViolationError();
-    }
-
-    // 4. Hash before entering the database transaction.
+    // 5. Hash before entering the database transaction.
     const newPasswordHash = await this.passwordHasher.hash(command.newPassword);
 
-    // 5. Atomically change the password, revoke sessions,
+    // 6. Atomically change the password, revoke sessions,
     // and enqueue the security notification.
     const changed =
       await this.passwordChangeStore.changePasswordAndEnqueueNotification({
