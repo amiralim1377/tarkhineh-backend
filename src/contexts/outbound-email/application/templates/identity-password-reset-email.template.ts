@@ -4,7 +4,7 @@ import { render as renderEmail } from 'react-email';
 import { OutboundEmailTemplateError } from '../errors/outbound-email-template.error.js';
 import type { OutboundEmailContent } from '../ports/outbound-email-provider.port.js';
 import type { OutboundEmailTemplate } from './outbound-email-template.js';
-import { IdentityPasswordResetEmailView } from './components/identity/password-reset/identity-password-reset-email.view.js';
+import { IdentityPasswordResetEmailView } from './identity/password-reset/identity-password-reset-email.view.js';
 import type { ConfigService } from '@nestjs/config';
 
 const TEMPLATE_KEY = 'identity.password-reset';

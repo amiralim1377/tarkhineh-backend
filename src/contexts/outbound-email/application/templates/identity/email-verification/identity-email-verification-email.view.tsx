@@ -1,13 +1,13 @@
 import { Button, Heading, Hr, Section, Text } from 'react-email';
 import type { CSSProperties } from 'react';
 
-import { EmailLayout } from '../../layout/email-layout.js';
+import { EmailLayout } from '../../components/layout/email-layout.js';
 
-export interface IdentityPasswordResetEmailViewProps {
+export interface IdentityEmailVerificationEmailViewProps {
   /**
-   * A validated password-reset URL.
+   * A validated email-verification URL.
    */
-  readonly resetUrl: string;
+  readonly verificationUrl: string;
 
   /**
    * An absolute HTTPS URL to the publicly hosted brand logo.
@@ -47,7 +47,9 @@ const styles: Record<string, CSSProperties> = {
   },
 
   buttonSection: {
-    padding: '10px 0 22px',
+    paddingTop: '10px',
+    paddingBottom: '22px',
+    textAlign: 'right',
   },
 
   button: {
@@ -60,7 +62,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: '700',
     lineHeight: '1.8',
     padding: '12px 24px',
-    textAlign: 'left',
+    textAlign: 'center',
     textDecoration: 'none',
   },
 
@@ -91,40 +93,40 @@ const styles: Record<string, CSSProperties> = {
   },
 };
 
-export function IdentityPasswordResetEmailView({
-  resetUrl,
+export function IdentityEmailVerificationEmailView({
+  verificationUrl,
   logoUrl,
-}: IdentityPasswordResetEmailViewProps) {
+}: IdentityEmailVerificationEmailViewProps) {
   return (
     <EmailLayout
-      previewText="برای امنیت حساب کاربری خود، رمز عبورتان را بازیابی کنید."
+      previewText="برای تکمیل ثبت‌نام، نشانی ایمیل خود را تأیید کنید."
       logoUrl={logoUrl}
       footerMessage="این ایمیل به‌صورت خودکار از طرف ترخینه ارسال شده است."
       lang="fa"
       dir="rtl"
     >
-      <Text style={styles.eyebrow}>امنیت حساب کاربری</Text>
+      <Text style={styles.eyebrow}>تأیید حساب کاربری</Text>
 
       <Heading as="h1" style={styles.heading}>
-        بازیابی رمز عبور
+        به ترخینه خوش آمدید
       </Heading>
 
       <Text style={styles.paragraph}>سلام،</Text>
 
       <Text style={styles.paragraph}>
-        درخواستی برای بازیابی رمز عبور حساب کاربری ترخینه شما دریافت کرده‌ایم.
-        برای انتخاب رمز عبور جدید، روی دکمه زیر کلیک کنید.
+        از ثبت‌نام شما در ترخینه سپاسگزاریم. برای تکمیل ثبت‌نام و تأیید نشانی
+        ایمیل خود، روی دکمه زیر کلیک کنید.
       </Text>
 
       <Section style={styles.buttonSection}>
-        <Button href={resetUrl} style={styles.button}>
-          بازیابی رمز عبور
+        <Button href={verificationUrl} style={styles.button}>
+          تأیید نشانی ایمیل
         </Button>
       </Section>
 
       <Text style={styles.smallText}>
-        اگر شما درخواست بازیابی رمز عبور نداده‌اید، می‌توانید این ایمیل را
-        نادیده بگیرید. رمز عبور شما بدون تکمیل فرایند بازیابی تغییر نخواهد کرد.
+        اگر شما درخواست ثبت‌نام در ترخینه را نداده‌اید، می‌توانید این ایمیل را
+        نادیده بگیرید.
       </Text>
 
       <Hr style={styles.divider} />
@@ -134,11 +136,11 @@ export function IdentityPasswordResetEmailView({
         دهید:
       </Text>
 
-      <Text style={styles.fallbackUrl}>{resetUrl}</Text>
+      <Text style={styles.fallbackUrl}>{verificationUrl}</Text>
 
       <Text style={styles.smallText}>
-        برای حفظ امنیت حساب شما، این لینک پس از مدت مشخصی منقضی می‌شود. اگر لینک
-        منقضی شده است، درخواست بازیابی رمز عبور جدیدی ثبت کنید.
+        برای حفظ امنیت حساب شما، لینک تأیید پس از مدت مشخصی منقضی می‌شود. اگر
+        لینک منقضی شده است، فرایند تأیید ایمیل را دوباره آغاز کنید.
       </Text>
     </EmailLayout>
   );

@@ -5,7 +5,7 @@ import type { ConfigService } from '@nestjs/config';
 import { OutboundEmailTemplateError } from '../errors/outbound-email-template.error.js';
 import type { OutboundEmailContent } from '../ports/outbound-email-provider.port.js';
 import type { OutboundEmailTemplate } from './outbound-email-template.js';
-import { IdentityEmailVerificationEmailView } from './components/identity/email-verification/identity-email-verification-email.view.js';
+import { IdentityEmailVerificationEmailView } from './identity/email-verification/identity-email-verification-email.view.js';
 
 const TEMPLATE_KEY = 'identity.email-verification';
 const TEMPLATE_VERSION = 1;
