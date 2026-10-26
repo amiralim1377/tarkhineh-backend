@@ -54,6 +54,8 @@ import { ChangePasswordDto } from '../dto/change-password.dto.js';
 import { ChangePasswordCommand } from '../../../application/commands/change-password/change-password.command.js';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto.js';
 import { ForgotPasswordCommand } from '../../../application/commands/forgot-password/forgot-password.command.js';
+import { ResetPasswordCommand } from '../../../application/commands/reset-password/reset-password.command.js';
+import { ResetPasswordDto } from '../dto/reset-password.dto.js';
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -442,6 +444,36 @@ export class IdentityAccessController {
   ): Promise<AuthMessageResponseDto> {
     const result = await this.commandBus.execute(
       new ForgotPasswordCommand(dto.email),
+    );
+
+    return { message: result.message };
+  }
+
+  @Auth(AuthType.None)
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Complete password reset',
+    description: 'Validates the recovery token and sets a new password.',
+  })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiOkResponse({
+    description: 'The password reset completed successfully.',
+    type: AuthMessageResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'The request is invalid or the recovery token cannot be used.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+    type: ApiErrorResponseDto,
+  })
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+  ): Promise<AuthMessageResponseDto> {
+    const result = await this.commandBus.execute(
+      new ResetPasswordCommand(dto.recoveryToken, dto.newPassword),
     );
 
     return { message: result.message };
