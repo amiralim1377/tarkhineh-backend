@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IdentityUser } from '../../../domain/entities/identity-user.js';
-import type { AuthSessionRepository } from '../../../domain/ports/auth-session.repository.js';
 import type { UserAuthenticationRepository } from '../../../domain/ports/user-authentication.repository.js';
 import type { Clock } from '../../../../../shared/application/ports/clock.port.js';
 import type { PasswordHasher } from '../../ports/password-hasher.port.js';
 import type { PasswordVerifier } from '../../ports/password-verifier.port.js';
-import { ChangePasswordCommand } from './change-password.command.js';
+import type { PasswordChangeStore } from '../../ports/password-change-store.port.js';
 
+import { ChangePasswordCommand } from './change-password.command.js';
 import { ChangePasswordHandler } from './change-password.handler.js';
+
 import {
   ChangePasswordCredentialsError,
   PasswordUnchangedError,
@@ -30,16 +31,16 @@ function createSut() {
   const user = createActiveUser();
 
   const findById = vi.fn();
-  const changePassword = vi.fn();
   const verify = vi.fn();
   const hash = vi.fn();
-  const revokeAllSessionsForUser = vi.fn();
+
+  const changePasswordAndEnqueueNotification = vi.fn();
+
   const now = vi.fn(() => new Date(FIXED_NOW.getTime()));
 
   const users = {
     findById,
     findByEmail: vi.fn(),
-    changePassword,
   } as unknown as UserAuthenticationRepository;
 
   const passwordVerifier = {
@@ -50,9 +51,9 @@ function createSut() {
     hash,
   } as PasswordHasher;
 
-  const sessions = {
-    revokeAllSessionsForUser,
-  } as unknown as AuthSessionRepository;
+  const passwordChangeStore = {
+    changePasswordAndEnqueueNotification,
+  } as unknown as PasswordChangeStore;
 
   const clock = { now } as Clock;
 
@@ -60,7 +61,7 @@ function createSut() {
     users,
     passwordVerifier,
     passwordHasher,
-    sessions,
+    passwordChangeStore,
     clock,
   );
 
@@ -68,10 +69,9 @@ function createSut() {
     handler,
     user,
     findById,
-    changePassword,
     verify,
     hash,
-    revokeAllSessionsForUser,
+    changePasswordAndEnqueueNotification,
     now,
   };
 }
@@ -90,194 +90,239 @@ describe('ChangePasswordHandler', () => {
     );
 
     sut.hash.mockResolvedValue('new-password-hash');
-    sut.changePassword.mockResolvedValue(true);
-    sut.revokeAllSessionsForUser.mockResolvedValue(2);
+
+    sut.changePasswordAndEnqueueNotification.mockResolvedValue(true);
   });
-  it('changes the password and revokes refresh sessions', async () => {
-    const result = await sut.handler.execute(
-      new ChangePasswordCommand(
-        'user-123',
+
+  describe('successful password change', () => {
+    it('verifies credentials, hashes the new password, and delegates the atomic operation', async () => {
+      const result = await sut.handler.execute(
+        new ChangePasswordCommand(
+          'user-123',
+          'CurrentPassword123!',
+          'NewPassword456!',
+        ),
+      );
+
+      expect(result).toEqual({
+        message: 'Password changed successfully.',
+      });
+
+      expect(sut.findById).toHaveBeenCalledOnce();
+      expect(sut.findById).toHaveBeenCalledWith('user-123');
+
+      expect(sut.verify).toHaveBeenCalledTimes(2);
+
+      expect(sut.verify).toHaveBeenNthCalledWith(
+        1,
+        'current-password-hash',
         'CurrentPassword123!',
+      );
+
+      expect(sut.verify).toHaveBeenNthCalledWith(
+        2,
+        'current-password-hash',
         'NewPassword456!',
-      ),
-    );
+      );
 
-    expect(result).toEqual({
-      message: 'Password changed successfully.',
+      expect(sut.hash).toHaveBeenCalledOnce();
+      expect(sut.hash).toHaveBeenCalledWith('NewPassword456!');
+
+      expect(sut.changePasswordAndEnqueueNotification).toHaveBeenCalledOnce();
+
+      expect(sut.changePasswordAndEnqueueNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-123',
+          currentPasswordHash: 'current-password-hash',
+          newPasswordHash: 'new-password-hash',
+          operationId: expect.stringMatching(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+          ),
+          now: FIXED_NOW,
+        }),
+      );
+
+      expect(sut.now).toHaveBeenCalledOnce();
     });
 
-    expect(sut.findById).toHaveBeenCalledWith('user-123');
+    it('does not pass plaintext passwords to the store', async () => {
+      await sut.handler.execute(
+        new ChangePasswordCommand(
+          'user-123',
+          'CurrentPassword123!',
+          'NewPassword456!',
+        ),
+      );
 
-    expect(sut.verify).toHaveBeenNthCalledWith(
-      1,
-      'current-password-hash',
-      'CurrentPassword123!',
-    );
+      expect(sut.changePasswordAndEnqueueNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currentPasswordHash: 'current-password-hash',
+          newPasswordHash: 'new-password-hash',
+        }),
+      );
 
-    expect(sut.verify).toHaveBeenNthCalledWith(
-      2,
-      'current-password-hash',
-      'NewPassword456!',
-    );
+      expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          newPasswordHash: 'NewPassword456!',
+        }),
+      );
 
-    expect(sut.hash).toHaveBeenCalledWith('NewPassword456!');
+      expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          currentPasswordHash: 'CurrentPassword123!',
+        }),
+      );
+    });
+  });
 
-    expect(sut.changePassword).toHaveBeenCalledWith({
-      userId: 'user-123',
-      currentPasswordHash: 'current-password-hash',
-      newPasswordHash: 'new-password-hash',
+  describe('credential validation', () => {
+    it('rejects when the user does not exist', async () => {
+      sut.findById.mockResolvedValue(null);
+
+      await expect(
+        sut.handler.execute(
+          new ChangePasswordCommand(
+            'missing-user',
+            'CurrentPassword123!',
+            'NewPassword456!',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(ChangePasswordCredentialsError);
+
+      expect(sut.verify).not.toHaveBeenCalled();
+      expect(sut.hash).not.toHaveBeenCalled();
+
+      expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalled();
     });
 
-    expect(sut.revokeAllSessionsForUser).toHaveBeenCalledWith(
-      'user-123',
-      'SECURITY_ACTION',
-      FIXED_NOW,
-    );
-  });
+    it('rejects when the account cannot log in with a password', async () => {
+      vi.spyOn(sut.user, 'canLoginWithPassword').mockReturnValue(false);
 
-  it('rejects when the user does not exist', async () => {
-    sut.findById.mockResolvedValue(null);
-
-    await expect(
-      sut.handler.execute(
-        new ChangePasswordCommand(
-          'missing-user',
-          'CurrentPassword123!',
-          'NewPassword456!',
+      await expect(
+        sut.handler.execute(
+          new ChangePasswordCommand(
+            'user-123',
+            'CurrentPassword123!',
+            'NewPassword456!',
+          ),
         ),
-      ),
-    ).rejects.toBeInstanceOf(ChangePasswordCredentialsError);
+      ).rejects.toBeInstanceOf(ChangePasswordCredentialsError);
 
-    expect(sut.verify).not.toHaveBeenCalled();
-    expect(sut.hash).not.toHaveBeenCalled();
-    expect(sut.changePassword).not.toHaveBeenCalled();
-    expect(sut.revokeAllSessionsForUser).not.toHaveBeenCalled();
-  });
+      expect(sut.verify).not.toHaveBeenCalled();
+      expect(sut.hash).not.toHaveBeenCalled();
 
-  it('rejects when the account cannot log in with a password', async () => {
-    vi.spyOn(sut.user, 'canLoginWithPassword').mockReturnValue(false);
-
-    await expect(
-      sut.handler.execute(
-        new ChangePasswordCommand(
-          'user-123',
-          'CurrentPassword123!',
-          'NewPassword456!',
-        ),
-      ),
-    ).rejects.toBeInstanceOf(ChangePasswordCredentialsError);
-
-    expect(sut.verify).not.toHaveBeenCalled();
-    expect(sut.hash).not.toHaveBeenCalled();
-    expect(sut.changePassword).not.toHaveBeenCalled();
-    expect(sut.revokeAllSessionsForUser).not.toHaveBeenCalled();
-  });
-
-  it('rejects when the current password is incorrect', async () => {
-    sut.verify.mockResolvedValueOnce(false);
-
-    await expect(
-      sut.handler.execute(
-        new ChangePasswordCommand(
-          'user-123',
-          'WrongPassword123!',
-          'NewPassword456!',
-        ),
-      ),
-    ).rejects.toBeInstanceOf(ChangePasswordCredentialsError);
-
-    expect(sut.hash).not.toHaveBeenCalled();
-    expect(sut.changePassword).not.toHaveBeenCalled();
-    expect(sut.revokeAllSessionsForUser).not.toHaveBeenCalled();
-  });
-
-  it('rejects when the new password matches the current password', async () => {
-    sut.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
-
-    await expect(
-      sut.handler.execute(
-        new ChangePasswordCommand(
-          'user-123',
-          'CurrentPassword123!',
-          'CurrentPassword123!',
-        ),
-      ),
-    ).rejects.toBeInstanceOf(PasswordUnchangedError);
-
-    expect(sut.hash).not.toHaveBeenCalled();
-    expect(sut.changePassword).not.toHaveBeenCalled();
-    expect(sut.revokeAllSessionsForUser).not.toHaveBeenCalled();
-  });
-
-  it('rejects if the password update fails because the stored hash changed', async () => {
-    sut.changePassword.mockResolvedValue(false);
-
-    await expect(
-      sut.handler.execute(
-        new ChangePasswordCommand(
-          'user-123',
-          'CurrentPassword123!',
-          'NewPassword456!',
-        ),
-      ),
-    ).rejects.toBeInstanceOf(ChangePasswordCredentialsError);
-
-    expect(sut.hash).toHaveBeenCalledWith('NewPassword456!');
-    expect(sut.revokeAllSessionsForUser).not.toHaveBeenCalled();
-  });
-
-  it('does not revoke sessions if password hashing fails', async () => {
-    sut.hash.mockRejectedValue(new Error('Hashing failed'));
-
-    await expect(
-      sut.handler.execute(
-        new ChangePasswordCommand(
-          'user-123',
-          'CurrentPassword123!',
-          'NewPassword456!',
-        ),
-      ),
-    ).rejects.toThrow('Hashing failed');
-
-    expect(sut.changePassword).not.toHaveBeenCalled();
-    expect(sut.revokeAllSessionsForUser).not.toHaveBeenCalled();
-  });
-
-  it('does not revoke sessions if the password update fails', async () => {
-    sut.changePassword.mockRejectedValue(new Error('Database unavailable'));
-
-    await expect(
-      sut.handler.execute(
-        new ChangePasswordCommand(
-          'user-123',
-          'CurrentPassword123!',
-          'NewPassword456!',
-        ),
-      ),
-    ).rejects.toThrow('Database unavailable');
-
-    expect(sut.revokeAllSessionsForUser).not.toHaveBeenCalled();
-  });
-
-  it('does not expose the new password in the repository call', async () => {
-    await sut.handler.execute(
-      new ChangePasswordCommand(
-        'user-123',
-        'CurrentPassword123!',
-        'NewPassword456!',
-      ),
-    );
-
-    expect(sut.changePassword).toHaveBeenCalledWith({
-      userId: 'user-123',
-      currentPasswordHash: 'current-password-hash',
-      newPasswordHash: 'new-password-hash',
+      expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalled();
     });
 
-    expect(sut.changePassword).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        newPasswordHash: 'NewPassword456!',
-      }),
-    );
+    it('rejects when the user has no password hash', async () => {
+      vi.spyOn(sut.user, 'passwordHash', 'get').mockReturnValue(null);
+
+      await expect(
+        sut.handler.execute(
+          new ChangePasswordCommand(
+            'user-123',
+            'CurrentPassword123!',
+            'NewPassword456!',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(ChangePasswordCredentialsError);
+
+      expect(sut.verify).not.toHaveBeenCalled();
+      expect(sut.hash).not.toHaveBeenCalled();
+
+      expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the current password is incorrect', async () => {
+      sut.verify.mockResolvedValueOnce(false);
+
+      await expect(
+        sut.handler.execute(
+          new ChangePasswordCommand(
+            'user-123',
+            'WrongPassword123!',
+            'NewPassword456!',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(ChangePasswordCredentialsError);
+
+      expect(sut.verify).toHaveBeenCalledOnce();
+      expect(sut.hash).not.toHaveBeenCalled();
+
+      expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the new password matches the current password', async () => {
+      sut.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+
+      await expect(
+        sut.handler.execute(
+          new ChangePasswordCommand(
+            'user-123',
+            'CurrentPassword123!',
+            'CurrentPassword123!',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(PasswordUnchangedError);
+
+      expect(sut.verify).toHaveBeenCalledTimes(2);
+      expect(sut.hash).not.toHaveBeenCalled();
+
+      expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('failure handling', () => {
+    it('rejects when the atomic store operation returns false', async () => {
+      sut.changePasswordAndEnqueueNotification.mockResolvedValue(false);
+
+      await expect(
+        sut.handler.execute(
+          new ChangePasswordCommand(
+            'user-123',
+            'CurrentPassword123!',
+            'NewPassword456!',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(ChangePasswordCredentialsError);
+
+      expect(sut.hash).toHaveBeenCalledWith('NewPassword456!');
+
+      expect(sut.changePasswordAndEnqueueNotification).toHaveBeenCalledOnce();
+    });
+
+    it('does not invoke the store when password hashing fails', async () => {
+      sut.hash.mockRejectedValue(new Error('Hashing failed'));
+
+      await expect(
+        sut.handler.execute(
+          new ChangePasswordCommand(
+            'user-123',
+            'CurrentPassword123!',
+            'NewPassword456!',
+          ),
+        ),
+      ).rejects.toThrow('Hashing failed');
+
+      expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalled();
+    });
+
+    it('propagates an error when the atomic store operation fails', async () => {
+      sut.changePasswordAndEnqueueNotification.mockRejectedValue(
+        new Error('Database unavailable'),
+      );
+
+      await expect(
+        sut.handler.execute(
+          new ChangePasswordCommand(
+            'user-123',
+            'CurrentPassword123!',
+            'NewPassword456!',
+          ),
+        ),
+      ).rejects.toThrow('Database unavailable');
+
+      expect(sut.changePasswordAndEnqueueNotification).toHaveBeenCalledOnce();
+    });
   });
 });
