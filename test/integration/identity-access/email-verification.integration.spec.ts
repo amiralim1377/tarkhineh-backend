@@ -20,7 +20,7 @@ function createTestDatabaseUrl(): string {
 
   const databaseName = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
 
-  // Safety guard: integration tests must target tarkhineh_test.
+  // Integration tests must never run against the development database.
   if (databaseName !== 'tarkhineh_db') {
     throw new Error(
       'Refusing to run integration tests against an unexpected database',
@@ -47,7 +47,6 @@ const configService = {
 const prisma = new PrismaService(configService);
 
 const registrationRepository = new PrismaEmailRegistrationRepository(prisma);
-
 const verificationRepository = new PrismaEmailVerificationRepository(prisma);
 
 const testEmails: string[] = [];
@@ -57,6 +56,7 @@ function createTokenHash(): string {
 }
 
 async function createPendingUser(
+  now: Date,
   expiresAt: Date,
 ): Promise<{ email: string; tokenHash: string }> {
   const email = `verification-${randomUUID()}@example.com`;
@@ -71,7 +71,8 @@ async function createPendingUser(
       displayName: 'Verification Integration Test',
     }),
     tokenHash,
-    encryptedToken: 'v1:integration-test-encrypted-payload',
+    encryptedPayload: 'v1:integration-test-encrypted-payload',
+    now,
     expiresAt,
   });
 
@@ -88,19 +89,21 @@ describe('Email verification with PostgreSQL', () => {
   });
 
   afterEach(async () => {
-    if (testEmails.length === 0) {
-      return;
-    }
+    try {
+      if (testEmails.length === 0) {
+        return;
+      }
 
-    await prisma.user.deleteMany({
-      where: {
-        email: {
-          in: [...testEmails],
+      await prisma.user.deleteMany({
+        where: {
+          email: {
+            in: [...testEmails],
+          },
         },
-      },
-    });
-
-    testEmails.length = 0;
+      });
+    } finally {
+      testEmails.length = 0;
+    }
   });
 
   afterAll(async () => {
@@ -111,6 +114,7 @@ describe('Email verification with PostgreSQL', () => {
     const now = new Date();
 
     const { email, tokenHash } = await createPendingUser(
+      now,
       new Date(now.getTime() + 30 * 60 * 1000),
     );
 
@@ -148,6 +152,7 @@ describe('Email verification with PostgreSQL', () => {
     const now = new Date();
 
     const { tokenHash } = await createPendingUser(
+      now,
       new Date(now.getTime() + 30 * 60 * 1000),
     );
 
@@ -169,6 +174,7 @@ describe('Email verification with PostgreSQL', () => {
     const now = new Date();
 
     const { email, tokenHash } = await createPendingUser(
+      now,
       new Date(now.getTime() - 60 * 1000),
     );
 
@@ -193,10 +199,11 @@ describe('Email verification with PostgreSQL', () => {
     });
   });
 
-  it('does not activate a user when concurrent requests use the same token', async () => {
+  it('allows only one concurrent request to verify the same token', async () => {
     const now = new Date();
 
     const { email, tokenHash } = await createPendingUser(
+      now,
       new Date(now.getTime() + 30 * 60 * 1000),
     );
 
