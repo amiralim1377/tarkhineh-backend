@@ -1,6 +1,11 @@
+import { createElement } from 'react';
+import { render as renderEmail } from 'react-email';
+import type { ConfigService } from '@nestjs/config';
+
 import { OutboundEmailTemplateError } from '../errors/outbound-email-template.error.js';
 import type { OutboundEmailContent } from '../ports/outbound-email-provider.port.js';
 import type { OutboundEmailTemplate } from './outbound-email-template.js';
+import { IdentityEmailVerificationEmailView } from './components/identity/email-verification/identity-email-verification-email.view.js';
 
 const TEMPLATE_KEY = 'identity.email-verification';
 const TEMPLATE_VERSION = 1;
@@ -18,24 +23,35 @@ export class IdentityEmailVerificationEmailTemplate implements OutboundEmailTemp
   readonly key = TEMPLATE_KEY;
   readonly version = TEMPLATE_VERSION;
 
-  render(payload: unknown): OutboundEmailContent {
+  constructor(private readonly configService: ConfigService) {}
+
+  async render(payload: unknown): Promise<OutboundEmailContent> {
     const validatedPayload = this.validatePayload(payload);
     const { email, verificationUrl } = validatedPayload;
 
+    const logoUrl = this.configService
+      .get<string>('OUTBOUND_EMAIL_LOGO_URL')
+      ?.trim();
+
+    if (!logoUrl) {
+      throw new OutboundEmailTemplateError('RENDER_FAILED');
+    }
+
+    const element = createElement(IdentityEmailVerificationEmailView, {
+      verificationUrl,
+      logoUrl,
+    });
+
+    const [html, text] = await Promise.all([
+      renderEmail(element),
+      renderEmail(element, { plainText: true }),
+    ]);
+
     return {
       to: email,
-      subject: 'Verify your Tarkhineh email',
-      text: [
-        'Welcome to Tarkhineh.',
-        '',
-        'Verify your email address to complete your registration:',
-        '',
-        verificationUrl,
-        '',
-        'This link expires automatically.',
-        'If you did not request this registration, you can ignore this email.',
-      ].join('\n'),
-      html: this.renderHtml(verificationUrl),
+      subject: 'تأیید ایمیل ترخینه',
+      text,
+      html,
     };
   }
 
@@ -106,38 +122,5 @@ export class IdentityEmailVerificationEmailTemplate implements OutboundEmailTemp
       value === value.trim() &&
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
     );
-  }
-
-  private renderHtml(verificationUrl: string): string {
-    const safeVerificationUrl = this.escapeHtml(verificationUrl);
-
-    return [
-      '<!doctype html>',
-      '<html lang="en">',
-      '<head>',
-      '<meta charset="utf-8">',
-      '<meta name="viewport" content="width=device-width, initial-scale=1">',
-      '<title>Verify your Tarkhineh email</title>',
-      '</head>',
-      '<body>',
-      '<main>',
-      '<h1>Welcome to Tarkhineh</h1>',
-      '<p>Verify your email address to complete your registration.</p>',
-      `<p><a href="${safeVerificationUrl}">Verify email address</a></p>`,
-      '<p>This link expires automatically.</p>',
-      '<p>If you did not request this registration, you can ignore this email.</p>',
-      '</main>',
-      '</body>',
-      '</html>',
-    ].join('');
-  }
-
-  private escapeHtml(value: string): string {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
   }
 }
