@@ -62,6 +62,8 @@
     "@types/node": "^24.0.0",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "@types/supertest": "^7.0.0",
     "@vitest/coverage-v8": "^4.1.2",
     "oxlint": "^1.58.0",
