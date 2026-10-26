@@ -14,8 +14,8 @@ describe('IdentityPasswordResetEmailTemplate', () => {
     expect(template.version).toBe(1);
   });
 
-  it('renders a valid reset payload', () => {
-    const content = template.render({ resetUrl });
+  it('renders a valid reset payload', async () => {
+    const content = await template.render({ resetUrl });
 
     expect(content.to).toBe('user@example.com');
     expect(content.subject).toBe('Reset your Tarkhineh password');
@@ -70,7 +70,9 @@ describe('IdentityPasswordResetEmailTemplate', () => {
           'https://frontend.example/reset-password?token=abc&email=user%40example.com#fragment',
       },
     ],
-  ])('rejects %s', (_description, payload) => {
-    expect(() => template.render(payload)).toThrow(OutboundEmailTemplateError);
+  ])('rejects %s', async (_description, payload) => {
+    await expect(template.render(payload)).rejects.toThrow(
+      OutboundEmailTemplateError,
+    );
   });
 });
