@@ -60,7 +60,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: '700',
     lineHeight: '1.8',
     padding: '12px 24px',
-    textAlign: 'center',
+    textAlign: 'left',
     textDecoration: 'none',
   },
 
