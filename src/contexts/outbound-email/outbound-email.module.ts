@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 
 import { PrismaModule } from '../../prisma/prisma.module.js';
@@ -64,9 +64,10 @@ import { IdentityEmailVerificationEmailTemplate } from './application/templates/
     },
     {
       provide: OutboundEmailTemplateRegistry,
-      useFactory: () => {
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
         return new OutboundEmailTemplateRegistry([
-          new IdentityPasswordResetEmailTemplate(),
+          new IdentityPasswordResetEmailTemplate(configService),
           new IdentityEmailVerificationEmailTemplate(),
         ]);
       },
