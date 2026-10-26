@@ -18,29 +18,28 @@ export interface IdentityPasswordResetEmailViewProps {
 const styles: Record<string, CSSProperties> = {
   eyebrow: {
     color: '#396F4B',
-    fontFamily: 'Estedad, Tahoma, Arial, sans-serif',
-    fontSize: '11px',
+    fontFamily: '"Estedad", Tahoma, Arial, sans-serif',
+    fontSize: '12px',
     fontWeight: '700',
-    letterSpacing: '1.2px',
-    lineHeight: '1.6',
+    lineHeight: '1.8',
     margin: '0 0 12px',
   },
 
   heading: {
     color: '#353535',
-    fontFamily: 'Estedad, Tahoma, Arial, sans-serif',
+    fontFamily: '"Estedad", Tahoma, Arial, sans-serif',
     fontSize: '26px',
     fontWeight: '700',
-    lineHeight: '1.4',
+    lineHeight: '1.6',
     margin: '0 0 20px',
   },
 
   paragraph: {
     color: '#535353',
-    fontFamily: 'Estedad, Tahoma, Arial, sans-serif',
+    fontFamily: '"Estedad", Tahoma, Arial, sans-serif',
     fontSize: '15px',
     fontWeight: '400',
-    lineHeight: '1.8',
+    lineHeight: '2',
     margin: '0 0 16px',
   },
 
@@ -53,21 +52,21 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '6px',
     color: '#FFFFFF',
     display: 'inline-block',
-    fontFamily: 'Estedad, Tahoma, Arial, sans-serif',
+    fontFamily: '"Estedad", Tahoma, Arial, sans-serif',
     fontSize: '15px',
     fontWeight: '700',
-    lineHeight: '1.5',
-    padding: '14px 24px',
+    lineHeight: '1.8',
+    padding: '12px 24px',
     textAlign: 'center',
     textDecoration: 'none',
   },
 
   smallText: {
     color: '#757575',
-    fontFamily: 'Estedad, Tahoma, Arial, sans-serif',
+    fontFamily: '"Estedad", Tahoma, Arial, sans-serif',
     fontSize: '13px',
     fontWeight: '400',
-    lineHeight: '1.8',
+    lineHeight: '2',
     margin: '0 0 12px',
   },
 
@@ -78,11 +77,13 @@ const styles: Record<string, CSSProperties> = {
 
   fallbackUrl: {
     color: '#417F56',
+    direction: 'ltr',
     fontFamily: 'Tahoma, Arial, sans-serif',
     fontSize: '12px',
     lineHeight: '1.8',
     margin: '0 0 18px',
     overflowWrap: 'anywhere',
+    textAlign: 'left',
   },
 };
 
@@ -92,48 +93,48 @@ export function IdentityPasswordResetEmailView({
 }: IdentityPasswordResetEmailViewProps) {
   return (
     <EmailLayout
-      previewText="Reset your Tarkhineh password using the secure link in this email."
+      previewText="برای امنیت حساب کاربری خود، رمز عبورتان را بازیابی کنید."
       logoUrl={logoUrl}
-      footerMessage="This is an automated security email from Tarkhineh."
-      lang="en"
-      dir="ltr"
+      footerMessage="این ایمیل به‌صورت خودکار از طرف ترخینه ارسال شده است."
+      lang="fa"
+      dir="rtl"
     >
-      <Text style={styles.eyebrow}>ACCOUNT SECURITY</Text>
+      <Text style={styles.eyebrow}>امنیت حساب کاربری</Text>
 
       <Heading as="h1" style={styles.heading}>
-        Reset your password
+        بازیابی رمز عبور
       </Heading>
 
-      <Text style={styles.paragraph}>Hello,</Text>
+      <Text style={styles.paragraph}>سلام،</Text>
 
       <Text style={styles.paragraph}>
-        We received a request to reset your Tarkhineh password. Use the button
-        below to choose a new password.
+        درخواستی برای بازیابی رمز عبور حساب کاربری ترخینه شما دریافت کرده‌ایم.
+        برای انتخاب رمز عبور جدید، روی دکمه زیر کلیک کنید.
       </Text>
 
       <Section style={styles.buttonSection}>
         <Button href={resetUrl} style={styles.button}>
-          Reset password
+          بازیابی رمز عبور
         </Button>
       </Section>
 
       <Text style={styles.smallText}>
-        If you did not request a password reset, you can safely ignore this
-        email. Your password will not change unless you complete the reset
-        process.
+        اگر شما درخواست بازیابی رمز عبور نداده‌اید، می‌توانید این ایمیل را
+        نادیده بگیرید. رمز عبور شما بدون تکمیل فرایند بازیابی تغییر نخواهد کرد.
       </Text>
 
       <Hr style={styles.divider} />
 
       <Text style={styles.smallText}>
-        If the button does not work, copy the following link into your browser:
+        اگر دکمه بالا کار نمی‌کند، لینک زیر را کپی کنید و در مرورگر خود قرار
+        دهید:
       </Text>
 
       <Text style={styles.fallbackUrl}>{resetUrl}</Text>
 
       <Text style={styles.smallText}>
-        For your security, this link expires automatically. If it has expired,
-        request a new password-reset email.
+        برای حفظ امنیت حساب شما، این لینک پس از مدت مشخصی منقضی می‌شود. اگر لینک
+        منقضی شده است، درخواست بازیابی رمز عبور جدیدی ثبت کنید.
       </Text>
     </EmailLayout>
   );
