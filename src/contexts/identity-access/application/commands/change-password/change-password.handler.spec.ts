@@ -6,6 +6,11 @@ import type { Clock } from '../../../../../shared/application/ports/clock.port.j
 import type { PasswordHasher } from '../../ports/password-hasher.port.js';
 import type { PasswordVerifier } from '../../ports/password-verifier.port.js';
 import type { PasswordChangeStore } from '../../ports/password-change-store.port.js';
+import { PasswordPolicy } from '../../../domain/services/password-policy.js';
+import {
+  PasswordPolicyViolationError,
+  PasswordRequiredError,
+} from '../../errors/password-policy.error.js';
 
 import { ChangePasswordCommand } from './change-password.command.js';
 import { ChangePasswordHandler } from './change-password.handler.js';
@@ -26,7 +31,6 @@ function createActiveUser(): IdentityUser {
     displayName: 'Test User',
   });
 }
-
 function createSut() {
   const user = createActiveUser();
 
@@ -56,6 +60,7 @@ function createSut() {
   } as unknown as PasswordChangeStore;
 
   const clock = { now } as Clock;
+  const passwordPolicy = new PasswordPolicy();
 
   const handler = new ChangePasswordHandler(
     users,
@@ -63,6 +68,7 @@ function createSut() {
     passwordHasher,
     passwordChangeStore,
     clock,
+    passwordPolicy,
   );
 
   return {
@@ -73,6 +79,7 @@ function createSut() {
     hash,
     changePasswordAndEnqueueNotification,
     now,
+    passwordPolicy,
   };
 }
 
@@ -268,6 +275,31 @@ describe('ChangePasswordHandler', () => {
       expect(sut.verify).toHaveBeenCalledTimes(2);
       expect(sut.hash).not.toHaveBeenCalled();
 
+      expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalled();
+    });
+    it('rejects when the new password is empty', async () => {
+      await expect(
+        sut.handler.execute(
+          new ChangePasswordCommand('user-123', 'CurrentPassword123!', ''),
+        ),
+      ).rejects.toBeInstanceOf(PasswordRequiredError);
+
+      expect(sut.hash).not.toHaveBeenCalled();
+      expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the new password violates the password policy', async () => {
+      await expect(
+        sut.handler.execute(
+          new ChangePasswordCommand(
+            'user-123',
+            'CurrentPassword123!',
+            'lowercase123!',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(PasswordPolicyViolationError);
+
+      expect(sut.hash).not.toHaveBeenCalled();
       expect(sut.changePasswordAndEnqueueNotification).not.toHaveBeenCalled();
     });
   });
