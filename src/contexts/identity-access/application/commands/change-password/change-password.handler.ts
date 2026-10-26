@@ -1,11 +1,13 @@
-import { Inject } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { Inject } from '@nestjs/common';
 import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
 
 import {
   USER_AUTHENTICATION_REPOSITORY,
   type UserAuthenticationRepository,
 } from '../../../domain/ports/user-authentication.repository.js';
+
+import { PasswordPolicy } from '../../../domain/services/password-policy.js';
 
 import {
   PASSWORD_HASHER,
@@ -29,14 +31,14 @@ import {
 
 import {
   ChangePasswordCommand,
-  ChangePasswordResult,
+  type ChangePasswordResult,
 } from './change-password.command.js';
 
 import {
   ChangePasswordCredentialsError,
   PasswordUnchangedError,
 } from '../../errors/change-password.errors.js';
-import { PasswordPolicy } from '../../../domain/services/password-policy.js';
+
 import {
   PasswordPolicyViolationError,
   PasswordRequiredError,
@@ -47,14 +49,19 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
   constructor(
     @Inject(USER_AUTHENTICATION_REPOSITORY)
     private readonly users: UserAuthenticationRepository,
+
     @Inject(PASSWORD_VERIFIER)
     private readonly passwordVerifier: PasswordVerifier,
+
     @Inject(PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
+
     @Inject(PASSWORD_CHANGE_STORE)
     private readonly passwordChangeStore: PasswordChangeStore,
+
     @Inject(CLOCK)
     private readonly clock: Clock,
+
     private readonly passwordPolicy: PasswordPolicy,
   ) {}
 
@@ -76,16 +83,17 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
       throw new ChangePasswordCredentialsError();
     }
 
-    // 3. Prevent reusing the current password.
-
+    // 3. Ensure that the new password is provided.
     if (!command.newPassword || !command.newPassword.trim()) {
       throw new PasswordRequiredError();
     }
+
     // 4. Validate the new password policy.
     if (!this.passwordPolicy.isValid(command.newPassword)) {
       throw new PasswordPolicyViolationError();
     }
 
+    // 5. Prevent reusing the current password.
     const newPasswordMatchesCurrent = await this.passwordVerifier.verify(
       user.passwordHash,
       command.newPassword,
@@ -95,10 +103,10 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
       throw new PasswordUnchangedError();
     }
 
-    // 5. Hash before entering the database transaction.
+    // 6. Hash the new password before starting the database transaction.
     const newPasswordHash = await this.passwordHasher.hash(command.newPassword);
 
-    // 6. Atomically change the password, revoke sessions,
+    // 7. Atomically change the password, revoke sessions,
     // and enqueue the security notification.
     const changed =
       await this.passwordChangeStore.changePasswordAndEnqueueNotification({
