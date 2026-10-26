@@ -4,7 +4,6 @@ import { CqrsModule } from '@nestjs/cqrs';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaModule } from '../../prisma/prisma.module.js';
 import { EMAIL_REGISTRATION_REPOSITORY } from './domain/ports/email-registration.repository.js';
-import { EMAIL_VERIFICATION_REPOSITORY } from './domain/ports/email-verification.repository.js';
 import { USER_AUTHENTICATION_REPOSITORY } from './domain/ports/user-authentication.repository.js';
 import { ACCESS_TOKEN_IDENTITY_READER } from './application/ports/access-token-identity-reader.port.js';
 import { PrismaAccessTokenIdentityReader } from './infrastructure/persistence/prisma-access-token-identity-reader.js';
@@ -27,7 +26,6 @@ import { LoginWithEmailHandler } from './application/commands/login-with-email/l
 import { RefreshSessionHandler } from './application/commands/refresh-session/refresh-session.handler.js';
 import { LogoutSessionHandler } from './application/commands/logout-session/logout-session.handler.js';
 import { PrismaEmailRegistrationRepository } from './infrastructure/persistence/prisma-email-registration.repository.js';
-import { PrismaEmailVerificationRepository } from './infrastructure/persistence/prisma-email-verification.repository.js';
 import { PrismaUserAuthenticationRepository } from './infrastructure/persistence/prisma-user-authentication.repository.js';
 import { Argon2PasswordHasher } from './infrastructure/security/argon2-password-hasher.js';
 import { Argon2PasswordVerifier } from './infrastructure/security/argon2-password-verifier.js';
@@ -55,6 +53,8 @@ import { PrismaPasswordResetCompletionStore } from './infrastructure/persistence
 import { ResetPasswordHandler } from './application/commands/reset-password/reset-password.handler.js';
 import { PASSWORD_CHANGE_STORE } from './application/ports/password-change-store.port.js';
 import { PrismaPasswordChangeStore } from './infrastructure/persistence/prisma-password-change.store.js';
+import { EMAIL_VERIFICATION_COMPLETION_STORE } from './application/ports/email-verification-completion-store.port.js';
+import { PrismaEmailVerificationCompletionStore } from './infrastructure/persistence/prisma-email-verification-completion.store.js';
 
 @Module({
   imports: [
@@ -75,7 +75,7 @@ import { PrismaPasswordChangeStore } from './infrastructure/persistence/prisma-p
   controllers: [IdentityAccessController],
   providers: [
     PrismaEmailRegistrationRepository,
-    PrismaEmailVerificationRepository,
+    PrismaEmailVerificationCompletionStore,
     PrismaUserAuthenticationRepository,
     PrismaAccessTokenIdentityReader,
     PrismaAuthSessionRepository,
@@ -107,8 +107,8 @@ import { PrismaPasswordChangeStore } from './infrastructure/persistence/prisma-p
       useExisting: PrismaEmailRegistrationRepository,
     },
     {
-      provide: EMAIL_VERIFICATION_REPOSITORY,
-      useExisting: PrismaEmailVerificationRepository,
+      provide: EMAIL_VERIFICATION_COMPLETION_STORE,
+      useExisting: PrismaEmailVerificationCompletionStore,
     },
     {
       provide: USER_AUTHENTICATION_REPOSITORY,
