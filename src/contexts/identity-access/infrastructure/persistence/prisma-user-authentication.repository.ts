@@ -4,10 +4,7 @@ import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
 
 import { IdentityUser } from '../../domain/entities/identity-user.js';
-import type {
-  ChangePasswordInput,
-  UserAuthenticationRepository,
-} from '../../domain/ports/user-authentication.repository.js';
+import type { UserAuthenticationRepository } from '../../domain/ports/user-authentication.repository.js';
 
 @Injectable()
 export class PrismaUserAuthenticationRepository implements UserAuthenticationRepository {
@@ -66,26 +63,6 @@ export class PrismaUserAuthenticationRepository implements UserAuthenticationRep
             status: user.status,
           })
         : null;
-    } catch (error: unknown) {
-      throw normalizePrismaError(error);
-    }
-  }
-
-  async changePassword(input: ChangePasswordInput): Promise<boolean> {
-    try {
-      const result = await this.prisma.user.updateMany({
-        where: {
-          id: input.userId,
-          passwordHash: input.currentPasswordHash,
-          status: 'ACTIVE',
-          emailVerifiedAt: { not: null },
-        },
-        data: {
-          passwordHash: input.newPasswordHash,
-        },
-      });
-
-      return result.count === 1;
     } catch (error: unknown) {
       throw normalizePrismaError(error);
     }
