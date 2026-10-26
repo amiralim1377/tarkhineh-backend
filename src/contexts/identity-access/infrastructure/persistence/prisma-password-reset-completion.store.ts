@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
@@ -8,6 +8,10 @@ import type {
   PasswordResetCompletionStore,
   PasswordResetCompletionStoreInput,
 } from '../../application/ports/password-reset-completion-store.port.js';
+import {
+  OUTBOUND_EMAIL_PAYLOAD_ENCRYPTOR,
+  type OutboundEmailPayloadEncryptor,
+} from '../../../outbound-email/application/ports/outbound-email-payload-encryptor.port.js';
 
 interface PasswordResetChallengeRow {
   id: string;
@@ -33,9 +37,16 @@ const CANCELLABLE_OUTBOUND_STATUSES = [
   'RETRY_SCHEDULED',
 ] as const;
 
+const PASSWORD_CHANGED_TEMPLATE_KEY = 'identity.password-changed';
+const PASSWORD_CHANGED_TEMPLATE_VERSION = 1;
+
 @Injectable()
 export class PrismaPasswordResetCompletionStore implements PasswordResetCompletionStore {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(OUTBOUND_EMAIL_PAYLOAD_ENCRYPTOR)
+    private readonly payloadEncryptor: OutboundEmailPayloadEncryptor,
+  ) {}
 
   private validateInput(input: PasswordResetCompletionStoreInput): void {
     if (!/^[a-f0-9]{64}$/.test(input.tokenHash)) {
@@ -103,7 +114,7 @@ export class PrismaPasswordResetCompletionStore implements PasswordResetCompleti
           status: user.status,
         });
 
-        if (!identityUser.canLoginWithPassword()) {
+        if (!identityUser.canLoginWithPassword() || !user.email) {
           return false;
         }
 
@@ -286,6 +297,27 @@ export class PrismaPasswordResetCompletionStore implements PasswordResetCompleti
           },
           data: {
             encryptedPayload: null,
+          },
+        });
+
+        // set a change-password-email
+        const encryptedNotificationPayload = this.payloadEncryptor.encrypt(
+          JSON.stringify({
+            email: user.email,
+          }),
+        );
+
+        await tx.outboundEmailMessage.create({
+          data: {
+            idempotencyKey: `password-changed:reset:${challenge.id}`,
+            lane: 'TRANSACTIONAL',
+            templateKey: PASSWORD_CHANGED_TEMPLATE_KEY,
+            payloadVersion: PASSWORD_CHANGED_TEMPLATE_VERSION,
+            encryptedPayload: encryptedNotificationPayload,
+            status: 'PENDING',
+            availableAt: input.now,
+            aggregateType: 'User',
+            aggregateId: identityUser.id,
           },
         });
 
