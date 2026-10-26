@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { envSchema } from './env.schema.js';
 
+const validLogoUrl = 'https://assets.example.test/tarkhineh-logo-white.png';
+
 const validBaseEnv = {
   NODE_ENV: 'development',
   DATABASE_URL: 'postgresql://user:password@localhost:5432/test',
@@ -22,6 +24,7 @@ describe('envSchema', () => {
       expect(result.data.EMAIL_VERIFICATION_TTL_SECONDS).toBe(1800);
       expect(result.data.REDIS_HOST).toBe('127.0.0.1');
       expect(result.data.REDIS_PORT).toBe(6379);
+      expect(result.data.OUTBOUND_EMAIL_LOGO_URL).toBeUndefined();
     }
   });
 
@@ -79,9 +82,16 @@ describe('envSchema', () => {
       SMTP_PASSWORD: 'test-password',
       SMTP_FROM: 'noreply@example.com',
       API_PUBLIC_URL: 'http://api.example.com',
+      OUTBOUND_EMAIL_LOGO_URL: validLogoUrl,
     });
 
     expect(result.success).toBe(false);
+
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) => issue.path[0] === 'API_PUBLIC_URL'),
+      ).toBe(true);
+    }
   });
 
   it('accepts complete SMTP configuration in development', () => {
@@ -92,6 +102,7 @@ describe('envSchema', () => {
       SMTP_PASSWORD: 'test-password',
       SMTP_FROM: 'noreply@example.com',
       API_PUBLIC_URL: 'http://localhost:3000',
+      OUTBOUND_EMAIL_LOGO_URL: validLogoUrl,
     });
 
     expect(result.success).toBe(true);
@@ -126,6 +137,7 @@ describe('envSchema', () => {
       SMTP_PASSWORD: 'test-password',
       SMTP_FROM: 'noreply@example.com',
       API_PUBLIC_URL: 'https://api.example.com',
+      OUTBOUND_EMAIL_LOGO_URL: validLogoUrl,
     });
 
     expect(result.success).toBe(false);
@@ -147,6 +159,7 @@ describe('envSchema', () => {
       SMTP_PASSWORD: 'test-password',
       SMTP_FROM: 'noreply@example.com',
       API_PUBLIC_URL: 'https://api.example.com',
+      OUTBOUND_EMAIL_LOGO_URL: validLogoUrl,
     });
 
     expect(result.success).toBe(true);
