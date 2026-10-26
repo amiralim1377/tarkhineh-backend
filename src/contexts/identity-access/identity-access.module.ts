@@ -50,6 +50,9 @@ import { PrismaPasswordResetRequestStore } from './infrastructure/persistence/pr
 import { OutboundEmailModule } from '../outbound-email/outbound-email.module.js';
 import { ForgotPasswordHandler } from './application/commands/forgot-password/forgot-password.handler.js';
 import { PasswordPolicy } from './domain/services/password-policy.js';
+import { PASSWORD_RESET_COMPLETION_STORE } from './application/ports/password-reset-completion-store.port.js';
+import { PrismaPasswordResetCompletionStore } from './infrastructure/persistence/prisma-password-reset-completion.store.js';
+import { ResetPasswordHandler } from './application/commands/reset-password/reset-password.handler.js';
 
 @Module({
   imports: [
@@ -90,6 +93,8 @@ import { PasswordPolicy } from './domain/services/password-policy.js';
     ChangePasswordHandler,
     PrismaPasswordResetRequestStore,
     ForgotPasswordHandler,
+    ResetPasswordHandler,
+    PrismaPasswordResetCompletionStore,
     {
       provide: PasswordPolicy,
       useFactory: () => new PasswordPolicy(),
@@ -153,6 +158,10 @@ import { PasswordPolicy } from './domain/services/password-policy.js';
     {
       provide: PASSWORD_RESET_REQUEST_STORE,
       useExisting: PrismaPasswordResetRequestStore,
+    },
+    {
+      provide: PASSWORD_RESET_COMPLETION_STORE,
+      useExisting: PrismaPasswordResetCompletionStore,
     },
     {
       provide: AUTHENTICATION_STRATEGIES,
