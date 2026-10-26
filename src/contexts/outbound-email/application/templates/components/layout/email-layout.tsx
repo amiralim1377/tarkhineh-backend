@@ -32,9 +32,11 @@ export interface EmailLayoutProps {
 const styles: Record<string, CSSProperties> = {
   body: {
     backgroundColor: '#EDEDED',
-    fontFamily: 'Estedad, Tahoma, Arial, sans-serif',
+    direction: 'rtl',
+    fontFamily: '"Estedad", Tahoma, Arial, sans-serif',
     margin: '0',
     padding: '24px 12px',
+    textAlign: 'right',
   },
 
   container: {
@@ -46,7 +48,9 @@ const styles: Record<string, CSSProperties> = {
 
   content: {
     backgroundColor: '#FFFFFF',
+    direction: 'rtl',
     padding: '32px 24px',
+    textAlign: 'right',
   },
 };
 
@@ -64,11 +68,13 @@ export function EmailLayout({
 
       <Preview>{previewText}</Preview>
 
-      <Body style={styles.body}>
+      <Body dir={dir} style={styles.body}>
         <Container style={styles.container}>
           <TarkhinehEmailHeader logoUrl={logoUrl} />
 
-          <Section style={styles.content}>{children}</Section>
+          <Section dir={dir} style={styles.content}>
+            {children}
+          </Section>
 
           <TarkhinehEmailFooter message={footerMessage} />
         </Container>
