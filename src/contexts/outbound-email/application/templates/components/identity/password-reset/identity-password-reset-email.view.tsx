@@ -23,6 +23,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: '700',
     lineHeight: '1.8',
     margin: '0 0 12px',
+    textAlign: 'right',
   },
 
   heading: {
@@ -32,6 +33,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: '700',
     lineHeight: '1.6',
     margin: '0 0 20px',
+    textAlign: 'right',
   },
 
   paragraph: {
@@ -41,6 +43,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: '400',
     lineHeight: '2',
     margin: '0 0 16px',
+    textAlign: 'right',
   },
 
   buttonSection: {
@@ -68,6 +71,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: '400',
     lineHeight: '2',
     margin: '0 0 12px',
+    textAlign: 'right',
   },
 
   divider: {
