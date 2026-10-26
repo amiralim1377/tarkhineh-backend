@@ -50,7 +50,7 @@ export class IdentityPasswordResetEmailTemplate implements OutboundEmailTemplate
 
     return {
       to: email,
-      subject: 'Reset your Tarkhineh password',
+      subject: 'بازیابی رمز عبور ترخینه',
       text,
       html,
     };
