@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
@@ -42,6 +43,16 @@ import './queue/redis-client.factory.js';
 
         return {
           pinoHttp: {
+            // Never trust a caller-supplied X-Request-Id as the internal ID.
+            // Generate a new globally unique correlation ID per inbound request.
+            genReqId: (_request, response) => {
+              const requestId = randomUUID();
+              response.setHeader('X-Request-Id', requestId);
+              return requestId;
+            },
+
+            // Put the same ID at the top level of every request-context log.
+            customProps: (request) => ({ requestId: String(request.id) }),
             level:
               config.get<string>('LOG_LEVEL') ??
               (isProduction ? 'info' : 'debug'),

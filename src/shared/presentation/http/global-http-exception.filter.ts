@@ -33,8 +33,10 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
     const http = host.switchToHttp();
     const request = http.getRequest<RequestWithId>();
     const response = http.getResponse<Response>();
-    const requestId =
-      request.id === undefined ? randomUUID() : String(request.id);
+    const requestId = request.id === undefined ? randomUUID() : String(request.id);
+    // Keep the fallback path correlated with pino-http's completion log too.
+    // In the normal path genReqId has already assigned a UUID before the filter runs.
+    request.id = requestId;
     const method = request.method;
     const path = (request.originalUrl ?? request.url ?? '/').split('?')[0];
 
