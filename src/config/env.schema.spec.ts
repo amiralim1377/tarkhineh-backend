@@ -24,6 +24,7 @@ describe('envSchema', () => {
       expect(result.data.EMAIL_VERIFICATION_TTL_SECONDS).toBe(1800);
       expect(result.data.REDIS_HOST).toBe('127.0.0.1');
       expect(result.data.REDIS_PORT).toBe(6379);
+      expect(result.data.RATE_LIMIT_KEY_PREFIX).toBe('tarkhineh:rate-limit:v1');
       expect(result.data.OUTBOUND_EMAIL_LOGO_URL).toBeUndefined();
     }
   });
@@ -112,6 +113,15 @@ describe('envSchema', () => {
     const result = envSchema.safeParse({
       ...validBaseEnv,
       REDIS_PORT: '70000',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects rate-limit prefixes containing unsupported characters', () => {
+    const result = envSchema.safeParse({
+      ...validBaseEnv,
+      RATE_LIMIT_KEY_PREFIX: 'tarkhineh:{unsafe}',
     });
 
     expect(result.success).toBe(false);

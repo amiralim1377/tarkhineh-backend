@@ -35,8 +35,6 @@ import { JwtAccessTokenValidator } from './infrastructure/security/jwt-access-to
 import { BearerJwtStrategy } from './presentation/http/auth/strategies/bearer-jwt.strategy.js';
 import { CookieJwtStrategy } from './presentation/http/auth/strategies/cookie-jwt.strategy.js';
 import { IdentityAccessController } from './presentation/http/controllers/identity-access.controller.js';
-import { APP_GUARD } from '@nestjs/core';
-import { AuthenticationGuard } from './presentation/http/auth/guards/authentication.guard.js';
 import {
   AUTHENTICATION_STRATEGIES,
   type AuthenticationStrategy,
@@ -181,10 +179,7 @@ import { PrismaEmailVerificationCompletionStore } from './infrastructure/persist
         cookieJwtStrategy,
       ],
     },
-    {
-      provide: APP_GUARD,
-      useClass: AuthenticationGuard,
-    },
   ],
+  exports: [AUTHENTICATION_STRATEGIES],
 })
 export class IdentityAccessModule {}

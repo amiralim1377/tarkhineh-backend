@@ -134,6 +134,18 @@ export const envSchema = z
       z.coerce.number().int().min(1).max(65535).default(6379),
     ),
 
+    RATE_LIMIT_KEY_PREFIX: z.preprocess(
+      emptyToUndefined,
+      z
+        .string()
+        .trim()
+        .regex(
+          /^[A-Za-z0-9:_-]+$/,
+          'RATE_LIMIT_KEY_PREFIX may contain only letters, numbers, colons, underscores, and hyphens',
+        )
+        .default('tarkhineh:rate-limit:v1'),
+    ),
+
     BULLMQ_PREFIX: z.preprocess(
       emptyToUndefined,
       z.string().trim().min(1).default('bull'),
