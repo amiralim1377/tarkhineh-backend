@@ -36,13 +36,11 @@ import {
   ApiProblemServiceUnavailableResponse,
   ApiProblemUnauthorizedResponse,
 } from '../../../../../shared/presentation/http/api-problem-response.decorator.js';
-
 import { RegisterWithEmailCommand } from '../../../application/commands/register-with-email/register-with-email.command.js';
 import { VerifyEmailCommand } from '../../../application/commands/verify-email/verify-email.command.js';
 import { LoginWithEmailCommand } from '../../../application/commands/login-with-email/login-with-email.command.js';
 import { RefreshSessionCommand } from '../../../application/commands/refresh-session/refresh-session.command.js';
 import { LogoutSessionCommand } from '../../../application/commands/logout-session/logout-session.command.js';
-
 import { RegisterWithEmailDto } from '../dto/register-with-email.dto.js';
 import { VerifyEmailDto } from '../dto/verify-email.dto.js';
 import { LoginWithEmailDto } from '../dto/login-with-email.dto.js';
