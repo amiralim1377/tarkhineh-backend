@@ -14,8 +14,9 @@ import { InputValidationError } from '../../application/errors/input-validation.
 import { AppError } from '../../errors/app-error.js';
 import { ERROR_CATEGORY } from '../../errors/error-category.js';
 import {
+  createPublicProblemDetails,
   mapSafeHttpException,
-  PublicErrorResponse,
+  type PublicErrorExtensions,
   resolveHttpStatusForAppError,
 } from './http-error-mapper.js';
 
@@ -68,17 +69,16 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
         );
       }
 
-      const body: PublicErrorResponse = {
+      const extensions: PublicErrorExtensions = {
         code: exception.code,
         category: exception.category,
-        requestId,
         ...(exception.params ? { params: exception.params } : {}),
         ...(exception instanceof InputValidationError
           ? { fields: exception.fields }
           : {}),
       };
 
-      response.status(status).json(body);
+      this.sendProblem(response, status, requestId, extensions);
       return;
     }
 
@@ -90,37 +90,51 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
         this.logUnexpectedException(exception, requestId, method, path);
 
         if (status === HttpStatus.SERVICE_UNAVAILABLE) {
-          response.status(status).json({
+          this.sendProblem(response, status, requestId, {
             code: 'COMMON.DEPENDENCY_UNAVAILABLE',
             category: ERROR_CATEGORY.DEPENDENCY_UNAVAILABLE,
-            requestId,
-          } satisfies PublicErrorResponse);
+          });
           return;
         }
 
-        response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-          code: 'COMMON.INTERNAL_ERROR',
-          category: 'internal',
+        this.sendProblem(
+          response,
+          HttpStatus.INTERNAL_SERVER_ERROR,
           requestId,
-        } satisfies PublicErrorResponse);
+          {
+            code: 'COMMON.INTERNAL_ERROR',
+            category: 'internal',
+          },
+        );
         return;
       }
 
       const mapped = mapSafeHttpException(status);
-      response.status(status).json({
+      this.sendProblem(response, status, requestId, {
         code: mapped.code,
         category: mapped.category,
-        requestId,
-      } satisfies PublicErrorResponse);
+      });
       return;
     }
 
     this.logUnexpectedException(exception, requestId, method, path);
-    response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+    this.sendProblem(response, HttpStatus.INTERNAL_SERVER_ERROR, requestId, {
       code: 'COMMON.INTERNAL_ERROR',
       category: 'internal',
-      requestId,
-    } satisfies PublicErrorResponse);
+    });
+  }
+
+  private sendProblem(
+    response: Response,
+    status: number,
+    requestId: string,
+    extensions: PublicErrorExtensions,
+  ): void {
+    // Set this before json(): Express otherwise defaults the response to application/json.
+    response.setHeader('Content-Type', 'application/problem+json');
+    response
+      .status(status)
+      .json(createPublicProblemDetails(status, requestId, extensions));
   }
 
   private logUnexpectedException(

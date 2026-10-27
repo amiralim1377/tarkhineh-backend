@@ -96,6 +96,41 @@ class ErrorHandlingTestController {
 })
 class ErrorHandlingTestModule {}
 
+interface ProblemTestResponse {
+  readonly status: number;
+  readonly headers: Record<string, string | string[] | undefined>;
+  readonly body: Record<string, unknown>;
+}
+
+const EXPECTED_PROBLEM_TITLES: Readonly<Record<number, string>> = {
+  400: 'Bad Request',
+  404: 'Not Found',
+  422: 'Unprocessable Content',
+  500: 'Internal Server Error',
+  503: 'Service Unavailable',
+};
+
+function expectProblemDetails(
+  response: ProblemTestResponse,
+  expectedStatus: number,
+): void {
+  expect(response.headers['content-type']).toEqual(
+    expect.stringContaining('application/problem+json'),
+  );
+  expect(response.headers['x-request-id']).toBe(response.body.requestId);
+  expect(response.body).toMatchObject({
+    type: 'about:blank',
+    title: EXPECTED_PROBLEM_TITLES[expectedStatus],
+    status: expectedStatus,
+    instance: expect.stringMatching(/^\/problem-occurrences\/.+$/),
+    requestId: expect.any(String),
+  });
+  expect(response.body.status).toBe(response.status);
+  expect(response.body.instance).toBe(
+    `/problem-occurrences/${encodeURIComponent(String(response.body.requestId))}`,
+  );
+}
+
 describe('Global error handling integration', () => {
   let app: INestApplication;
 
@@ -124,6 +159,8 @@ describe('Global error handling integration', () => {
         unexpected: 'private-input',
       })
       .expect(400);
+
+    expectProblemDetails(response, 400);
 
     expect(response.body).toMatchObject({
       code: 'COMMON.VALIDATION_FAILED',
@@ -159,6 +196,8 @@ describe('Global error handling integration', () => {
       .get('/route-that-does-not-exist')
       .expect(404);
 
+    expectProblemDetails(response, 404);
+
     expect(response.body).toMatchObject({
       code: 'COMMON.ROUTE_NOT_FOUND',
       category: 'not_found',
@@ -172,6 +211,8 @@ describe('Global error handling integration', () => {
     const response = await request(app.getHttpServer())
       .get('/integration-test/known-error')
       .expect(422);
+
+    expectProblemDetails(response, 422);
 
     expect(response.body).toMatchObject({
       code: 'TEST.SENSITIVE_FAILURE',
@@ -190,6 +231,8 @@ describe('Global error handling integration', () => {
       .get('/integration-test/unexpected-error')
       .expect(500);
 
+    expectProblemDetails(response, 500);
+
     expect(response.body).toMatchObject({
       code: 'COMMON.INTERNAL_ERROR',
       category: 'internal',
@@ -207,6 +250,8 @@ describe('Global error handling integration', () => {
     const response = await request(app.getHttpServer())
       .get('/integration-test/dependency-unavailable')
       .expect(503);
+
+    expectProblemDetails(response, 503);
 
     expect(response.body).toMatchObject({
       code: 'COMMON.DEPENDENCY_UNAVAILABLE',

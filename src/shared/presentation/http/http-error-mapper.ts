@@ -1,3 +1,4 @@
+import { STATUS_CODES } from 'node:http';
 import { HttpStatus } from '@nestjs/common';
 
 import type { FieldValidationIssue } from '../../application/errors/input-validation.error.js';
@@ -12,12 +13,56 @@ import {
 
 export type PublicErrorCategory = ErrorCategory | 'internal';
 
-export interface PublicErrorResponse {
+/**
+ * Application-specific extension members that remain stable for API clients.
+ * RFC 9457 standard members are added centrally by createPublicProblemDetails.
+ */
+export interface PublicErrorExtensions {
   readonly code: string;
   readonly category: PublicErrorCategory;
-  readonly requestId: string;
   readonly params?: ErrorTranslationParams;
   readonly fields?: readonly FieldValidationIssue[];
+}
+
+/** RFC 9457 Problem Details response plus backwards-compatible extensions. */
+export interface PublicErrorResponse extends PublicErrorExtensions {
+  readonly type: string;
+  readonly title: string;
+  readonly status: number;
+  readonly instance: string;
+  readonly requestId: string;
+}
+
+// RFC 9110 updated the reason phrases for these status codes.
+const HTTP_STATUS_TITLE_OVERRIDES: Readonly<Record<number, string>> = {
+  [HttpStatus.PAYLOAD_TOO_LARGE]: 'Content Too Large',
+  [HttpStatus.UNPROCESSABLE_ENTITY]: 'Unprocessable Content',
+};
+
+function getHttpStatusTitle(status: number): string {
+  return (
+    HTTP_STATUS_TITLE_OVERRIDES[status] ?? STATUS_CODES[status] ?? 'HTTP Error'
+  );
+}
+
+/**
+ * Creates a safe RFC 9457 document. The relative instance URI identifies this
+ * problem occurrence by its request ID; requestId remains available as an
+ * extension member for existing client and log correlation.
+ */
+export function createPublicProblemDetails(
+  status: number,
+  requestId: string,
+  extensions: PublicErrorExtensions,
+): PublicErrorResponse {
+  return {
+    type: 'about:blank',
+    title: getHttpStatusTitle(status),
+    status,
+    instance: `/problem-occurrences/${encodeURIComponent(requestId)}`,
+    ...extensions,
+    requestId,
+  };
 }
 
 /**

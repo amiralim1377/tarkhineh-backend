@@ -71,7 +71,7 @@ async function createMessage(
       payloadVersion: 1,
       encryptedPayload: 'integration-test-ciphertext',
       status: 'PENDING',
-      availableAt: new Date(Date.now() - 5_000),
+      availableAt: new Date('2000-01-01T00:00:00.000Z'),
       validUntil,
     },
     select: {
@@ -110,10 +110,15 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     const message = await createMessage();
 
     const claims = await store.claimBatch(claimInput());
+    const messageClaims = claims.filter(
+      (claim) => claim.messageId === message.id,
+    );
 
-    expect(claims).toHaveLength(1);
+    // claimBatch returns eligible messages from the entire lane, not only
+    // the fixture created by this test.
+    expect(messageClaims).toHaveLength(1);
 
-    const lease = claims[0];
+    const lease = messageClaims[0];
 
     if (!lease) {
       throw new Error('Expected one dispatch lease');
@@ -151,10 +156,16 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
       store.claimBatch(claimInput()),
     ]);
 
-    expect(firstClaims.length + secondClaims.length).toBe(1);
-
     const leases = [...firstClaims, ...secondClaims];
-    const lease = leases[0];
+    const messageLeases = leases.filter(
+      (candidate) => candidate.messageId === message.id,
+    );
+
+    // Concurrent dispatchers may legitimately claim different messages.
+    // The guarantee under test is that this particular message is claimed once.
+    expect(messageLeases).toHaveLength(1);
+
+    const lease = messageLeases[0];
 
     if (!lease) {
       throw new Error('Expected one dispatcher to claim the message');

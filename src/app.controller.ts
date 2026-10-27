@@ -12,4 +12,10 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  @Get('__debug/500')
+  @Auth(AuthType.None)
+  triggerInternalServerError(): never {
+    throw new Error('Simulated internal server error');
+  }
 }

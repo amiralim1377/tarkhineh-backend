@@ -1,11 +1,11 @@
-import type { ArgumentsHost } from '@nestjs/common';
+import { BadRequestException, type ArgumentsHost } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { PinoLogger } from 'nestjs-pino';
 
 import { ApplicationError } from '../../application/errors/application-error.js';
+import { DependencyUnavailableError } from '../../application/errors/dependency-unavailable.error.js';
 import { ERROR_CATEGORY } from '../../errors/error-category.js';
 import { GlobalHttpExceptionFilter } from './global-http-exception.filter.js';
-import { DependencyUnavailableError } from '../../application/errors/dependency-unavailable.error.js';
 
 function createHost(request: Record<string, unknown>) {
   const response = {
@@ -53,7 +53,7 @@ describe('GlobalHttpExceptionFilter', () => {
     return { filter, logger };
   }
 
-  it('returns only the public contract for known application errors', () => {
+  it('returns RFC 9457 details plus safe extensions for known application errors', () => {
     const { filter, logger } = createFilter();
     const { host, response } = createHost({
       id: 'request-123',
@@ -67,8 +67,16 @@ describe('GlobalHttpExceptionFilter', () => {
       'X-Request-Id',
       'request-123',
     );
+    expect(response.setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'application/problem+json',
+    );
     expect(response.status).toHaveBeenCalledWith(422);
     expect(response.json).toHaveBeenCalledWith({
+      type: 'about:blank',
+      title: 'Unprocessable Content',
+      status: 422,
+      instance: '/problem-occurrences/request-123',
       code: 'TEST.EXAMPLE_FAILURE',
       category: ERROR_CATEGORY.BUSINESS_RULE,
       requestId: 'request-123',
@@ -83,6 +91,38 @@ describe('GlobalHttpExceptionFilter', () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
+  it('does not reflect a standard HttpException message or body', () => {
+    const { filter } = createFilter();
+    const { host, response } = createHost({
+      id: 'request-400',
+      method: 'POST',
+      originalUrl: '/test',
+    });
+
+    filter.catch(
+      new BadRequestException({ message: 'private validation internals' }),
+      host,
+    );
+
+    expect(response.status).toHaveBeenCalledWith(400);
+    expect(response.setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'application/problem+json',
+    );
+    expect(response.json).toHaveBeenCalledWith({
+      type: 'about:blank',
+      title: 'Bad Request',
+      status: 400,
+      instance: '/problem-occurrences/request-400',
+      code: 'COMMON.INVALID_REQUEST',
+      category: ERROR_CATEGORY.VALIDATION,
+      requestId: 'request-400',
+    });
+    expect(JSON.stringify(response.json.mock.calls)).not.toContain(
+      'private validation internals',
+    );
+  });
+
   it('hides unexpected exception messages and logs them internally', () => {
     const { filter, logger } = createFilter();
     const { host, response } = createHost({
@@ -94,7 +134,15 @@ describe('GlobalHttpExceptionFilter', () => {
     filter.catch(new Error('postgres://secret-password@private-host/db'), host);
 
     expect(response.status).toHaveBeenCalledWith(500);
+    expect(response.setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'application/problem+json',
+    );
     expect(response.json).toHaveBeenCalledWith({
+      type: 'about:blank',
+      title: 'Internal Server Error',
+      status: 500,
+      instance: '/problem-occurrences/request-456',
       code: 'COMMON.INTERNAL_ERROR',
       category: 'internal',
       requestId: 'request-456',
@@ -117,7 +165,7 @@ describe('GlobalHttpExceptionFilter', () => {
     expect(logOutput).not.toContain('postgres://');
   });
 
-  it('returns a safe 503 and logs only sanitized dependency diagnostics', () => {
+  it('returns safe RFC 9457 details for 503 and logs only sanitized dependency diagnostics', () => {
     const { filter, logger } = createFilter();
 
     const { host, response } = createHost({
@@ -127,7 +175,6 @@ describe('GlobalHttpExceptionFilter', () => {
     });
 
     const cause = new Error('postgres://secret-password@private-host/database');
-
     const exception = new DependencyUnavailableError('P1001', cause);
 
     filter.catch(exception, host);
@@ -136,10 +183,16 @@ describe('GlobalHttpExceptionFilter', () => {
       'X-Request-Id',
       'request-789',
     );
-
     expect(response.status).toHaveBeenCalledWith(503);
-
+    expect(response.setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'application/problem+json',
+    );
     expect(response.json).toHaveBeenCalledWith({
+      type: 'about:blank',
+      title: 'Service Unavailable',
+      status: 503,
+      instance: '/problem-occurrences/request-789',
       code: 'COMMON.DEPENDENCY_UNAVAILABLE',
       category: ERROR_CATEGORY.DEPENDENCY_UNAVAILABLE,
       requestId: 'request-789',

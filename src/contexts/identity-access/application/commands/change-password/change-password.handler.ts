@@ -49,19 +49,14 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
   constructor(
     @Inject(USER_AUTHENTICATION_REPOSITORY)
     private readonly users: UserAuthenticationRepository,
-
     @Inject(PASSWORD_VERIFIER)
     private readonly passwordVerifier: PasswordVerifier,
-
     @Inject(PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
-
     @Inject(PASSWORD_CHANGE_STORE)
     private readonly passwordChangeStore: PasswordChangeStore,
-
     @Inject(CLOCK)
     private readonly clock: Clock,
-
     private readonly passwordPolicy: PasswordPolicy,
   ) {}
 

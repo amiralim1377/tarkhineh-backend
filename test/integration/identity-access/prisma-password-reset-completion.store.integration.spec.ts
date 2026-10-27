@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { PasswordResetCompletionStoreInput } from '../../../src/contexts/identity-access/application/ports/password-reset-completion-store.port.js';
 import { PrismaPasswordResetCompletionStore } from '../../../src/contexts/identity-access/infrastructure/persistence/prisma-password-reset-completion.store.js';
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
+import { AesGcmOutboundEmailPayloadEncryptor } from '../../../src/contexts/outbound-email/infrastructure/security/aes-gcm-outbound-email-payload-encryptor.js';
 
 // -----------------------------------------------------------------------------
 // Database configuration
@@ -36,19 +37,26 @@ function createTestDatabaseUrl(): string {
 
 const testDatabaseUrl = createTestDatabaseUrl();
 
+const testEncryptionKey = Buffer.alloc(32, 0x5a).toString('base64');
+
 const configService = {
   getOrThrow(key: string): string {
-    if (key !== 'DATABASE_URL') {
-      throw new Error(`Unexpected configuration key: ${key}`);
+    if (key === 'DATABASE_URL') {
+      return testDatabaseUrl;
     }
 
-    return testDatabaseUrl;
+    if (key === 'OUTBOUND_EMAIL_PAYLOAD_ENCRYPTION_KEY') {
+      return testEncryptionKey;
+    }
+
+    throw new Error(`Unexpected configuration key: ${key}`);
   },
 } as unknown as ConfigService;
 
 const prisma = new PrismaService(configService);
+const payloadEncryptor = new AesGcmOutboundEmailPayloadEncryptor(configService);
 
-const store = new PrismaPasswordResetCompletionStore(prisma);
+const store = new PrismaPasswordResetCompletionStore(prisma, payloadEncryptor);
 
 // Track test data so we can remove it after every test.
 const testEmails: string[] = [];
@@ -297,7 +305,10 @@ function createStoreWithFailingRefreshTokenUpdate(
     },
   }) as PrismaService;
 
-  return new PrismaPasswordResetCompletionStore(prismaWithFailure);
+  return new PrismaPasswordResetCompletionStore(
+    prismaWithFailure,
+    payloadEncryptor,
+  );
 }
 
 // -----------------------------------------------------------------------------

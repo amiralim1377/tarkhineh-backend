@@ -23,24 +23,24 @@ import type { AuthenticatedPrincipal } from '../auth/contracts/authentication-st
 import {
   ApiAcceptedResponse,
   ApiBearerAuth,
-  ApiBadRequestResponse,
   ApiBody,
   ApiOkResponse,
   ApiOperation,
   ApiProduces,
   ApiQuery,
   ApiResponse,
-  ApiServiceUnavailableResponse,
   ApiTags,
-  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-
+import {
+  ApiProblemBadRequestResponse,
+  ApiProblemServiceUnavailableResponse,
+  ApiProblemUnauthorizedResponse,
+} from '../../../../../shared/presentation/http/api-problem-response.decorator.js';
 import { RegisterWithEmailCommand } from '../../../application/commands/register-with-email/register-with-email.command.js';
 import { VerifyEmailCommand } from '../../../application/commands/verify-email/verify-email.command.js';
 import { LoginWithEmailCommand } from '../../../application/commands/login-with-email/login-with-email.command.js';
 import { RefreshSessionCommand } from '../../../application/commands/refresh-session/refresh-session.command.js';
 import { LogoutSessionCommand } from '../../../application/commands/logout-session/logout-session.command.js';
-
 import { RegisterWithEmailDto } from '../dto/register-with-email.dto.js';
 import { VerifyEmailDto } from '../dto/verify-email.dto.js';
 import { LoginWithEmailDto } from '../dto/login-with-email.dto.js';
@@ -48,7 +48,6 @@ import { LoginWithEmailResponseDto } from '../dto/login-with-email-response.dto.
 import { RefreshSessionResponseDto } from '../dto/refresh-session-response.dto.js';
 import { CurrentUserResponseDto } from '../dto/current-user-response.dto.js';
 import { AuthMessageResponseDto } from '../dto/auth-message-response.dto.js';
-import { ApiErrorResponseDto } from '../../../../../shared/presentation/http/api-error-response.dto.js';
 import { BadRequestException } from '@nestjs/common';
 import { ChangePasswordDto } from '../dto/change-password.dto.js';
 import { ChangePasswordCommand } from '../../../application/commands/change-password/change-password.command.js';
@@ -75,9 +74,8 @@ export class IdentityAccessController {
     description: 'The authenticated user was found.',
     type: CurrentUserResponseDto,
   })
-  @ApiUnauthorizedResponse({
+  @ApiProblemUnauthorizedResponse({
     description: 'A valid bearer access token is required.',
-    type: ApiErrorResponseDto,
   })
   getCurrentUser(
     @CurrentUser() principal: AuthenticatedPrincipal,
@@ -99,17 +97,14 @@ export class IdentityAccessController {
       'Login successful. Returns the access token and public user information.',
     type: LoginWithEmailResponseDto,
   })
-  @ApiBadRequestResponse({
+  @ApiProblemBadRequestResponse({
     description: 'The request body is invalid.',
-    type: ApiErrorResponseDto,
   })
-  @ApiUnauthorizedResponse({
+  @ApiProblemUnauthorizedResponse({
     description: 'The credentials are invalid or the account cannot log in.',
-    type: ApiErrorResponseDto,
   })
-  @ApiServiceUnavailableResponse({
+  @ApiProblemServiceUnavailableResponse({
     description: 'A required dependency is unavailable.',
-    type: ApiErrorResponseDto,
   })
   async loginWithEmail(
     @Body() dto: LoginWithEmailDto,
@@ -144,14 +139,12 @@ export class IdentityAccessController {
       'The session was refreshed. Returns a new access token and CSRF token.',
     type: RefreshSessionResponseDto,
   })
-  @ApiUnauthorizedResponse({
+  @ApiProblemUnauthorizedResponse({
     description:
       'The refresh token or CSRF token is invalid, expired, or has been reused.',
-    type: ApiErrorResponseDto,
   })
-  @ApiServiceUnavailableResponse({
+  @ApiProblemServiceUnavailableResponse({
     description: 'A required dependency is unavailable.',
-    type: ApiErrorResponseDto,
   })
   async refreshSession(
     @Req() request: Request,
@@ -193,13 +186,11 @@ export class IdentityAccessController {
       'The session was revoked and the refresh-token cookie was cleared.',
     type: AuthMessageResponseDto,
   })
-  @ApiUnauthorizedResponse({
+  @ApiProblemUnauthorizedResponse({
     description: 'The refresh token or CSRF token is invalid.',
-    type: ApiErrorResponseDto,
   })
-  @ApiServiceUnavailableResponse({
+  @ApiProblemServiceUnavailableResponse({
     description: 'A required dependency is unavailable.',
-    type: ApiErrorResponseDto,
   })
   async logoutSession(
     @Req() request: Request,
@@ -241,13 +232,11 @@ export class IdentityAccessController {
     description: 'The registration request has been accepted.',
     type: AuthMessageResponseDto,
   })
-  @ApiBadRequestResponse({
+  @ApiProblemBadRequestResponse({
     description: 'The request body is invalid.',
-    type: ApiErrorResponseDto,
   })
-  @ApiServiceUnavailableResponse({
+  @ApiProblemServiceUnavailableResponse({
     description: 'A required dependency is unavailable.',
-    type: ApiErrorResponseDto,
   })
   registerWithEmail(@Body() dto: RegisterWithEmailDto) {
     return this.commandBus.execute(
@@ -335,14 +324,12 @@ export class IdentityAccessController {
     description: 'Email successfully verified.',
     type: AuthMessageResponseDto,
   })
-  @ApiBadRequestResponse({
+  @ApiProblemBadRequestResponse({
     description:
       'The token is invalid, expired, or the request body is invalid.',
-    type: ApiErrorResponseDto,
   })
-  @ApiServiceUnavailableResponse({
+  @ApiProblemServiceUnavailableResponse({
     description: 'A required dependency is unavailable.',
-    type: ApiErrorResponseDto,
   })
   verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.commandBus.execute(new VerifyEmailCommand(dto.token));
@@ -376,14 +363,12 @@ export class IdentityAccessController {
     description: 'Password changed successfully.',
     type: AuthMessageResponseDto,
   })
-  @ApiBadRequestResponse({
+  @ApiProblemBadRequestResponse({
     description:
       'The request body is invalid or the new password is unchanged.',
-    type: ApiErrorResponseDto,
   })
-  @ApiUnauthorizedResponse({
+  @ApiProblemUnauthorizedResponse({
     description: 'Authentication failed or the current password is invalid.',
-    type: ApiErrorResponseDto,
   })
   async changePassword(
     @CurrentUser() principal: AuthenticatedPrincipal,
@@ -431,13 +416,11 @@ export class IdentityAccessController {
       'Returns a generic success message regardless of whether the email exists, preventing enumeration.',
     type: AuthMessageResponseDto,
   })
-  @ApiBadRequestResponse({
+  @ApiProblemBadRequestResponse({
     description: 'The request body is invalid or missing the email field.',
-    type: ApiErrorResponseDto,
   })
-  @ApiServiceUnavailableResponse({
+  @ApiProblemServiceUnavailableResponse({
     description: 'A required dependency is unavailable.',
-    type: ApiErrorResponseDto,
   })
   async forgotPassword(
     @Body() dto: ForgotPasswordDto,
@@ -461,13 +444,11 @@ export class IdentityAccessController {
     description: 'The password reset completed successfully.',
     type: AuthMessageResponseDto,
   })
-  @ApiBadRequestResponse({
+  @ApiProblemBadRequestResponse({
     description: 'The request is invalid or the recovery token cannot be used.',
-    type: ApiErrorResponseDto,
   })
-  @ApiServiceUnavailableResponse({
+  @ApiProblemServiceUnavailableResponse({
     description: 'A required dependency is unavailable.',
-    type: ApiErrorResponseDto,
   })
   async resetPassword(
     @Body() dto: ResetPasswordDto,

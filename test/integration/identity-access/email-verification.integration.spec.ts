@@ -6,7 +6,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { IdentityUser } from '../../../src/contexts/identity-access/domain/entities/identity-user.js';
 import { PrismaEmailRegistrationRepository } from '../../../src/contexts/identity-access/infrastructure/persistence/prisma-email-registration.repository.js';
-import { PrismaEmailVerificationRepository } from '../../../src/contexts/identity-access/infrastructure/persistence/prisma-email-verification.repository.js';
+import { PrismaEmailVerificationCompletionStore } from '../../../src/contexts/identity-access/infrastructure/persistence/prisma-email-verification-completion.store.js';
+import { AesGcmOutboundEmailPayloadEncryptor } from '../../../src/contexts/outbound-email/infrastructure/security/aes-gcm-outbound-email-payload-encryptor.js';
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
 
 function createTestDatabaseUrl(): string {
@@ -34,20 +35,30 @@ function createTestDatabaseUrl(): string {
 
 const testDatabaseUrl = createTestDatabaseUrl();
 
+const testEncryptionKey = Buffer.alloc(32, 0x5a).toString('base64');
+
 const configService = {
   getOrThrow(key: string): string {
-    if (key !== 'DATABASE_URL') {
-      throw new Error(`Unexpected configuration key: ${key}`);
+    if (key === 'DATABASE_URL') {
+      return testDatabaseUrl;
     }
 
-    return testDatabaseUrl;
+    if (key === 'OUTBOUND_EMAIL_PAYLOAD_ENCRYPTION_KEY') {
+      return testEncryptionKey;
+    }
+
+    throw new Error(`Unexpected configuration key: ${key}`);
   },
 } as unknown as ConfigService;
 
 const prisma = new PrismaService(configService);
+const payloadEncryptor = new AesGcmOutboundEmailPayloadEncryptor(configService);
 
 const registrationRepository = new PrismaEmailRegistrationRepository(prisma);
-const verificationRepository = new PrismaEmailVerificationRepository(prisma);
+const verificationStore = new PrismaEmailVerificationCompletionStore(
+  prisma,
+  payloadEncryptor,
+);
 
 const testEmails: string[] = [];
 
@@ -94,12 +105,38 @@ describe('Email verification with PostgreSQL', () => {
         return;
       }
 
-      await prisma.user.deleteMany({
+      const emails = [...testEmails];
+
+      const [users, challenges] = await Promise.all([
+        prisma.user.findMany({
+          where: { email: { in: emails } },
+          select: { id: true },
+        }),
+        prisma.emailVerificationChallenge.findMany({
+          where: { email: { in: emails } },
+          select: { id: true },
+        }),
+      ]);
+
+      // OutboundEmailMessage uses aggregate IDs rather than cascading
+      // foreign keys, so clean test messages before deleting the users.
+      await prisma.outboundEmailMessage.deleteMany({
         where: {
-          email: {
-            in: [...testEmails],
-          },
+          OR: [
+            {
+              aggregateType: 'User',
+              aggregateId: { in: users.map((user) => user.id) },
+            },
+            {
+              aggregateType: 'EmailVerificationChallenge',
+              aggregateId: { in: challenges.map((challenge) => challenge.id) },
+            },
+          ],
         },
+      });
+
+      await prisma.user.deleteMany({
+        where: { email: { in: emails } },
       });
     } finally {
       testEmails.length = 0;
@@ -118,10 +155,10 @@ describe('Email verification with PostgreSQL', () => {
       new Date(now.getTime() + 30 * 60 * 1000),
     );
 
-    const result = await verificationRepository.verifyByTokenHash(
+    const result = await verificationStore.completeEmailVerification({
       tokenHash,
       now,
-    );
+    });
 
     expect(result).toBe(true);
 
@@ -156,15 +193,15 @@ describe('Email verification with PostgreSQL', () => {
       new Date(now.getTime() + 30 * 60 * 1000),
     );
 
-    const firstResult = await verificationRepository.verifyByTokenHash(
+    const firstResult = await verificationStore.completeEmailVerification({
       tokenHash,
       now,
-    );
+    });
 
-    const secondResult = await verificationRepository.verifyByTokenHash(
+    const secondResult = await verificationStore.completeEmailVerification({
       tokenHash,
-      new Date(now.getTime() + 1000),
-    );
+      now: new Date(now.getTime() + 1000),
+    });
 
     expect(firstResult).toBe(true);
     expect(secondResult).toBe(false);
@@ -179,10 +216,10 @@ describe('Email verification with PostgreSQL', () => {
 
     const { email, tokenHash } = await createPendingUser(createdAt, expiresAt);
 
-    const result = await verificationRepository.verifyByTokenHash(
+    const result = await verificationStore.completeEmailVerification({
       tokenHash,
-      verificationNow,
-    );
+      now: verificationNow,
+    });
 
     expect(result).toBe(false);
 
@@ -209,8 +246,8 @@ describe('Email verification with PostgreSQL', () => {
     );
 
     const results = await Promise.all([
-      verificationRepository.verifyByTokenHash(tokenHash, now),
-      verificationRepository.verifyByTokenHash(tokenHash, now),
+      verificationStore.completeEmailVerification({ tokenHash, now }),
+      verificationStore.completeEmailVerification({ tokenHash, now }),
     ]);
 
     expect(results.filter(Boolean)).toHaveLength(1);

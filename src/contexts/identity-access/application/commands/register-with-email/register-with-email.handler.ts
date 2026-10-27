@@ -72,26 +72,6 @@ export class RegisterWithEmailHandler implements ICommandHandler<RegisterWithEma
       throw new PasswordPolicyViolationError();
     }
 
-    if (command.password.length < 8) {
-      throw new InputValidationError([
-        {
-          field: 'password',
-          code: 'VALIDATION.MIN_LENGTH',
-          params: { min: 8 },
-        },
-      ]);
-    }
-
-    if (command.password.length > 1024) {
-      throw new InputValidationError([
-        {
-          field: 'password',
-          code: 'VALIDATION.MAX_LENGTH',
-          params: { max: 1024 },
-        },
-      ]);
-    }
-
     const passwordHash = await this.passwordHasher.hash(command.password);
 
     const user = IdentityUser.registerPending({
