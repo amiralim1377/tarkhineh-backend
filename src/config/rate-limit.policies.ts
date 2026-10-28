@@ -1,7 +1,3 @@
-/**
- * HTTP rate-limit policies shared by the throttler module and controllers.
- * TTL and blockDuration values are expressed in milliseconds.
- */
 export const RATE_LIMIT_POLICIES = {
   default: {
     limit: 120,
