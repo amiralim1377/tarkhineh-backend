@@ -10,6 +10,7 @@ async function bootstrap(): Promise<void> {
   });
 
   appCreate(app);
+  app.enableShutdownHooks();
 
   // Keep API documentation disabled in production by default.
   if (process.env.NODE_ENV !== 'production') {

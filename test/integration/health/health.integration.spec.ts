@@ -9,9 +9,12 @@ import { appCreate } from '../../../src/app.create.js';
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
 import { GlobalHttpExceptionFilter } from '../../../src/shared/presentation/http/global-http-exception.filter.js';
 import { HealthController } from '../../../src/health/health.controller.js';
+import { RateLimitStoreUnavailableError } from '../../../src/shared/application/errors/rate-limit-store-unavailable.error.js';
+import { RATE_LIMIT_STORAGE_READINESS } from '../../../src/shared/application/ports/rate-limit-storage-readiness.port.js';
 
 async function createHealthApp(
   queryRaw: ReturnType<typeof vi.fn>,
+  checkReadiness: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue(undefined),
 ): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({
     imports: [
@@ -29,6 +32,10 @@ async function createHealthApp(
         useValue: {
           $queryRaw: queryRaw,
         },
+      },
+      {
+        provide: RATE_LIMIT_STORAGE_READINESS,
+        useValue: { checkReadiness },
       },
       {
         provide: APP_FILTER,
@@ -118,5 +125,35 @@ describe('Health endpoints integration', () => {
       code: 'COMMON.DEPENDENCY_UNAVAILABLE',
       category: 'dependency_unavailable',
     });
+  });
+
+  it('returns a safe 503 when rate-limit storage readiness fails', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([{ result: 1 }]);
+    const checkReadiness = vi.fn().mockRejectedValue(
+      new RateLimitStoreUnavailableError(
+        'readiness-check',
+        new Error('redis://private-user:private-password@redis.internal:6379'),
+      ),
+    );
+
+    app = await createHealthApp(queryRaw, checkReadiness);
+
+    const response = await request(app.getHttpServer())
+      .get('/health/ready')
+      .expect(503);
+
+    expect(response.body).toMatchObject({
+      code: 'COMMON.DEPENDENCY_UNAVAILABLE',
+      category: 'dependency_unavailable',
+      status: 503,
+    });
+
+    const body = JSON.stringify(response.body);
+    expect(body).not.toContain('private-password');
+    expect(body).not.toContain('redis.internal');
+    expect(body).not.toContain('redis://');
+
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(checkReadiness).toHaveBeenCalledTimes(1);
   });
 });

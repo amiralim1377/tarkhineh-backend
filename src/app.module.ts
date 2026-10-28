@@ -5,11 +5,14 @@ import { LoggerModule } from 'nestjs-pino';
 
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { RateLimitingModule } from './shared/infrastructure/rate-limiting/rate-limiting.module.js';
 import { IdentityAccessModule } from './contexts/identity-access/identity-access.module.js';
 import { HealthModule } from './health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { envSchema } from './config/env.schema.js';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard } from '@nestjs/throttler';
+import { AuthenticationGuard } from './contexts/identity-access/presentation/http/auth/guards/authentication.guard.js';
 import { GlobalHttpExceptionFilter } from './shared/presentation/http/global-http-exception.filter.js';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -116,6 +119,7 @@ import './queue/redis-client.factory.js';
         };
       },
     }),
+    RateLimitingModule,
     IdentityAccessModule,
     PrismaModule,
     HealthModule,
@@ -125,6 +129,15 @@ import './queue/redis-client.factory.js';
   controllers: [AppController],
   providers: [
     AppService,
+    // Registration order is intentional: throttle before authentication.
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AuthenticationGuard,
+    },
     {
       provide: APP_FILTER,
       useClass: GlobalHttpExceptionFilter,

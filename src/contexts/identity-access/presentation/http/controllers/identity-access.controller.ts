@@ -14,6 +14,8 @@ import {
 } from '@nestjs/common';
 
 import type { Request, Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
+import { RATE_LIMIT_POLICIES } from '../../../../../config/rate-limit.policies.js';
 import { CommandBus } from '@nestjs/cqrs';
 import { Auth } from '../auth/decorators/auth.decorator.js';
 import { AuthType } from '../auth/contracts/auth-type.enum.js';
@@ -83,6 +85,7 @@ export class IdentityAccessController {
     return { userId: principal.userId };
   }
 
+  @Throttle({ default: RATE_LIMIT_POLICIES.loginEmail })
   @Auth(AuthType.None)
   @Post('login/email')
   @HttpCode(HttpStatus.OK)
@@ -126,6 +129,7 @@ export class IdentityAccessController {
     return LoginWithEmailResponseDto.fromResult(result);
   }
 
+  @Throttle({ default: RATE_LIMIT_POLICIES.refreshSession })
   @Auth(AuthType.None)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
@@ -173,6 +177,7 @@ export class IdentityAccessController {
     return RefreshSessionResponseDto.fromResult(result);
   }
 
+  @Throttle({ default: RATE_LIMIT_POLICIES.logoutSession })
   @Auth(AuthType.None)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
@@ -219,6 +224,7 @@ export class IdentityAccessController {
     return result;
   }
 
+  @Throttle({ default: RATE_LIMIT_POLICIES.registerEmail })
   @Auth(AuthType.None)
   @Post('register/email')
   @HttpCode(HttpStatus.ACCEPTED)
@@ -311,6 +317,7 @@ export class IdentityAccessController {
 </html>`;
   }
 
+  @Throttle({ default: RATE_LIMIT_POLICIES.verifyEmail })
   @Auth(AuthType.None)
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
@@ -349,6 +356,7 @@ export class IdentityAccessController {
     });
   }
 
+  @Throttle({ default: RATE_LIMIT_POLICIES.changePassword })
   @Auth(AuthType.Bearer)
   @Patch('change-password')
   @HttpCode(HttpStatus.OK)
@@ -402,6 +410,7 @@ export class IdentityAccessController {
     return result;
   }
 
+  @Throttle({ default: RATE_LIMIT_POLICIES.forgotPassword })
   @Auth(AuthType.None)
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
@@ -432,6 +441,7 @@ export class IdentityAccessController {
     return { message: result.message };
   }
 
+  @Throttle({ default: RATE_LIMIT_POLICIES.resetPassword })
   @Auth(AuthType.None)
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
