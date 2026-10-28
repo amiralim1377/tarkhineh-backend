@@ -1,35 +1,74 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-  Controller,
-  Get,
-  Injectable,
-  type CanActivate,
-} from '@nestjs/common';
+import { Redis } from 'ioredis';
+import { Controller, Get, Injectable, type CanActivate } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import request from 'supertest';
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { RATE_LIMIT_STORAGE_READINESS } from '../../../src/shared/application/ports/rate-limit-storage-readiness.port.js';
 import type { RateLimitStorageReadiness } from '../../../src/shared/application/ports/rate-limit-storage-readiness.port.js';
 import { GlobalHttpExceptionFilter } from '../../../src/shared/presentation/http/global-http-exception.filter.js';
 import { RateLimitingModule } from '../../../src/shared/infrastructure/rate-limiting/rate-limiting.module.js';
 
+const testRateLimitPrefix = `tarkhineh:rate-limit:guard-test:${randomUUID()}`;
+
 const integrationSuite =
   process.env.RATE_LIMIT_REDIS_INTEGRATION === 'true'
     ? describe
     : describe.skip;
+
+async function clearTestRateLimitKeys(prefix: string): Promise<void> {
+  const allowedPrefix = 'tarkhineh:rate-limit:guard-test:';
+
+  // Never allow cleanup outside this test's Redis namespace.
+  if (!prefix.startsWith(allowedPrefix)) {
+    throw new Error(
+      `Refusing to clear Redis keys outside the test namespace: ${prefix}`,
+    );
+  }
+
+  const redis = new Redis({
+    host: process.env.RATE_LIMIT_TEST_REDIS_HOST || '127.0.0.1',
+    port: Number(process.env.RATE_LIMIT_TEST_REDIS_PORT || '6379'),
+    lazyConnect: true,
+    enableOfflineQueue: false,
+    retryStrategy: () => null,
+  });
+
+  try {
+    await redis.connect();
+    await redis.ping();
+
+    let cursor = '0';
+
+    do {
+      const [nextCursor, keys] = await redis.scan(
+        cursor,
+        'MATCH',
+        `${prefix}:*`,
+        'COUNT',
+        100,
+      );
+
+      cursor = nextCursor;
+
+      if (keys.length > 0) {
+        await redis.unlink(...keys);
+      }
+    } while (cursor !== '0');
+  } finally {
+    if (redis.status === 'ready') {
+      await redis.quit();
+    } else {
+      redis.disconnect();
+    }
+  }
+}
 
 @Controller('rate-limit-probe')
 class RateLimitProbeController {
@@ -60,9 +99,6 @@ integrationSuite('Rate-limit HTTP guard ordering', () => {
   let app: Awaited<ReturnType<typeof createTestApplication>> | undefined;
 
   async function createTestApplication() {
-    const keyPrefix =
-      `tarkhineh:rate-limit:guard-test:${randomUUID()}`;
-
     const moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
@@ -70,12 +106,11 @@ integrationSuite('Rate-limit HTTP guard ordering', () => {
           ignoreEnvFile: true,
           load: [
             () => ({
-              REDIS_HOST:
-                process.env.RATE_LIMIT_TEST_REDIS_HOST || '127.0.0.1',
+              REDIS_HOST: process.env.RATE_LIMIT_TEST_REDIS_HOST || '127.0.0.1',
               REDIS_PORT: Number(
                 process.env.RATE_LIMIT_TEST_REDIS_PORT || '6379',
               ),
-              RATE_LIMIT_KEY_PREFIX: keyPrefix,
+              RATE_LIMIT_KEY_PREFIX: testRateLimitPrefix,
             }),
           ],
         }),
@@ -89,7 +124,7 @@ integrationSuite('Rate-limit HTTP guard ordering', () => {
       ],
       controllers: [RateLimitProbeController],
       providers: [
-        // This order mirrors the global APP_GUARD composition in AppModule.
+        // Preserve the global guard order being tested.
         {
           provide: APP_GUARD,
           useClass: ThrottlerGuard,
@@ -123,7 +158,10 @@ integrationSuite('Rate-limit HTTP guard ordering', () => {
         return;
       } catch (error: unknown) {
         lastError = error;
-        await new Promise<void>((resolve) => setTimeout(resolve, 25));
+
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 25);
+        });
       }
     }
 
@@ -148,8 +186,14 @@ integrationSuite('Rate-limit HTTP guard ordering', () => {
   });
 
   afterAll(async () => {
-    await app?.close();
-    app = undefined;
+    try {
+      await app?.close();
+    } finally {
+      app = undefined;
+
+      // Remove only keys created by this test run.
+      await clearTestRateLimitKeys(testRateLimitPrefix);
+    }
   });
 
   it('returns 429 before invoking the subsequent authentication guard', async () => {
@@ -159,13 +203,9 @@ integrationSuite('Rate-limit HTTP guard ordering', () => {
 
     const server = app.getHttpServer();
 
-    await request(server)
-      .get('/rate-limit-probe')
-      .expect(200);
+    await request(server).get('/rate-limit-probe').expect(200);
 
-    await request(server)
-      .get('/rate-limit-probe')
-      .expect(200);
+    await request(server).get('/rate-limit-probe').expect(200);
 
     expect(CountingAuthenticationGuard.calls).toBe(2);
 
@@ -180,11 +220,10 @@ integrationSuite('Rate-limit HTTP guard ordering', () => {
     });
 
     expect(thirdResponse.headers['retry-after']).toBeTruthy();
+
     expect(CountingAuthenticationGuard.calls).toBe(2);
 
-    await request(server)
-      .get('/rate-limit-probe')
-      .expect(429);
+    await request(server).get('/rate-limit-probe').expect(429);
 
     expect(CountingAuthenticationGuard.calls).toBe(2);
   });

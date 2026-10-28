@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { Redis } from 'ioredis';
 import request from 'supertest';
 import {
   afterAll,
@@ -14,9 +15,16 @@ import {
   vi,
 } from 'vitest';
 
-import { AppModule } from '../../../src/app.module.js';
 import { PrismaService } from '../../../src/prisma/prisma.service.js';
 import { OUTBOUND_EMAIL_PROVIDER } from '../../../src/contexts/outbound-email/application/ports/outbound-email-provider.port.js';
+
+const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalBullMqPrefix = process.env.BULLMQ_PREFIX;
+const originalRateLimitKeyPrefix = process.env.RATE_LIMIT_KEY_PREFIX;
+
+const testBullMqPrefix = `tarkhineh-e2e-${randomUUID()}`;
+const testRateLimitKeyPrefix =
+  `tarkhineh-e2e-rate-limit-${randomUUID()}`;
 
 function createTestDatabaseUrl(): string {
   const configuredUrl = process.env.DATABASE_URL;
@@ -41,6 +49,78 @@ function createTestDatabaseUrl(): string {
   return url.toString();
 }
 
+
+function restoreEnvironmentVariable(
+  name: string,
+  originalValue: string | undefined,
+): void {
+  if (originalValue === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = originalValue;
+  }
+}
+
+async function clearTestRedisNamespace(prefix: string): Promise<void> {
+  if (
+    prefix !== testBullMqPrefix &&
+    prefix !== testRateLimitKeyPrefix
+  ) {
+    throw new Error(
+      'Refusing to clean an unrecognized E2E Redis namespace.',
+    );
+  }
+
+  const redis = new Redis({
+    host: process.env.REDIS_HOST ?? '127.0.0.1',
+    port: Number(process.env.REDIS_PORT ?? 6379),
+    connectTimeout: 1_000,
+    commandTimeout: 500,
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    lazyConnect: true,
+    retryStrategy: () => null,
+  });
+
+  try {
+    await redis.connect();
+    await redis.ping();
+
+    let cursor = '0';
+    const pattern = `${prefix}:*`;
+
+    do {
+      const [nextCursor, keys] = await redis.scan(
+        cursor,
+        'MATCH',
+        pattern,
+        'COUNT',
+        100,
+      );
+
+      for (let index = 0; index < keys.length; index += 100) {
+        const batch = keys.slice(index, index + 100);
+
+        if (batch.length > 0) {
+          await redis.unlink(...batch);
+        }
+      }
+
+      cursor = nextCursor;
+    } while (cursor !== '0');
+  } finally {
+    if (redis.status === 'ready') {
+      try {
+        await redis.quit();
+      } catch {
+        redis.disconnect();
+      }
+    } else {
+      redis.disconnect();
+    }
+  }
+}
+
 describe('POST /auth/verify-email (E2E)', () => {
   let app: INestApplication | undefined;
   let prisma: PrismaService;
@@ -56,6 +136,11 @@ describe('POST /auth/verify-email (E2E)', () => {
   beforeAll(async () => {
     // Force E2E requests to use the isolated test database.
     process.env.DATABASE_URL = createTestDatabaseUrl();
+    process.env.BULLMQ_PREFIX = testBullMqPrefix;
+    process.env.RATE_LIMIT_KEY_PREFIX = testRateLimitKeyPrefix;
+
+    // Load AppModule only after test-specific configuration is set.
+    const { AppModule } = await import('../../../src/app.module.js');
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -79,24 +164,53 @@ describe('POST /auth/verify-email (E2E)', () => {
   });
 
   afterEach(async () => {
-    if (testEmails.size > 0) {
-      await prisma.user.deleteMany({
-        where: {
-          email: {
-            in: [...testEmails],
+    try {
+      if (testEmails.size > 0) {
+        await prisma.user.deleteMany({
+          where: {
+            email: {
+              in: [...testEmails],
+            },
           },
-        },
-      });
+        });
 
-      testEmails.clear();
+        testEmails.clear();
+      }
+    } finally {
+      try {
+        await clearTestRedisNamespace(testRateLimitKeyPrefix);
+      } finally {
+        outboundEmailProviderMock.send.mockClear();
+      }
     }
-
-    outboundEmailProviderMock.send.mockClear();
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
+    try {
+      if (app) {
+        await app.close();
+      }
+    } finally {
+      try {
+        await clearTestRedisNamespace(testBullMqPrefix);
+      } finally {
+        try {
+          await clearTestRedisNamespace(testRateLimitKeyPrefix);
+        } finally {
+          restoreEnvironmentVariable(
+            'DATABASE_URL',
+            originalDatabaseUrl,
+          );
+          restoreEnvironmentVariable(
+            'BULLMQ_PREFIX',
+            originalBullMqPrefix,
+          );
+          restoreEnvironmentVariable(
+            'RATE_LIMIT_KEY_PREFIX',
+            originalRateLimitKeyPrefix,
+          );
+        }
+      }
     }
   });
 
