@@ -149,9 +149,21 @@ describe('OutboundEmailReconciler integration', () => {
 
   afterAll(async () => {
     try {
-      await Promise.all([transactionalQueue.close(), bulkQueue.close()]);
+      // These queues have unique names for this test run.
+      // Remove their Redis data before closing the connections.
+      await Promise.all([
+        transactionalQueue.obliterate({ force: true }),
+        bulkQueue.obliterate({ force: true }),
+      ]);
     } finally {
-      await prisma.$disconnect();
+      try {
+        await Promise.all([
+          transactionalQueue.close(),
+          bulkQueue.close(),
+        ]);
+      } finally {
+        await prisma.$disconnect();
+      }
     }
   });
 

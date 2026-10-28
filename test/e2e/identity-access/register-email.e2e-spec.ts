@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { createHash, randomUUID } from 'node:crypto';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { Redis } from 'ioredis';
 import request from 'supertest';
 import {
   afterAll,
@@ -22,8 +23,12 @@ import { OutboundEmailDispatcher } from '../../../src/contexts/outbound-email/in
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const originalBullMqPrefix = process.env.BULLMQ_PREFIX;
+const originalRateLimitKeyPrefix =
+  process.env.RATE_LIMIT_KEY_PREFIX;
 
 const testBullMqPrefix = `tarkhineh-e2e-${randomUUID()}`;
+const testRateLimitKeyPrefix =
+  `tarkhineh-e2e-rate-limit-${randomUUID()}`;
 
 function createTestDatabaseUrl(configuredUrl: string | undefined): string {
   if (!configuredUrl) {
@@ -57,6 +62,66 @@ function restoreEnvironmentVariable(
   }
 }
 
+async function clearTestRedisNamespace(prefix: string): Promise<void> {
+  if (
+    prefix !== testBullMqPrefix &&
+    prefix !== testRateLimitKeyPrefix
+  ) {
+    throw new Error(
+      'Refusing to clean an unrecognized E2E Redis namespace.',
+    );
+  }
+
+  const redis = new Redis({
+    host: process.env.REDIS_HOST ?? '127.0.0.1',
+    port: Number(process.env.REDIS_PORT ?? 6379),
+    connectTimeout: 1_000,
+    commandTimeout: 500,
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    lazyConnect: true,
+    retryStrategy: () => null,
+  });
+
+  try {
+    await redis.connect();
+    await redis.ping();
+
+    let cursor = '0';
+    const pattern = `${prefix}:*`;
+
+    do {
+      const [nextCursor, keys] = await redis.scan(
+        cursor,
+        'MATCH',
+        pattern,
+        'COUNT',
+        100,
+      );
+
+      for (let index = 0; index < keys.length; index += 100) {
+        const batch = keys.slice(index, index + 100);
+
+        if (batch.length > 0) {
+          await redis.unlink(...batch);
+        }
+      }
+
+      cursor = nextCursor;
+    } while (cursor !== '0');
+  } finally {
+    if (redis.status === 'ready') {
+      try {
+        await redis.quit();
+      } catch {
+        redis.disconnect();
+      }
+    } else {
+      redis.disconnect();
+    }
+  }
+}
+
 describe('Email registration flow (E2E)', () => {
   let app: INestApplication | undefined;
   let prisma: PrismaService;
@@ -78,6 +143,7 @@ describe('Email registration flow (E2E)', () => {
     // Set it before importing AppModule because its configuration
     // is evaluated when the module is imported.
     process.env.BULLMQ_PREFIX = testBullMqPrefix;
+    process.env.RATE_LIMIT_KEY_PREFIX = testRateLimitKeyPrefix;
 
     const { AppModule } = await import('../../../src/app.module.js');
 
@@ -108,19 +174,25 @@ describe('Email registration flow (E2E)', () => {
   });
 
   afterEach(async () => {
-    if (testEmails.size > 0) {
-      await prisma.user.deleteMany({
-        where: {
-          email: {
-            in: [...testEmails],
+    try {
+      if (testEmails.size > 0) {
+        await prisma.user.deleteMany({
+          where: {
+            email: {
+              in: [...testEmails],
+            },
           },
-        },
-      });
+        });
 
-      testEmails.clear();
+        testEmails.clear();
+      }
+    } finally {
+      try {
+        await clearTestRedisNamespace(testRateLimitKeyPrefix);
+      } finally {
+        outboundEmailProviderMock.send.mockClear();
+      }
     }
-
-    outboundEmailProviderMock.send.mockClear();
   });
 
   afterAll(async () => {
@@ -129,10 +201,26 @@ describe('Email registration flow (E2E)', () => {
         await app.close();
       }
     } finally {
-      // Restore environment variables even if application shutdown fails.
-      restoreEnvironmentVariable('DATABASE_URL', originalDatabaseUrl);
-
-      restoreEnvironmentVariable('BULLMQ_PREFIX', originalBullMqPrefix);
+      try {
+        await clearTestRedisNamespace(testBullMqPrefix);
+      } finally {
+        try {
+          await clearTestRedisNamespace(testRateLimitKeyPrefix);
+        } finally {
+          restoreEnvironmentVariable(
+            'DATABASE_URL',
+            originalDatabaseUrl,
+          );
+          restoreEnvironmentVariable(
+            'BULLMQ_PREFIX',
+            originalBullMqPrefix,
+          );
+          restoreEnvironmentVariable(
+            'RATE_LIMIT_KEY_PREFIX',
+            originalRateLimitKeyPrefix,
+          );
+        }
+      }
     }
   });
 
