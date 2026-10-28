@@ -129,7 +129,6 @@ import './queue/redis-client.factory.js';
   controllers: [AppController],
   providers: [
     AppService,
-    // Registration order is intentional: throttle before authentication.
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
