@@ -202,27 +202,6 @@ describe('Organization', () => {
 
   describe('reconstitute', () => {
     it('reconstitutes an existing organization', () => {
-      const existingOrganization: OrganizationProps = {
-        id: 'organization-123',
-        name: 'Tarkhineh',
-        slug: 'tarkhineh',
-        ownerUserId: 'user-123',
-        status: 'ACTIVE',
-      };
-
-      // Act
-      const organization = Organization.reconstitute(existingOrganization);
-
-      // assert
-      expect(organization).toBeInstanceOf(Organization);
-      expect(organization.id).toBe(existingOrganization.id);
-      expect(organization.name).toBe(existingOrganization.name);
-      expect(organization.slug).toBe(existingOrganization.slug);
-      expect(organization.ownerUserId).toBe(existingOrganization.ownerUserId);
-      expect(organization.status).toBe(existingOrganization.status);
-    });
-
-    it('preserves the original organization ID', () => {
       // ARRANGE
       const existingOrganization: OrganizationProps = {
         id: 'organization-123',
@@ -232,11 +211,17 @@ describe('Organization', () => {
         status: 'ACTIVE',
       };
 
-      //   act
+      // ACT
       const organization = Organization.reconstitute(existingOrganization);
 
-      //   assert
+      // ASSERT
+      expect(organization).toBeInstanceOf(Organization);
       expect(organization.id).toBe(existingOrganization.id);
+      expect(organization.name).toBe(existingOrganization.name);
+      expect(organization.slug).toBe(existingOrganization.slug);
+      expect(organization.ownerUserId).toBe(existingOrganization.ownerUserId);
+      expect(organization.status).toBe(existingOrganization.status);
+      expect(organization.isActive()).toBe(true);
     });
 
     it('preserves the suspended status', () => {
@@ -249,10 +234,10 @@ describe('Organization', () => {
         status: 'SUSPENDED',
       };
 
-      //   act
+      // ACT
       const organization = Organization.reconstitute(existingOrganization);
 
-      //   assert
+      // ASSERT
       expect(organization.status).toBe('SUSPENDED');
       expect(organization.isActive()).toBe(false);
     });
@@ -269,15 +254,15 @@ describe('Organization', () => {
 
       let thrownError: unknown;
 
+      // ACT
       try {
-        //   act
         Organization.reconstitute(invalidExistingOrganization);
       } catch (error: unknown) {
         thrownError = error;
       }
 
+      // ASSERT
       expect(thrownError).toBeInstanceOf(InvalidOrganizationDataError);
-
       expect(thrownError).toMatchObject({
         code: ACCESS_CONTROL_ERROR_CODE.ORGANIZATION.ID_REQUIRED,
       });
@@ -295,15 +280,15 @@ describe('Organization', () => {
 
       let thrownError: unknown;
 
+      // ACT
       try {
-        //   act
         Organization.reconstitute(invalidExistingOrganization);
       } catch (error: unknown) {
         thrownError = error;
       }
 
+      // ASSERT
       expect(thrownError).toBeInstanceOf(InvalidOrganizationDataError);
-
       expect(thrownError).toMatchObject({
         code: ACCESS_CONTROL_ERROR_CODE.ORGANIZATION.NAME_REQUIRED,
       });
@@ -321,15 +306,15 @@ describe('Organization', () => {
 
       let thrownError: unknown;
 
+      // ACT
       try {
-        //   act
         Organization.reconstitute(invalidExistingOrganization);
       } catch (error: unknown) {
         thrownError = error;
       }
 
+      // ASSERT
       expect(thrownError).toBeInstanceOf(InvalidOrganizationDataError);
-
       expect(thrownError).toMatchObject({
         code: ACCESS_CONTROL_ERROR_CODE.ORGANIZATION.OWNER_REQUIRED,
       });
@@ -338,7 +323,7 @@ describe('Organization', () => {
     it('rejects an invalid organization status', () => {
       // ARRANGE
       const invalidExistingOrganization = {
-        id: 'organization-id',
+        id: 'organization-123',
         name: 'Tarkhineh',
         slug: 'tarkhineh',
         ownerUserId: 'user-123',
@@ -347,15 +332,15 @@ describe('Organization', () => {
 
       let thrownError: unknown;
 
+      // ACT
       try {
-        //   act
         Organization.reconstitute(invalidExistingOrganization);
       } catch (error: unknown) {
         thrownError = error;
       }
 
+      // ASSERT
       expect(thrownError).toBeInstanceOf(InvalidOrganizationDataError);
-
       expect(thrownError).toMatchObject({
         code: ACCESS_CONTROL_ERROR_CODE.ORGANIZATION.STATUS_INVALID,
       });
@@ -364,7 +349,7 @@ describe('Organization', () => {
     it('rejects an invalid organization slug', () => {
       // ARRANGE
       const invalidExistingOrganization: OrganizationProps = {
-        id: 'organization-id',
+        id: 'organization-123',
         name: 'Tarkhineh',
         slug: '@**/-*/',
         ownerUserId: 'user-123',
@@ -373,15 +358,15 @@ describe('Organization', () => {
 
       let thrownError: unknown;
 
+      // ACT
       try {
-        //   act
         Organization.reconstitute(invalidExistingOrganization);
       } catch (error: unknown) {
         thrownError = error;
       }
 
+      // ASSERT
       expect(thrownError).toBeInstanceOf(InvalidOrganizationDataError);
-
       expect(thrownError).toMatchObject({
         code: ACCESS_CONTROL_ERROR_CODE.ORGANIZATION.SLUG_INVALID,
       });
@@ -399,15 +384,15 @@ describe('Organization', () => {
 
       let thrownError: unknown;
 
+      // ACT
       try {
-        //   act
         Organization.reconstitute(invalidExistingOrganization);
       } catch (error: unknown) {
         thrownError = error;
       }
 
+      // ASSERT
       expect(thrownError).toBeInstanceOf(InvalidOrganizationDataError);
-
       expect(thrownError).toMatchObject({
         code: ACCESS_CONTROL_ERROR_CODE.ORGANIZATION.SLUG_INVALID,
       });
