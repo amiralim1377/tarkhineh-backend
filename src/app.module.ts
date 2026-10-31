@@ -19,6 +19,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { SharedModule } from './shared/shared.module.js';
 import { OutboundEmailModule } from './contexts/outbound-email/outbound-email.module.js';
 import { AccessControlModule } from './contexts/access-control/access-control.module.js';
+import { OrganizationManagementModule } from './contexts/organization-management/organization-management.module.js';
 import './queue/redis-client.factory.js';
 
 @Module({
@@ -127,6 +128,7 @@ import './queue/redis-client.factory.js';
     SharedModule,
     OutboundEmailModule,
     AccessControlModule,
+    OrganizationManagementModule,
   ],
   controllers: [AppController],
   providers: [
