@@ -4,6 +4,7 @@ import { ORGANIZATION_MANAGEMENT_APPLICATION_ERROR_CODE } from './organization-m
 
 export class BranchSlugAlreadyExistsError extends ApplicationError {
   override readonly category = ERROR_CATEGORY.CONFLICT;
+
   override readonly code =
     ORGANIZATION_MANAGEMENT_APPLICATION_ERROR_CODE.BRANCH_SLUG_ALREADY_EXISTS;
 
