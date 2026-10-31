@@ -3,11 +3,64 @@ enum BranchStatus {
   INACTIVE
 }
 
+enum WeekDay {
+  SATURDAY
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+}
+
+model Branch {
+  id             String       @id
+  organizationId String
+  nameFa         String
+  nameEn         String?
+  slug           String
+  status         BranchStatus @default(ACTIVE)
+
+  // Contact
+  phoneNumber String?
+
+  // Address
+  addressFa   String
+  addressEn   String?
+  cityFa      String
+  cityEn      String?
+  postalCode  String?
+  countryCode String  @db.VarChar(2)
+
+  // Location
+  latitude  Float?
+  longitude Float?
+
+  // Timezone
+  timeZoneId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  memberships BranchMembership[]
+  roles       Role[]             @relation("BranchRoles")
+  images      BranchImage[]
+  workingDays BranchWorkingDay[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, slug])
+  @@index([organizationId, status])
+  @@index([cityFa])
+}
+
 model BranchImage {
   id         String  @id
   branchId   String
   storageKey String
-  altText    String?
+  altTextFa  String?
+  altTextEn  String?
   sortOrder  Int     @default(0)
 
   createdAt DateTime @default(now())
@@ -17,25 +70,29 @@ model BranchImage {
   @@index([branchId, sortOrder])
 }
 
-model Branch {
-  id             String       @id
-  organizationId String
-  name           String
-  slug           String
-  status         BranchStatus @default(ACTIVE)
-
-  latitude  Float?
-  longitude Float?
+model BranchWorkingDay {
+  id        String  @id
+  branchId  String
+  dayOfWeek WeekDay
+  isClosed  Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  memberships  BranchMembership[]
-  roles        Role[]             @relation("BranchRoles")
-  images       BranchImage[]
+  branch  Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  periods BranchWorkingPeriod[]
 
-  @@unique([id, organizationId])
-  @@unique([organizationId, slug])
-  @@index([organizationId, status])
+  @@unique([branchId, dayOfWeek])
+}
+
+model BranchWorkingPeriod {
+  id           String  @id
+  workingDayId String
+  startMinute  Int
+  endMinute    Int
+  endsNextDay  Boolean @default(false)
+
+  workingDay BranchWorkingDay @relation(fields: [workingDayId], references: [id], onDelete: Cascade)
+
+  @@index([workingDayId, startMinute])
 }
