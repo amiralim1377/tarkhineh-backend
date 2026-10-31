@@ -51,7 +51,6 @@ function createSut() {
     {
       findByEmail,
       findById: vi.fn(),
-      changePassword: vi.fn(),
     },
     { verify: verifyPassword },
     { issueFor },
