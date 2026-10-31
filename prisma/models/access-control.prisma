@@ -11,7 +11,7 @@ enum RoleScope {
 
 model Role {
   id              String          @id @default(cuid())
-  code            String          @unique
+  code            String
   name            String
   description     String?
   scope           RoleScope       @default(SYSTEM)
@@ -30,6 +30,9 @@ model Role {
   permissions RolePermission[]
   assignments RoleAssignment[]
 
+  @@unique([code], where: raw("\"scope\" = 'SYSTEM'"))
+  @@unique([organizationId, code], where: raw("\"scope\" = 'ORGANIZATION'"))
+  @@unique([branchId, code], where: raw("\"scope\" = 'BRANCH'"))
   @@index([organizationId, scope])
   @@index([branchId, scope])
   @@index([createdById])
@@ -75,8 +78,8 @@ model RoleAssignment {
   branchMembership       BranchMembership?       @relation("BranchMembershipRoleAssignments", fields: [branchMembershipId], references: [id], onDelete: Cascade)
   assignedBy             User?                   @relation("RoleAssignmentActor", fields: [assignedById], references: [id], onDelete: SetNull)
 
-  @@unique([organizationMembershipId, roleId])
-  @@unique([branchMembershipId, roleId])
+  @@unique([organizationMembershipId, roleId], where: raw("\"organizationMembershipId\" IS NOT NULL AND \"revokedAt\" IS NULL"))
+  @@unique([branchMembershipId, roleId], where: raw("\"branchMembershipId\" IS NOT NULL AND \"revokedAt\" IS NULL"))
   @@index([organizationMembershipId, revokedAt])
   @@index([branchMembershipId, revokedAt])
   @@index([roleId, revokedAt])
