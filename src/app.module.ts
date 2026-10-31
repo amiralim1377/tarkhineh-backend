@@ -18,6 +18,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SharedModule } from './shared/shared.module.js';
 import { OutboundEmailModule } from './contexts/outbound-email/outbound-email.module.js';
+import { AccessControlModule } from './contexts/access-control/access-control.module.js';
 import './queue/redis-client.factory.js';
 
 @Module({
@@ -125,6 +126,7 @@ import './queue/redis-client.factory.js';
     HealthModule,
     SharedModule,
     OutboundEmailModule,
+    AccessControlModule,
   ],
   controllers: [AppController],
   providers: [
