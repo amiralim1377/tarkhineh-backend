@@ -404,15 +404,27 @@ describe('Organization', () => {
   // ============================================
 
   describe('getters', () => {
-    it.todo('returns the organization ID');
+    let organization: Organization;
 
-    it.todo('returns the organization name');
+    beforeEach(() => {
+      organization = createSut();
+    });
 
-    it.todo('returns the organization slug');
+    it('returns the organization ID', () => {
+      // ACT
+      const organizationId = organization.id;
 
-    it.todo('returns the owner user ID');
+      // ASSERT
+      expect(organizationId).toBe('organization-123');
+    });
 
-    it.todo('returns the organization status');
+    it('returns the organization name', () => {
+      // ACT
+      const organizationName = organization.name;
+
+      // ASSERT
+      expect(organizationName).toBe('Tarkhineh');
+    });
   });
 
   // ============================================
@@ -420,13 +432,44 @@ describe('Organization', () => {
   // ============================================
 
   describe('rename', () => {
-    it.todo('renames the organization');
+    let organization: Organization;
 
-    it.todo('trims whitespace from the new name');
+    beforeEach(() => {
+      organization = createSut();
+    });
 
-    it.todo('rejects an empty organization name');
+    it('renames the organization', () => {
+      // ACT
+      organization.rename('Tarkhineh Restaurant');
 
-    it.todo('does not change the name when validation fails');
+      // ASSERT
+      expect(organization.name).toBe('Tarkhineh Restaurant');
+    });
+
+    it('trims whitespace from the new name', () => {
+      // ACT
+      organization.rename('  Tarkhineh Restaurant  ');
+
+      // ASSERT
+      expect(organization.name).toBe('Tarkhineh Restaurant');
+    });
+
+    it('rejects an empty organization name', () => {
+      // ACT & ASSERT
+      expect(() => organization.rename('')).toThrowError(
+        InvalidOrganizationDataError,
+      );
+    });
+
+    it('does not change the name when validation fails', () => {
+      // ACT & ASSERT
+      expect(() => organization.rename('   ')).toThrowError(
+        InvalidOrganizationDataError,
+      );
+
+      // ASSERT
+      expect(organization.name).toBe('Tarkhineh');
+    });
   });
 
   // ============================================
@@ -434,11 +477,43 @@ describe('Organization', () => {
   // ============================================
 
   describe('suspend', () => {
-    it.todo('suspends an active organization');
+    let organization: Organization;
 
-    it.todo('returns false when organization is already suspended');
+    beforeEach(() => {
+      organization = createSut();
+    });
 
-    it.todo('does not change an already suspended organization');
+    it('suspends an active organization', () => {
+      // ACT
+      const result = organization.suspend();
+
+      // ASSERT
+      expect(result).toBe(true);
+      expect(organization.status).toBe('SUSPENDED');
+      expect(organization.isActive()).toBe(false);
+    });
+
+    it('returns false when organization is already suspended', () => {
+      // ARRANGE
+      organization.suspend();
+
+      // ACT
+      const result = organization.suspend();
+
+      // ASSERT
+      expect(result).toBe(false);
+    });
+
+    it('does not change an already suspended organization', () => {
+      // ARRANGE
+      organization.suspend();
+
+      // ACT
+      organization.suspend();
+
+      // ASSERT
+      expect(organization.status).toBe('SUSPENDED');
+    });
   });
 
   // ============================================
@@ -446,11 +521,40 @@ describe('Organization', () => {
   // ============================================
 
   describe('activate', () => {
-    it.todo('activates a suspended organization');
+    let organization: Organization;
 
-    it.todo('returns false when organization is already active');
+    beforeEach(() => {
+      organization = createSut();
+    });
 
-    it.todo('does not change an already active organization');
+    it('activates a suspended organization', () => {
+      // ARRANGE
+      organization.suspend();
+
+      // ACT
+      const result = organization.activate();
+
+      // ASSERT
+      expect(result).toBe(true);
+      expect(organization.status).toBe('ACTIVE');
+      expect(organization.isActive()).toBe(true);
+    });
+
+    it('returns false when organization is already active', () => {
+      // ACT
+      const result = organization.activate();
+
+      // ASSERT
+      expect(result).toBe(false);
+    });
+
+    it('does not change an already active organization', () => {
+      // ACT
+      organization.activate();
+
+      // ASSERT
+      expect(organization.status).toBe('ACTIVE');
+    });
   });
 
   // ============================================
@@ -458,8 +562,29 @@ describe('Organization', () => {
   // ============================================
 
   describe('isActive', () => {
-    it.todo('returns true for an active organization');
+    let organization: Organization;
 
-    it.todo('returns false for a suspended organization');
+    beforeEach(() => {
+      organization = createSut();
+    });
+
+    it('returns true for an active organization', () => {
+      // ACT
+      const result = organization.isActive();
+
+      // ASSERT
+      expect(result).toBe(true);
+    });
+
+    it('returns false for a suspended organization', () => {
+      // ARRANGE
+      organization.suspend();
+
+      // ACT
+      const result = organization.isActive();
+
+      // ASSERT
+      expect(result).toBe(false);
+    });
   });
 });
