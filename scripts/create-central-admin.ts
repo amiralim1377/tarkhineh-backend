@@ -5,7 +5,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 
 import { IdentityUser } from '../src/contexts/identity-access/domain/entities/identity-user.js';
-import { Organization } from '../src/contexts/access-control/domain/entities/organization.js';
+import { Organization } from '../src/contexts/organization-management/domain/entities/organization.js';
 
 // ============================================================
 // CONFIGURATION
