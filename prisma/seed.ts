@@ -1,191 +1,212 @@
-import "dotenv/config";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../src/generated/prisma/client.js";
+import 'dotenv/config';
+
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../src/generated/prisma/client.js';
+
+import {
+  PERMISSION_CODE,
+  PERMISSION_DEFINITIONS,
+  type PermissionCode,
+} from '../src/contexts/access-control/domain/permissions/permission-catalog.js';
+
+// ============================================================
+// DATABASE CONNECTION
+// ============================================================
 
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
-  throw new Error("DATABASE_URL is not configured.");
+  throw new Error('DATABASE_URL is not configured.');
 }
 
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
-const permissions = [
-  {
-    code: "branch.dashboard.read",
-    name: "مشاهده داشبورد شعبه",
-  },
-  {
-    code: "branch.menu.read",
-    name: "مشاهده منوی شعبه",
-  },
-  {
-    code: "branch.menu.items.create",
-    name: "افزودن غذا به منوی شعبه",
-  },
-  {
-    code: "branch.menu.items.update",
-    name: "ویرایش غذای منوی شعبه",
-  },
-  {
-    code: "branch.menu.items.delete",
-    name: "حذف غذا از منوی شعبه",
-  },
-  {
-    code: "branch.menu.prices.update",
-    name: "تغییر قیمت غذاها",
-  },
-  {
-    code: "branch.menu.availability.update",
-    name: "تغییر موجودی غذاها",
-  },
-  {
-    code: "branch.staff.read",
-    name: "مشاهده کارکنان شعبه",
-  },
-  {
-    code: "branch.staff.manage",
-    name: "مدیریت کارکنان شعبه",
-  },
-  {
-    code: "orders.read",
-    name: "مشاهده سفارش‌ها",
-  },
-  {
-    code: "orders.accept",
-    name: "تأیید سفارش",
-  },
-  {
-    code: "orders.reject",
-    name: "رد سفارش",
-  },
-  {
-    code: "orders.status.update",
-    name: "به‌روزرسانی وضعیت سفارش",
-  },
-  {
-    code: "reports.sales.read",
-    name: "مشاهده گزارش فروش",
-  },
-  {
-    code: "reports.export",
-    name: "خروجی گرفتن از گزارش‌ها",
-  },
-  {
-    code: "branches.manage",
-    name: "مدیریت شعبه‌ها",
-  },
-  {
-    code: "access.roles.manage",
-    name: "مدیریت نقش‌ها",
-  },
-  {
-    code: "access.permissions.assign",
-    name: "تخصیص مجوزها به کاربران",
-  },
-  {
-    code: "catalog.food.manage",
-    name: "مدیریت کاتالوگ غذاها",
-  },
-  {
-    code: "promotions.manage",
-    name: "مدیریت تخفیف‌ها",
-  },
-  {
-    code: "reviews.moderate",
-    name: "مدیریت نظرات مشتریان",
-  },
-] as const;
+// ============================================================
+// SYSTEM ROLE DEFINITIONS
+// ============================================================
 
-async function main() {
-  const savedPermissions = [];
-
-  for (const permission of permissions) {
-    const saved = await prisma.permission.upsert({
-      where: { code: permission.code },
-      update: { name: permission.name },
-      create: permission,
-    });
-
-    savedPermissions.push(saved);
-  }
-
-  const centralAdmin = await prisma.role.upsert({
-    where: { code: "CENTRAL_ADMIN" },
-    update: {
-      name: "مدیر مرکزی",
-      description: "مدیریت سراسری سامانه ترخینه",
-      isSystem: true,
-    },
-    create: {
-      code: "CENTRAL_ADMIN",
-      name: "مدیر مرکزی",
-      description: "مدیریت سراسری سامانه ترخینه",
-      isSystem: true,
-    },
-  });
-
-  const branchManager = await prisma.role.upsert({
-    where: { code: "BRANCH_MANAGER" },
-    update: {
-      name: "مدیر شعبه",
-      description: "مدیریت عملیات شعبه با مجوزهای تخصیص‌یافته",
-      isSystem: true,
-    },
-    create: {
-      code: "BRANCH_MANAGER",
-      name: "مدیر شعبه",
-      description: "مدیریت عملیات شعبه با مجوزهای تخصیص‌یافته",
-      isSystem: true,
-    },
-  });
-
-  for (const permission of savedPermissions) {
-    await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: {
-          roleId: centralAdmin.id,
-          permissionId: permission.id,
-        },
-      },
-      update: {},
-      create: {
-        roleId: centralAdmin.id,
-        permissionId: permission.id,
-      },
-    });
-  }
-
-  const dashboardPermission = savedPermissions.find(
-    (permission) => permission.code === "branch.dashboard.read",
-  );
-
-  if (!dashboardPermission) {
-    throw new Error("Base branch dashboard permission is missing.");
-  }
-
-  await prisma.rolePermission.upsert({
-    where: {
-      roleId_permissionId: {
-        roleId: branchManager.id,
-        permissionId: dashboardPermission.id,
-      },
-    },
-    update: {},
-    create: {
-      roleId: branchManager.id,
-      permissionId: dashboardPermission.id,
-    },
-  });
-
-  console.log(`Seeded ${savedPermissions.length} permissions.`);
-  console.log("Seeded roles: CENTRAL_ADMIN, BRANCH_MANAGER.");
+interface SystemRoleDefinition {
+  readonly code: string;
+  readonly name: string;
+  readonly description: string;
+  readonly assignmentScope: 'ORGANIZATION' | 'BRANCH';
+  readonly permissionCodes: readonly PermissionCode[];
 }
+
+const systemRoles = [
+  {
+    code: 'ORGANIZATION_OWNER',
+    name: 'مالک سازمان',
+    description: 'مدیریت کامل سازمان ترخینه و تمام شعب آن.',
+    assignmentScope: 'ORGANIZATION',
+
+    // Organization Owner receives all defined permissions.
+    permissionCodes: PERMISSION_DEFINITIONS.map(
+      (permission) => permission.code,
+    ),
+  },
+  {
+    code: 'BRANCH_MANAGER',
+    name: 'مدیر شعبه',
+    description: 'مدیریت عملیات و کارکنان شعبه در محدوده اختیارات مجاز.',
+    assignmentScope: 'BRANCH',
+
+    permissionCodes: [
+      PERMISSION_CODE.BRANCH_DASHBOARD_READ,
+
+      PERMISSION_CODE.BRANCH_STAFF_READ,
+      PERMISSION_CODE.BRANCH_STAFF_INVITE,
+      PERMISSION_CODE.BRANCH_STAFF_UPDATE,
+      PERMISSION_CODE.BRANCH_STAFF_SUSPEND,
+      PERMISSION_CODE.BRANCH_STAFF_REMOVE,
+
+      PERMISSION_CODE.BRANCH_ROLES_ASSIGN,
+    ],
+  },
+] as const satisfies readonly SystemRoleDefinition[];
+
+// ============================================================
+// PERMISSION SEEDING
+// ============================================================
+
+async function seedPermissions(): Promise<Map<PermissionCode, string>> {
+  const permissionIds = new Map<PermissionCode, string>();
+
+  for (const permission of PERMISSION_DEFINITIONS) {
+    const savedPermission = await prisma.permission.upsert({
+      where: {
+        code: permission.code,
+      },
+      update: {
+        name: permission.name.fa,
+        description: permission.description.fa,
+      },
+      create: {
+        code: permission.code,
+        name: permission.name.fa,
+        description: permission.description.fa,
+      },
+    });
+
+    permissionIds.set(permission.code, savedPermission.id);
+  }
+
+  console.log(`Seeded ${permissionIds.size} permissions.`);
+
+  return permissionIds;
+}
+
+// ============================================================
+// SYSTEM ROLE SEEDING
+// ============================================================
+
+async function seedSystemRole(definition: SystemRoleDefinition) {
+  const existingRole = await prisma.role.findFirst({
+    where: {
+      code: definition.code,
+      scope: 'SYSTEM',
+    },
+  });
+
+  if (existingRole) {
+    return prisma.role.update({
+      where: {
+        id: existingRole.id,
+      },
+      data: {
+        name: definition.name,
+        description: definition.description,
+        assignmentScope: definition.assignmentScope,
+      },
+    });
+  }
+
+  return prisma.role.create({
+    data: {
+      code: definition.code,
+      name: definition.name,
+      description: definition.description,
+      scope: 'SYSTEM',
+      assignmentScope: definition.assignmentScope,
+    },
+  });
+}
+
+// ============================================================
+// ROLE PERMISSION SEEDING
+// ============================================================
+
+async function seedRolePermissions(
+  roleId: string,
+  permissionCodes: readonly PermissionCode[],
+  permissionIds: Map<PermissionCode, string>,
+): Promise<void> {
+  const rolePermissionData = permissionCodes.map((permissionCode) => {
+    const permissionId = permissionIds.get(permissionCode);
+
+    if (!permissionId) {
+      throw new Error(
+        `Permission "${permissionCode}" was not found in the database.`,
+      );
+    }
+
+    return {
+      roleId,
+      permissionId,
+    };
+  });
+
+  // Synchronize the role's permissions with the seed definition.
+  await prisma.$transaction(async (transaction) => {
+    await transaction.rolePermission.deleteMany({
+      where: {
+        roleId,
+      },
+    });
+
+    if (rolePermissionData.length > 0) {
+      await transaction.rolePermission.createMany({
+        data: rolePermissionData,
+      });
+    }
+  });
+}
+
+// ============================================================
+// MAIN SEED
+// ============================================================
+
+async function main(): Promise<void> {
+  console.log('Starting database seeding...');
+
+  // 1. Seed permissions.
+  const permissionIds = await seedPermissions();
+
+  // 2. Seed system roles.
+  for (const roleDefinition of systemRoles) {
+    const role = await seedSystemRole(roleDefinition);
+
+    // 3. Assign permissions to each role.
+    await seedRolePermissions(
+      role.id,
+      roleDefinition.permissionCodes,
+      permissionIds,
+    );
+
+    console.log(`Seeded role: ${role.code}`);
+  }
+
+  console.log('Database seeding completed successfully.');
+}
+
+// ============================================================
+// EXECUTION
+// ============================================================
 
 main()
   .catch((error: unknown) => {
-    console.error("Database seeding failed:", error);
+    console.error('Database seeding failed:', error);
     process.exitCode = 1;
   })
   .finally(async () => {
