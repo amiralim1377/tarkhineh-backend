@@ -1,0 +1,77 @@
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum MembershipScope {
+  ORGANIZATION
+  BRANCH
+}
+
+model Organization {
+  id          String             @id @default(cuid())
+  name        String
+  slug        String             @unique
+  status      OrganizationStatus @default(ACTIVE)
+  ownerUserId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner       User                     @relation("OrganizationOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  branches    Branch[]
+  memberships OrganizationMembership[]
+  roles       Role[]                   @relation("OrganizationRoles")
+
+  @@index([ownerUserId, status])
+}
+
+model OrganizationMembership {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  status         MembershipStatus @default(INVITED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User               @relation("UserOrganizationMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  branchMemberships BranchMembership[]
+  roleAssignments   RoleAssignment[]   @relation("OrganizationMembershipRoleAssignments")
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, userId])
+  @@index([userId, status])
+  @@index([organizationId, status])
+}
+
+model BranchMembership {
+  id                       String           @id @default(cuid())
+  organizationId           String
+  branchId                 String
+  organizationMembershipId String
+  status                   MembershipStatus @default(INVITED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch                 Branch                 @relation(fields: [branchId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  organizationMembership OrganizationMembership @relation(fields: [organizationMembershipId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  roleAssignments     RoleAssignment[]         @relation("BranchMembershipRoleAssignments")
+  permissionOverrides UserPermissionOverride[]
+
+  @@unique([id, organizationId])
+  @@unique([branchId, organizationMembershipId])
+  @@index([organizationMembershipId, status])
+  @@index([branchId, status])
+  @@index([organizationId, status])
+}
