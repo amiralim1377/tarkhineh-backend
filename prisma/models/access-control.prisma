@@ -3,26 +3,46 @@ enum PermissionEffect {
   DENY
 }
 
+enum RoleScope {
+  SYSTEM
+  ORGANIZATION
+  BRANCH
+}
+
 model Role {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  description String?
-  isSystem    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String          @id @default(cuid())
+  code            String          @unique
+  name            String
+  description     String?
+  scope           RoleScope       @default(SYSTEM)
+  assignmentScope MembershipScope @default(BRANCH)
+  organizationId  String?
+  branchId        String?
+  createdById     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization? @relation("OrganizationRoles", fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?       @relation("BranchRoles", fields: [branchId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation("RoleCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   permissions RolePermission[]
   assignments RoleAssignment[]
+
+  @@index([organizationId, scope])
+  @@index([branchId, scope])
+  @@index([createdById])
 }
 
 model Permission {
-  id          String   @id @default(cuid())
-  code        String   @unique
+  id          String  @id @default(cuid())
+  code        String  @unique
   name        String
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   roles     RolePermission[]
   overrides UserPermissionOverride[]
@@ -41,38 +61,42 @@ model RolePermission {
 }
 
 model RoleAssignment {
-  id           String    @id @default(cuid())
-  userId       String
-  roleId       String
-  branchId     String?
-  assignedById String?
-  createdAt    DateTime  @default(now())
-  revokedAt    DateTime?
+  id                       String  @id @default(cuid())
+  roleId                   String
+  organizationMembershipId String?
+  branchMembershipId       String?
+  assignedById             String?
 
-  user       User    @relation("RoleAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
-  role       Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  branch     Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  assignedBy User?   @relation("RoleAssignmentActor", fields: [assignedById], references: [id], onDelete: SetNull)
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
 
-  @@index([userId, revokedAt])
-  @@index([branchId, revokedAt])
+  role                   Role                    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  organizationMembership OrganizationMembership? @relation("OrganizationMembershipRoleAssignments", fields: [organizationMembershipId], references: [id], onDelete: Cascade)
+  branchMembership       BranchMembership?       @relation("BranchMembershipRoleAssignments", fields: [branchMembershipId], references: [id], onDelete: Cascade)
+  assignedBy             User?                   @relation("RoleAssignmentActor", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationMembershipId, roleId])
+  @@unique([branchMembershipId, roleId])
+  @@index([organizationMembershipId, revokedAt])
+  @@index([branchMembershipId, revokedAt])
+  @@index([roleId, revokedAt])
 }
 
 model UserPermissionOverride {
-  id           String           @id @default(cuid())
-  userId       String
-  permissionId String
-  branchId     String
-  assignedById String
-  effect       PermissionEffect
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id                 String           @id @default(cuid())
+  branchMembershipId String
+  permissionId       String
+  assignedById       String
+  effect             PermissionEffect
 
-  user       User       @relation("PermissionOverrideTarget", fields: [userId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  assignedBy User       @relation("PermissionOverrideActor", fields: [assignedById], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@unique([userId, permissionId, branchId])
-  @@index([branchId, permissionId])
+  branchMembership BranchMembership @relation(fields: [branchMembershipId], references: [id], onDelete: Cascade)
+  permission       Permission       @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  assignedBy       User             @relation("PermissionOverrideActor", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  @@unique([branchMembershipId, permissionId])
+  @@index([permissionId])
+  @@index([assignedById])
 }
