@@ -30,9 +30,10 @@ model User {
   passwordResetChallenges     PasswordResetChallenge[]
 
   oauthAccounts              OAuthAccount[]
-  roleAssignments            RoleAssignment[]         @relation("RoleAssignmentUser")
-  assignedRoleAssignments    RoleAssignment[]         @relation("RoleAssignmentActor")
-  permissionOverrides        UserPermissionOverride[] @relation("PermissionOverrideTarget")
+  ownedOrganizations         Organization[]           @relation("OrganizationOwner")
+  organizationMemberships    OrganizationMembership[] @relation("UserOrganizationMemberships")
+  createdRoles               Role[]                   @relation("RoleCreator")
+  createdRoleAssignments     RoleAssignment[]         @relation("RoleAssignmentActor")
   createdPermissionOverrides UserPermissionOverride[] @relation("PermissionOverrideActor")
 
   @@index([status])
