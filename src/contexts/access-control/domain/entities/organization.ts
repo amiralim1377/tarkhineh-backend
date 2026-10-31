@@ -1,36 +1,38 @@
 import { Entity } from '../../../../shared/domain/entities/entity.js';
 import { UniqueId } from '../../../../shared/domain/value-objects/unique-id.vo.js';
+
 import {
   ACCESS_CONTROL_ERROR_CODE,
   InvalidOrganizationDataError,
 } from '../errors/invalid-organization-data.error.js';
+
 import { OrganizationSlug } from '../value-objects/organization-slug.vo.js';
 
 export type OrganizationStatus = 'ACTIVE' | 'SUSPENDED';
 
-// Input required to create a new organization
+// Input required to create a new organization.
 export interface CreateOrganizationInput {
-  id?: string;
-  name: string;
-  slug: string;
-  ownerUserId: string;
+  readonly id?: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly ownerUserId: string;
 }
 
-// Data used to reconstruct an existing organization
+// Data used to reconstruct an existing organization.
 export interface OrganizationProps {
-  id: string;
-  name: string;
-  slug: string;
-  ownerUserId: string;
-  status: OrganizationStatus;
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly ownerUserId: string;
+  readonly status: OrganizationStatus;
 }
 
-// Internal state of the Organization entity
+// Internal state of the Organization entity.
 interface OrganizationState {
-  id: string;
+  readonly id: string;
   name: string;
-  slug: OrganizationSlug;
-  ownerUserId: string;
+  readonly slug: OrganizationSlug;
+  readonly ownerUserId: string;
   status: OrganizationStatus;
 }
 
@@ -39,7 +41,7 @@ export class Organization extends Entity<UniqueId> {
     super(new UniqueId(props.id));
   }
 
-  // Factory method
+  // Factory method: creates a new organization.
   static create(input: CreateOrganizationInput): Organization {
     const organizationName = input.name.trim();
 
@@ -59,12 +61,21 @@ export class Organization extends Entity<UniqueId> {
       );
     }
 
-    const organizationId = new UniqueId(input.id);
+    const id = input.id?.trim();
+
+    if (input.id !== undefined && !id) {
+      throw new InvalidOrganizationDataError(
+        ACCESS_CONTROL_ERROR_CODE.ORGANIZATION.ID_REQUIRED,
+        'Organization ID is required.',
+      );
+    }
+
+    const organizationId = new UniqueId(id);
 
     const organizationSlug = OrganizationSlug.create(input.slug);
 
-    // 6. Build organization state
-    const organizationState: OrganizationState = {
+    // Build the initial organization state.
+    const state: OrganizationState = {
       id: organizationId.getValue(),
       name: organizationName,
       slug: organizationSlug,
@@ -72,16 +83,14 @@ export class Organization extends Entity<UniqueId> {
       status: 'ACTIVE',
     };
 
-    // 7. Create and return organization entity
-    return new Organization(organizationState);
+    return new Organization(state);
   }
 
-  // Reconstitution method
+  // Reconstitution method: restores an existing organization.
   static reconstitute(props: OrganizationProps): Organization {
-    // 1. Validate organization ID
-    const organizationId = props.id.trim();
+    const id = props.id.trim();
 
-    if (organizationId.length === 0) {
+    if (id.length === 0) {
       throw new InvalidOrganizationDataError(
         ACCESS_CONTROL_ERROR_CODE.ORGANIZATION.ID_REQUIRED,
         'Organization ID is required.',
@@ -113,56 +122,87 @@ export class Organization extends Entity<UniqueId> {
       );
     }
 
+    // Reconstruct the slug.
     const organizationSlug = OrganizationSlug.create(props.slug);
 
-    // 6. Build organization state
+    // Persisted slug must already be in its canonical form.
+    // Reconstitution must not silently change persisted values.
+    if (organizationSlug.getValue() !== props.slug) {
+      throw new InvalidOrganizationDataError(
+        ACCESS_CONTROL_ERROR_CODE.ORGANIZATION.SLUG_INVALID,
+        'Persisted organization slug is not in canonical format.',
+      );
+    }
+
+    // Restore the original organization state.
     const state: OrganizationState = {
-      id: organizationId,
+      id,
       name: organizationName,
       slug: organizationSlug,
       ownerUserId,
       status: props.status,
     };
 
-    // 7. Return reconstructed organization
     return new Organization(state);
   }
 
   // Getters
   get id(): string {
-    throw new Error('Not implemented');
+    return this.getId().getValue();
   }
 
   get name(): string {
-    throw new Error('Not implemented');
+    return this.props.name;
   }
 
   get slug(): string {
-    throw new Error('Not implemented');
+    return this.props.slug.getValue();
   }
 
   get ownerUserId(): string {
-    throw new Error('Not implemented');
+    return this.props.ownerUserId;
   }
 
   get status(): OrganizationStatus {
-    throw new Error('Not implemented');
+    return this.props.status;
   }
 
   // Domain behaviors
+
   rename(name: string): void {
-    throw new Error('Not implemented');
+    const normalizedName = name.trim();
+
+    if (normalizedName.length === 0) {
+      throw new InvalidOrganizationDataError(
+        ACCESS_CONTROL_ERROR_CODE.ORGANIZATION.NAME_REQUIRED,
+        'Organization name is required.',
+      );
+    }
+
+    this.props.name = normalizedName;
   }
 
   suspend(): boolean {
-    throw new Error('Not implemented');
+    if (this.props.status === 'SUSPENDED') {
+      return false;
+    }
+
+    this.props.status = 'SUSPENDED';
+
+    return true;
   }
 
   activate(): boolean {
-    throw new Error('Not implemented');
+    if (this.props.status === 'ACTIVE') {
+      return false;
+    }
+
+    this.props.status = 'ACTIVE';
+
+    return true;
   }
 
   isActive(): boolean {
-    throw new Error('Not implemented');
+    return this.props.status === 'ACTIVE';
   }
 }
