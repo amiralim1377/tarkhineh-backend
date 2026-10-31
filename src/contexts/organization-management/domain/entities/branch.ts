@@ -40,18 +40,13 @@ interface BranchState {
   status: BranchStatus;
 }
 
-// ============================================================
 // BRANCH ENTITY
-// ============================================================
-
 export class Branch extends Entity<UniqueId> {
   private constructor(private readonly props: BranchState) {
     super(new UniqueId(props.id));
   }
 
-  // ==========================================================
   // CREATE
-  // ==========================================================
 
   static create(input: CreateBranchInput): Branch {
     // Validate branch name.
@@ -101,10 +96,7 @@ export class Branch extends Entity<UniqueId> {
     return new Branch(state);
   }
 
-  // ==========================================================
   // RECONSTITUTE
-  // ==========================================================
-
   static reconstitute(props: BranchProps): Branch {
     // Validate branch ID.
     const id = props.id.trim();
@@ -167,10 +159,7 @@ export class Branch extends Entity<UniqueId> {
     return new Branch(state);
   }
 
-  // ==========================================================
   // GETTERS
-  // ==========================================================
-
   get id(): string {
     return this.getId().getValue();
   }
@@ -191,9 +180,7 @@ export class Branch extends Entity<UniqueId> {
     return this.props.status;
   }
 
-  // ==========================================================
   // DOMAIN BEHAVIORS
-  // ==========================================================
 
   rename(name: string): void {
     const normalizedName = name.trim();
