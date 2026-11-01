@@ -3,12 +3,12 @@
 | Attribute              | Value                                          |
 | ---------------------- | ---------------------------------------------- |
 | Project                | `tarkhineh-backend`                            |
-| Document version       | 1.1                                            |
+| Document version       | 1.2                                            |
 | Last updated           | 2026-11-01                                     |
 | Architecture reference | `MASTER-ARCHITECTURE.md` v1.1                  |
 | Decision log           | `ARCHITECTURAL-DECISIONS.md`                   |
 | Current phase          | PHASE 2 — Database Schema and Migration Design |
-| Current phase status   | NOT STARTED — NEXT                             |
+| Current phase status   | IMPLEMENTATION COMPLETE — OWNER REVIEW PENDING |
 
 > This file records observed repository state and actual command results. A phase is not complete merely because its plan is written. Only mark it complete after its acceptance criteria, verification, and project-owner review are satisfied.
 
@@ -23,7 +23,7 @@
 
 ### Active/next phase
 
-- [ ] **PHASE 2 — Database Schema and Migration Design** — NOT STARTED. This is the next phase.
+- [ ] **PHASE 2 — Database Schema and Migration Design** — IMPLEMENTATION COMPLETE; awaiting project-owner review of this report.
 
 ### Remaining phases
 
@@ -247,61 +247,183 @@ Key approvals:
 
 ## 4. PHASE 2 — Database Schema and Migration Design
 
-**Status: NOT STARTED — NEXT PHASE**
+**Status: IMPLEMENTATION COMPLETE — OWNER REVIEW PENDING**
+**Implementation date: 2026-11-01**
 
-### Goal
+### 4.1 Approved target schema implemented
 
-Finalize target Prisma schema, database invariants, constraints, indexes, trigger strategy, and migration plan before implementing Access Control Domain or Application code.
+The project-owner-approved target schema was implemented in the Prisma models.
 
-### Checklist
+Implemented decisions:
 
-- [ ] Inspect current full Prisma model files before editing.
-- [ ] Reconfirm all relation fields in `identity.prisma`, `organization.prisma`, and `access-control.prisma`.
-- [ ] Define Access Control-owned `RoleDefinitionScope` (`SYSTEM`, `ORGANIZATION`).
-- [ ] Define Access Control-owned `RoleAssignmentScope` (`ORGANIZATION`, `BRANCH`).
-- [ ] Confirm Permission target scope remains source-code registry metadata rather than an unnecessary database enum.
-- [ ] Redesign Role without branch ownership.
-- [ ] Define Role lifecycle status (`ACTIVE`, `ARCHIVED`).
-- [ ] Decide final reserved-role/non-assignable representation (`isAssignable` or an equivalent explicit policy).
-- [ ] Define Role ownership/scope immutability constraints.
-- [ ] Preserve RoleAssignment exactly-one-membership invariant.
-- [ ] Preserve active-assignment partial unique constraints.
-- [ ] Rework RoleAssignment guard for new Role scope model.
-- [ ] Redesign UserPermissionOverride around OrganizationMembership + Branch + Permission.
-- [ ] Define composite relations ensuring membership and branch are in the same Organization.
-- [ ] Review Permission table metadata simplification and all consumers.
-- [ ] Review RolePermission and Role indexes against target queries.
-- [ ] Review existing triggers; do not duplicate/delete without reason.
-- [ ] Produce final Prisma schema proposal.
-- [ ] Produce migration SQL/strategy proposal.
-- [ ] Obtain project-owner approval before applying schema/migration changes.
+- Added Access Control-owned `RoleDefinitionScope` (`SYSTEM`, `ORGANIZATION`).
+- Added Access Control-owned `RoleAssignmentScope` (`ORGANIZATION`, `BRANCH`).
+- Added `RoleStatus` (`ACTIVE`, `ARCHIVED`).
+- Removed branch ownership from Role definitions.
+- Added `Role.isAssignable` and `Role.status`.
+- Kept Role definition scope and assignment scope independent.
+- Simplified Permission persistence to its stable code and timestamps; localized metadata remains source-code registry metadata.
+- Preserved RolePermission's composite identity and restrictive Permission deletion behavior.
+- Preserved RoleAssignment membership targeting and its exactly-one-membership invariant.
+- Redesigned UserPermissionOverride around OrganizationMembership + Branch + Permission, with composite tenant-consistency relations.
+- Updated Organization and Branch relation fields to match the new ownership model.
+- Preserved Identity reverse relations.
 
-### Files expected to be inspected/considered
+### 4.2 Migration created and applied
 
-- `prisma/models/access-control.prisma`
-- `prisma/models/organization.prisma`
-- `prisma/models/identity.prisma`
-- `prisma/seed.ts` (consumer audit; actual seed changes belong to PHASE 3)
-- `prisma/migrations/20261031063647_add_multi_tenant_access_control/migration.sql`
-- all current migration directories and any relevant generated Prisma config
+Forward migration:
 
-### Acceptance criteria
+`prisma/migrations/20261101075730_access_control_schema_v2/migration.sql`
 
-- Exact Prisma model and relation design approved.
-- No accidental cross-context ownership or circular relation introduced.
-- Tenant ownership invariants have explicit database/application enforcement.
-- Trigger/constraint strategy is understood and tested.
-- Migration plan is explicit and appropriate for the early-development database state.
-- `prisma format`, `prisma validate`, `prisma generate`, and test-database migration checks pass when implementation begins.
-- No Domain or Application implementation begins before PHASE 2 is approved and complete.
+The migration was applied successfully to both databases:
 
----
+- `tarkhineh_test`
+- `tarkhineh_db`
+
+Observed verification:
+
+- `npx prisma migrate status` reported `Database schema is up to date!` for both databases.
+- The migration was applied using `npx prisma migrate deploy`.
+- No database reset was performed.
+- No historical migration was edited.
+- The main development database's existing Role, Permission, RolePermission, and RoleAssignment records were preserved.
+
+### 4.3 Main database state after migration and seed
+
+Verified counts in `tarkhineh_db`:
+
+| Table | Count |
+| ----- | -----: |
+| Role | 2 |
+| Permission | 18 |
+| RolePermission | 25 |
+| RoleAssignment | 1 |
+| UserPermissionOverride | 0 |
+
+Verified system roles:
+
+| Role | Definition Scope | Assignment Scope | Assignable | Status | Permissions |
+| ---- | ---------------- | ---------------- | ---------- | ------ | ----------: |
+| `ORGANIZATION_OWNER` | SYSTEM | ORGANIZATION | false | ACTIVE | 18 |
+| `BRANCH_MANAGER` | SYSTEM | BRANCH | true | ACTIVE | 7 |
+
+The existing OrganizationMembership assignment for `ORGANIZATION_OWNER` remained present.
+
+The Permission table was inspected after migration and contains only:
+
+- `id`
+- `code`
+- `createdAt`
+- `updatedAt`
+
+The Role table retains its own `name` and `description`; these are not Permission metadata columns.
+
+### 4.4 Seed verification
+
+`npx prisma db seed` was executed twice on each of:
+
+- `tarkhineh_test`
+- `tarkhineh_db`
+
+Both executions succeeded on each database. Counts remained stable after the second execution.
+
+This verifies the observed Seed idempotency for the current system roles and permissions. Explicit system-role permission lists and the prohibition on dynamic all-permissions grants remain PHASE 3 work.
+
+### 4.5 Database protections inspected
+
+The applied schema includes the redesigned Role ownership and assignment protections.
+
+Inspected constraints include:
+
+- `Role_definition_scope_ownership_check`
+- `Role_reserved_owner_non_assignable_check`
+- RoleAssignment exactly-one-membership check
+- Existing active-assignment uniqueness constraints
+- Composite UserPermissionOverride foreign keys for OrganizationMembership and Branch tenant consistency and Branch ownership
+- Restrictive Permission foreign keys from RolePermission and UserPermissionOverride
+
+Inspected triggers include:
+
+- `RoleAssignment_scope_guard`
+- `Role_ownership_immutability_guard`
+- `Branch_organization_immutability_guard`
+- `OrganizationMembership_identity_immutability_guard`
+- `BranchMembership_identity_immutability_guard`
+
+The migration was successfully applied and the resulting schema objects were inspected. Dedicated negative-write tests for each trigger and tenant constraint have not yet been added; cover those cases in the Access Control persistence/integration test work in PHASE 6.
+
+### 4.6 Backup
+
+A custom-format backup of the main development database was created:
+
+`~/db-backups/tarkhineh/tarkhineh_db_before_access_control_v2_20261101_115543.dump`
+
+Observed size: 78 KB.
+
+`pg_restore --list` successfully read the archive. A full restore drill has not been performed; archive-list verification must not be described as a successful restore test.
+
+### 4.7 Verified command results
+
+| Command | Observed result |
+| ------- | --------------- |
+| `npx prisma format` | Completed successfully |
+| `npx prisma validate` | Valid schema |
+| `npx prisma generate` | Prisma Client 7.10.1 generated successfully |
+| `npx tsc --noEmit` | Completed without reported errors |
+| `npm run build` | Completed successfully |
+| `npm test` | 60 files passed; 691 tests passed; 0 failed |
+| `npx prisma migrate deploy` on `tarkhineh_test` | Migration applied successfully |
+| `npx prisma migrate deploy` on `tarkhineh_db` | Migration applied successfully |
+| `npx prisma migrate status` on both databases | Schema up to date |
+| Seed twice on each database | Both runs successful; record counts stable |
+
+### 4.8 Integration test limitation
+
+The Integration Suite was run after the schema changes.
+
+Observed full-suite result:
+
+- 9 test files passed; 1 failed; 3 skipped.
+- 78 tests passed; 1 failed; 6 skipped.
+
+The failing test is:
+
+`test/integration/outbound-email/prisma-outbound-email-dispatch.store.integration.spec.ts`
+
+Test:
+
+`schedules retry and releases the current lease after an enqueue failure`
+
+Observed behavior:
+
+- The file passed once when executed in isolation (8 tests passed).
+- The full Integration Suite failed at the same assertion.
+- A subsequent full run with `--no-file-parallelism` also failed at the same assertion.
+- The assertion expected `updated` to be `true`, but received `false`.
+
+Per project-owner direction, this unrelated Outbound Email test is deferred and must not be represented as resolved or as a passing Integration Suite. No Production code change was made for it.
+
+Six Integration tests remained skipped, including the opt-in Redis rate-limiting tests. E2E tests and a new Access Control-specific integration suite have not yet been run/created.
+
+### 4.9 Operational startup correction
+
+The production start script was corrected from `node dist/main` to `node dist/main.js`, matching the actual ESM build output.
+
+`npm run build && npm run start:prod` completed successfully, and NestJS logged `Nest application successfully started`. This verifies startup; a separate live health-readiness check was not recorded in this phase.
+
+### 4.10 PHASE 2 implementation result
+
+The approved Prisma schema and forward migration have been implemented, applied to both development and test databases, and verified. Existing main-database Access Control data was preserved. Prisma validation/generation, TypeScript check, Build, Unit Tests, Seed, and migration status checks passed.
+
+The known Outbound Email Integration failure is explicitly deferred. Behavior-level negative tests for database guards and a full backup restore drill remain documented limitations, not claimed successes.
+
+Project-owner review of this completion report is required before changing the phase status to formally COMPLETED and moving the current phase to PHASE 3.
 
 ## 5. Subsequent Phases
 
 | Phase | Name                                         | Status      | Notes                                                                   |
 | ----- | -------------------------------------------- | ----------- | ----------------------------------------------------------------------- |
-| 3     | Permission Registry and Seed                 | NOT STARTED | Explicit system-role permission sets; no implicit all-permissions grant |
+| 3     | Permission Registry and Seed                 | NOT STARTED | Next after PHASE 2 sign-off; explicit system-role permission sets; no implicit all-permissions grant |
 | 4     | Domain Model                                 | NOT STARTED | Pure Domain and unit tests                                              |
 | 5     | Application Layer and Use Cases              | NOT STARTED | Role management, assignment, delegation, overrides, permission queries  |
 | 6     | Infrastructure and Authorization Persistence | NOT STARTED | Prisma adapters and read queries                                        |
@@ -314,17 +436,21 @@ Finalize target Prisma schema, database invariants, constraints, indexes, trigge
 
 ## 6. Open Questions / Items Requiring Explicit Resolution
 
-These are not reasons to reopen the approved architecture; they are implementation details to resolve in the appropriate phase.
+Resolved during PHASE 2:
 
-1. **Role `isAssignable`:** decide whether a persisted boolean is sufficient or a small explicit assignment policy is clearer. Reserved owner role must remain protected regardless.
-2. **Permission database metadata:** confirm whether any API/admin consumer needs localized metadata from the database before removing `name`/`description` columns.
-3. **System role permission sets:** define exact explicit permissions for `ORGANIZATION_OWNER` and `BRANCH_MANAGER`; never use a dynamic all-permissions grant.
-4. **User account status:** Identity Access owns `User.status`. Confirm at PHASE 8 how active/suspended account enforcement is guaranteed for authenticated and non-HTTP use cases; do not duplicate lifecycle ownership.
-5. **Migration approach:** owner reports no important data in development databases. Choose whether to add a forward migration or reset/recreate a development database only after considering migration history and test reproducibility. No reset has been authorized.
-6. **Audit retention/access:** define operational retention and who can read audit data when the audit implementation is designed.
-7. **Concurrency semantics:** specify transaction/locking requirements for assignment, delegation validation, and role permission updates before implementation.
+- **Role assignability:** `isAssignable` is persisted; the reserved `ORGANIZATION_OWNER` system role is non-assignable and protected by a database check.
+- **Permission metadata:** localized Permission metadata columns were removed after the consumer audit. The source-code Permission Registry is the metadata source of truth.
+- **Migration approach:** a forward migration was selected and applied to both development and test databases. No reset was performed.
 
----
+Deferred to later phases:
+
+1. **System role permission sets — PHASE 3:** replace dynamic all-permissions grants with explicit, reviewed lists for `ORGANIZATION_OWNER` and `BRANCH_MANAGER`.
+2. **User account status — PHASE 8:** Identity Access owns `User.status`. Confirm enforcement for authenticated and non-HTTP use cases without duplicating lifecycle ownership.
+3. **Audit retention/access — PHASE 7:** define operational retention and who may read audit records.
+4. **Concurrency semantics — PHASES 5–6:** specify transaction and locking requirements for assignment, delegation validation, and role permission updates.
+5. **Database guard behavior tests — PHASE 6:** add integration coverage for rejected cross-scope/cross-tenant writes and immutable Role ownership.
+6. **Backup recovery drill:** perform a restore test in an isolated database before treating the backup process as fully recovery-tested.
+7. **Deferred unrelated Integration failure:** investigate the Outbound Email retry/lease test separately; do not change Access Control implementation to mask it.
 
 ## 7. Session Handoff Protocol
 
@@ -349,6 +475,15 @@ Then request a status summary and the next step. The repository documents are th
 
 ## 8. Exact Next Step
 
-Start **PHASE 2 — Database Schema and Migration Design**.
+Obtain project-owner review and approval of the PHASE 2 completion report in Section 4.
 
-First inspect the current complete Prisma model files and relevant migration SQL. Present a proposed target schema and explain the role of each relation/constraint/index. Do not edit files or run migrations until the project owner has reviewed and approved the schema design.
+After sign-off, start **PHASE 3 — Permission Registry and Seed**.
+
+First inspect:
+
+- `src/contexts/access-control/domain/permissions/permission-catalog.ts`
+- `prisma/seed.ts`
+- `docs/architecture/access-control/MASTER-ARCHITECTURE.md`
+- `docs/architecture/access-control/ARCHITECTURAL-DECISIONS.md`
+
+Then present the proposed Permission Registry contract and explicit system-role permission sets for approval before changing code. Do not start PHASE 4 Domain or PHASE 5 Application work until the required preceding phase approvals are recorded.
