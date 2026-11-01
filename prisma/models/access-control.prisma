@@ -3,46 +3,51 @@ enum PermissionEffect {
   DENY
 }
 
-enum RoleScope {
+enum RoleDefinitionScope {
   SYSTEM
+  ORGANIZATION
+}
+
+enum RoleAssignmentScope {
   ORGANIZATION
   BRANCH
 }
 
+enum RoleStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 model Role {
-  id              String          @id @default(cuid())
+  id              String              @id @default(cuid())
   code            String
   name            String
   description     String?
-  scope           RoleScope       @default(SYSTEM)
-  assignmentScope MembershipScope @default(BRANCH)
+  definitionScope RoleDefinitionScope
+  assignmentScope RoleAssignmentScope
   organizationId  String?
-  branchId        String?
+  isAssignable    Boolean             @default(true)
+  status          RoleStatus          @default(ACTIVE)
   createdById     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   organization Organization? @relation("OrganizationRoles", fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch?       @relation("BranchRoles", fields: [branchId], references: [id], onDelete: Cascade)
   createdBy    User?         @relation("RoleCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   permissions RolePermission[]
   assignments RoleAssignment[]
 
-  @@unique([code], where: raw("\"scope\" = 'SYSTEM'"))
-  @@unique([organizationId, code], where: raw("\"scope\" = 'ORGANIZATION'"))
-  @@unique([branchId, code], where: raw("\"scope\" = 'BRANCH'"))
-  @@index([organizationId, scope])
-  @@index([branchId, scope])
+  @@unique([code], where: raw("\"definitionScope\" = 'SYSTEM'"))
+  @@unique([organizationId, code], where: raw("\"definitionScope\" = 'ORGANIZATION'"))
+  @@index([organizationId, status])
   @@index([createdById])
 }
 
 model Permission {
-  id          String  @id @default(cuid())
-  code        String  @unique
-  name        String
-  description String?
+  id   String @id @default(cuid())
+  code String @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -57,7 +62,7 @@ model RolePermission {
   createdAt    DateTime @default(now())
 
   role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
 
   @@id([roleId, permissionId])
   @@index([permissionId])
@@ -86,20 +91,25 @@ model RoleAssignment {
 }
 
 model UserPermissionOverride {
-  id                 String           @id @default(cuid())
-  branchMembershipId String
-  permissionId       String
-  assignedById       String
-  effect             PermissionEffect
+  id                       String           @id @default(cuid())
+  organizationId           String
+  organizationMembershipId String
+  branchId                 String
+  permissionId             String
+  assignedById             String
+  effect                   PermissionEffect
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branchMembership BranchMembership @relation(fields: [branchMembershipId], references: [id], onDelete: Cascade)
-  permission       Permission       @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  assignedBy       User             @relation("PermissionOverrideActor", fields: [assignedById], references: [id], onDelete: Restrict)
+  organizationMembership OrganizationMembership @relation(fields: [organizationMembershipId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  branch                 Branch                 @relation(fields: [branchId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  permission             Permission             @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+  assignedBy             User                   @relation("PermissionOverrideActor", fields: [assignedById], references: [id], onDelete: Restrict)
 
-  @@unique([branchMembershipId, permissionId])
+  @@unique([organizationMembershipId, branchId, permissionId])
+  @@index([organizationMembershipId, organizationId])
+  @@index([branchId, organizationId])
   @@index([permissionId])
   @@index([assignedById])
 }
