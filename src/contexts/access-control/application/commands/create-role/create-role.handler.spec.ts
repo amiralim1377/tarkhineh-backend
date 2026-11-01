@@ -150,6 +150,7 @@ describe('CreateRoleHandler', () => {
     expect(sut.existsByCode).toHaveBeenCalledWith('org-1', 'SALES_MANAGER');
 
     expect(sut.save).toHaveBeenCalledOnce();
+    expect(sut.save).toHaveBeenCalledWith(expect.any(Role), 'actor-1');
 
     const savedRole = sut.save.mock.calls[0]?.[0] as Role;
     expect(savedRole).toBeInstanceOf(Role);

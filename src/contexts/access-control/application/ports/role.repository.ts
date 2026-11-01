@@ -21,6 +21,6 @@ export interface RoleRepository {
 
   /** Finds only a Role owned by the supplied Organization. */
   findById(organizationId: string, roleId: string): Promise<Role | null>;
-  save(role: Role): Promise<void>;
+  save(role: Role, createdById: string): Promise<void>;
   update(role: Role): Promise<void>;
 }

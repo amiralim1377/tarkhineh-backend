@@ -85,7 +85,7 @@ export class CreateRoleHandler
       }
 
       // Role and its complete Permission relation set are persisted atomically.
-      await context.roleRepository.save(role);
+      await context.roleRepository.save(role, actorUserId);
 
       return {
         roleId: role.getId().getValue(),
