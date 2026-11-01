@@ -5,12 +5,12 @@
 | Attribute                    | Value                                                                                         |
 | ---------------------------- | --------------------------------------------------------------------------------------------- |
 | Document                     | Master Architecture & Implementation Specification                                            |
-| Version                      | 1.7                                                                                           |
+| Version                      | 1.8                                                                                           |
 | Last updated                 | 2026-11-01                                                                                    |
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                                        |
 | Architecture status          | Approved by project owner                                                                     |
 | Repository audit             | PHASE 0 completed                                                                             |
-| Current implementation phase | PHASE 6 — Infrastructure and Authorization Persistence (core implemented; acceptance open)   |
+| Current implementation phase | PHASE 6 — Infrastructure and Authorization Persistence (acceptance scenarios verified; owner review open) |
 | Source of truth               | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -1250,26 +1250,29 @@ PHASE 5 was formally approved by the project owner on 2026-11-01 and is closed. 
 
 ## PHASE 6 — Infrastructure and Authorization Persistence
 
-Status: **CORE IMPLEMENTATION PRESENT — ACCEPTANCE ITEMS OPEN; AWAITING PROJECT-OWNER REVIEW.**
+Status: **PERSISTENCE ACCEPTANCE SCENARIOS VERIFIED — AWAITING PROJECT-OWNER REVIEW.**
 
-The concrete Prisma-backed AccessControlUnitOfWork, transaction-bound repositories, authorization snapshot readers, NestJS provider bindings, and the initial PostgreSQL Integration coverage have been implemented. The current implementation uses Serializable transactions for mutation operations, RepeatableRead for standalone snapshot reads, bounded P2034 retry, and a narrowly classified Permission Override composite-key P2002 retry. The complete implementation evidence, observed command results, and still-open acceptance gaps are maintained in IMPLEMENTATION-STATUS.md, section 8.
+The concrete Prisma-backed AccessControlUnitOfWork, transaction-bound repositories, authorization snapshot readers, NestJS provider bindings, Serializable mutation transactions, RepeatableRead standalone snapshots, bounded P2034 retry, and narrowly classified Permission Override composite-key P2002 retry are implemented. The expanded PostgreSQL Integration suite now covers tenant isolation, database guards, real SetPermissionOverrideHandler concurrency, duplicate RoleAssignment and Role creation races, Role permission-set mutation races, and Multi-Branch snapshot consistency. The focused Access Control verification records 322 Unit tests and 16 Integration tests passing, plus TypeScript, lint, formatting, diff, and production build checks. Exact commands, output, and limitations are recorded in IMPLEMENTATION-STATUS.md, section 8.
 
-This status is not formal phase closure. The outstanding cross-tenant/database-guard/concurrency tests and query-plan review remain acceptance items.
+This status is not formal phase closure. The persistence acceptance scenarios requested for PHASE 6 have been implemented and verified; the remaining review items are full application dependency-graph verification, the full-project Integration suite, a representative data-volume query benchmark, and explicit project-owner approval.
 
-Required work:
+Completed implementation and verification:
 
-- Implement transaction-bound RoleRepository, RoleAssignmentRepository, PermissionOverrideRepository, and AuthorizationSnapshotReader adapters.
-- Implement a consistent authorization snapshot read, including the Organization snapshot and all active Branch snapshots for delegation evaluation.
-- Define and implement PostgreSQL isolation/locking semantics for sensitive check-then-write operations. A transaction alone is not sufficient evidence of race-condition protection.
-- Handle serialization/deadlock retry only where safe; callbacks must remain free of external side effects.
-- Preserve and translate known Prisma/database errors without masking original application errors.
-- Keep database uniqueness constraints authoritative for duplicate writes.
-- Complete NestJS provider/module composition with the concrete adapters.
-- Add PostgreSQL Integration tests for commit, rollback, same-transaction binding, tenant isolation, concurrent authorization changes, duplicate assignments, Role/Permission mutation races, and database guard behavior.
-- Review indexes and query plans; avoid N+1 authorization reads.
-- Run relevant Integration tests, full Unit tests, TypeScript, production build, and lint.
+- [x] Transaction-bound RoleRepository, RoleAssignmentRepository, PermissionOverrideRepository, and AuthorizationSnapshotReader adapters.
+- [x] Consistent Organization and active-Branch authorization snapshots.
+- [x] Serializable mutation transactions, bounded safe retries, and transaction-bound read/write operations.
+- [x] PostgreSQL Integration coverage for commit/rollback, tenant isolation, database guard behavior, duplicate assignment and Role races, Role permission-set races, Handler-level Permission Override concurrency, and Multi-Branch snapshots.
+- [x] Relevant focused Unit and Integration tests, TypeScript, Access Control lint, formatting, diff check, and production build.
+- [x] Query-plan/index review against the available small test dataset; its limitations are documented in IMPLEMENTATION-STATUS.md.
 
-Do not move Prisma dependencies into Domain or Application. PHASE 6 implements the Application contracts defined in PHASE 5.
+Remaining review items:
+
+- Full application boot and complete `AccessControlModule` dependency-graph verification.
+- Full-project Integration suite review. A previously isolated, unrelated Outbound Email retry/lease Integration test remains failing and is tracked separately.
+- Repeat query-plan inspection with representative data volume before making production performance claims. Current low-cardinality/synthetic-data plans do not justify adding an index or claiming scale readiness.
+- Project-owner review and formal PHASE 6 approval.
+
+Do not move Prisma dependencies into Domain or Application. PHASE 6 implements the Application contracts defined in PHASE 5. Do not begin PHASE 7 until the project owner explicitly approves PHASE 6 closure.
 
 ## PHASE 7 — Audit Logging
 
@@ -1477,6 +1480,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The current implementation checkpoint is **PHASE 6 — Infrastructure and Authorization Persistence**, the next phase and not yet started. PHASES 0–5 are closed; PHASE 5 was approved by the project owner on 2026-11-01. Proceed sequentially through PHASE 6 (Infrastructure and Authorization Persistence), PHASE 7 (Audit Logging), and PHASE 8 (Cross-Context Integration). Only one phase may be active at a time.
+The current implementation checkpoint is **PHASE 6 — Infrastructure and Authorization Persistence**, with the requested persistence acceptance scenarios verified and formal owner review still open. PHASES 0–5 are closed; PHASE 5 was approved by the project owner on 2026-11-01. Do not begin PHASE 7 (Audit Logging) until PHASE 6 is formally approved. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.
