@@ -3,12 +3,12 @@
 | Attribute              | Value                                          |
 | ---------------------- | ---------------------------------------------- |
 | Project                | `tarkhineh-backend`                            |
-| Document version       | 1.3                                            |
+| Document version       | 1.4 |
 | Last updated           | 2026-11-01                                     |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.2                  |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.3                  |
 | Decision log           | `ARCHITECTURAL-DECISIONS.md`                   |
 | Current phase          | PHASE 3 — Permission Registry and Seed |
-| Current phase status   | IN PROGRESS — REGISTRY AND SEED DESIGN REVIEW |
+| Current phase status   | IMPLEMENTATION COMPLETE — AWAITING PROJECT-OWNER APPROVAL |
 
 > This file records observed repository state and actual command results. A phase is not complete merely because its plan is written. Only mark it complete after its acceptance criteria, verification, and project-owner review are satisfied.
 
@@ -24,7 +24,7 @@
 
 ### Active/next phase
 
-- [ ] **PHASE 3 — Permission Registry and Seed** — IN PROGRESS; initial design review.
+- [ ] **PHASE 3 — Permission Registry and Seed** — IMPLEMENTATION COMPLETE; awaiting project-owner approval.
 
 ### Remaining phases
 
@@ -423,7 +423,7 @@ The project owner reviewed and approved this completion report on 2026-11-01. PH
 
 | Phase | Name                                         | Status      | Notes                                                                   |
 | ----- | -------------------------------------------- | ----------- | ----------------------------------------------------------------------- |
-| 3     | Permission Registry and Seed                 | IN PROGRESS | Inspect the existing catalog and seed; design explicit system-role permission sets. No code changes until the proposal is approved. |
+| 3     | Permission Registry and Seed                 | IMPLEMENTATION COMPLETE — AWAITING OWNER APPROVAL | Registry, explicit System Role grants, safe transactional Seed, tests, and verification recorded in section 5.1. |
 | 4     | Domain Model                                 | NOT STARTED | Pure Domain and unit tests                                              |
 | 5     | Application Layer and Use Cases              | NOT STARTED | Role management, assignment, delegation, overrides, permission queries  |
 | 6     | Infrastructure and Authorization Persistence | NOT STARTED | Prisma adapters and read queries                                        |
@@ -433,6 +433,74 @@ The project owner reviewed and approved this completion report on 2026-11-01. PH
 | 10    | Security and Production Readiness            | NOT STARTED | Full security matrix, performance, final verification                   |
 
 ---
+
+## 5.1 PHASE 3 — Permission Registry and Seed
+
+**Implementation status: IMPLEMENTATION COMPLETE — AWAITING PROJECT-OWNER APPROVAL.**
+
+### Permission Registry
+
+- Exactly 23 stable codes: all 18 existing codes preserved and five approved codes added.
+- Every entry defines English and Persian names/descriptions, `targetScope`, `resource`, `action`, and explicit `delegable`.
+- Scope distribution: 16 ORGANIZATION and 7 BRANCH.
+- Delegability distribution: 16 delegable and 7 non-delegable.
+- `organization.members.permissions.manage` uses ORGANIZATION target scope, resource `organization.members.permissions`, action `MANAGE`, and `delegable = false`.
+- The exact Registry and policy are recorded in `MASTER-ARCHITECTURE.md` PHASE 3 and ADR-019.
+
+### Explicit System Role sets
+
+- `ORGANIZATION_OWNER`: exactly 23 static permissions; ORGANIZATION assignment scope; non-assignable.
+- `BRANCH_MANAGER`: exactly seven static Branch permissions; BRANCH assignment scope; assignable.
+- Neither set is derived dynamically from the full Registry.
+- Tests verify exact membership, uniqueness, Registry existence, and Branch Manager target scope.
+
+### Seed behavior and safety
+
+- `prisma/seed.ts` invokes the synchronizer inside one Prisma interactive transaction.
+- Existing managed roles are validated before the first write: ARCHIVED status, assignment-scope drift, and unexpected Organization ownership cause failure.
+- The Seed upserts the 23 source-controlled Permission codes and creates or updates only the two managed SYSTEM roles.
+- RolePermission links are replaced only for those two System Role IDs.
+- Permission rows are never deleted. Organization-defined custom roles, RoleAssignments, and UserPermissionOverrides are not modified.
+- Existing System Role status is not overwritten.
+- No Prisma schema or migration change was made in PHASE 3.
+
+### Changed and added files
+
+- Modified: `prisma/seed.ts`.
+- Added: `prisma/seed/access-control-seed.ts`.
+- Modified: `src/contexts/access-control/domain/permissions/permission-catalog.ts`.
+- Added: `src/contexts/access-control/domain/permissions/permission-catalog.unit.spec.ts`.
+- Added: `prisma/seed/access-control-seed.unit.spec.ts`.
+- Added: `prisma/seed/access-control-seed-preconditions.unit.spec.ts`.
+- Added: `test/integration/access-control/seed/permission-registry-seed.integration.spec.ts`.
+- Modified: `vitest.config.ts`.
+- Updated: `MASTER-ARCHITECTURE.md`, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md`.
+- Removed: temporary root diagnostic file `permission-check-GAK4jO.ts`.
+
+### Verified commands
+
+| Command | Observed result |
+| --- | --- |
+| `npx vitest run` | 63 files passed; 723 tests passed; 0 failed |
+| `npx tsc --noEmit` | Completed without reported errors |
+| Focused Access Control Integration command | 1 file passed; 2 tests passed |
+| `npm run build` | Exit code 0 |
+| `npm run lint` | Exit code 0; 0 errors; 102 warnings |
+| `git diff --check` | No whitespace errors |
+
+The focused Access Control Integration tests use the real `tarkhineh_test` database through a guarded URL. Fixtures and synchronization writes are deliberately rolled back inside interactive transactions.
+
+Coverage includes idempotent synchronization, exact System Role grants, preservation of custom roles and their permission links, preservation of RoleAssignments and overrides, preservation of historical Permission rows, and rejection of archived System Roles before synchronization writes.
+
+### Limitations and database effects
+
+- The production CLI Seed was not executed against `tarkhineh_db` or `tarkhineh_test`. No persistent database change or schema migration was made in PHASE 3.
+- Mid-operation database failure injection was not tested. The Integration tests cover precondition failures and deliberate rollback after successful assertions.
+- The full project Integration Suite was not rerun. The previously documented unrelated Outbound Email retry/lease Integration failure remains deferred and unresolved.
+- Lint reports 102 warnings and zero errors; warnings were not suppressed.
+
+Implementation is prepared for project-owner review. Formal phase closure requires owner approval of the Registry, delegability policy, explicit System Role grants, and this verification report.
+
 
 ## 6. Open Questions / Items Requiring Explicit Resolution
 
@@ -444,13 +512,12 @@ Resolved during PHASE 2:
 
 Deferred to later phases:
 
-1. **System role permission sets — PHASE 3:** replace dynamic all-permissions grants with explicit, reviewed lists for `ORGANIZATION_OWNER` and `BRANCH_MANAGER`.
-2. **User account status — PHASE 8:** Identity Access owns `User.status`. Confirm enforcement for authenticated and non-HTTP use cases without duplicating lifecycle ownership.
-3. **Audit retention/access — PHASE 7:** define operational retention and who may read audit records.
-4. **Concurrency semantics — PHASES 5–6:** specify transaction and locking requirements for assignment, delegation validation, and role permission updates.
-5. **Database guard behavior tests — PHASE 6:** add integration coverage for rejected cross-scope/cross-tenant writes and immutable Role ownership.
-6. **Backup recovery drill:** perform a restore test in an isolated database before treating the backup process as fully recovery-tested.
-7. **Deferred unrelated Integration failure:** investigate the Outbound Email retry/lease test separately; do not change Access Control implementation to mask it.
+1. **User account status — PHASE 8:** Identity Access owns `User.status`. Confirm enforcement for authenticated and non-HTTP use cases without duplicating Identity lifecycle ownership.
+2. **Audit retention/access — PHASE 7:** define operational retention and who may read audit records.
+3. **Concurrency semantics — PHASES 5–6:** specify transaction and locking requirements for assignment, delegation validation, and role permission updates.
+4. **Database guard behavior tests — PHASE 6:** add integration coverage for rejected cross-scope/cross-tenant writes and immutable Role ownership.
+5. **Backup recovery drill:** perform a restore test in an isolated database before treating the backup process as fully recovery-tested.
+6. **Deferred unrelated Integration failure:** investigate the Outbound Email retry/lease test separately; do not change Access Control implementation to mask it.
 
 ## 7. Session Handoff Protocol
 
@@ -475,20 +542,8 @@ Then request a status summary and the next step. The repository documents are th
 
 ## 8. Exact Next Step
 
-Continue **PHASE 3 — Permission Registry and Seed**.
+Request project-owner review and approval of PHASE 3 as recorded in section 5.1 and `MASTER-ARCHITECTURE.md`.
 
-First inspect:
-
-- `src/contexts/access-control/domain/permissions/permission-catalog.ts`
-- `prisma/seed.ts`
-- `docs/architecture/access-control/MASTER-ARCHITECTURE.md`
-- `docs/architecture/access-control/ARCHITECTURAL-DECISIONS.md`
-
-Review the current permission codes, metadata, target scopes, and existing role grants. Then present:
-
-1. A proposed Permission Registry contract and metadata structure.
-2. An explicit permission set for `ORGANIZATION_OWNER`.
-3. An explicit permission set for `BRANCH_MANAGER`.
-4. Seed synchronization and safety rules, including protection of organization-defined custom roles.
-
-Obtain project-owner approval of the proposal before changing implementation code. Do not begin PHASE 4 Domain or PHASE 5 Application work prematurely.
+- Do not mark PHASE 3 formally complete until the project owner approves the implementation and verification report.
+- Do not execute the production CLI Seed against `tarkhineh_db` without an explicit operational decision.
+- After PHASE 3 approval, begin **PHASE 4 — Domain Model**. Do not begin PHASE 5 Application work before PHASE 4 is completed and approved.

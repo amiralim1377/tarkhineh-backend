@@ -3,9 +3,9 @@
 | Attribute              | Value                         |
 | ---------------------- | ----------------------------- |
 | Project                | `tarkhineh-backend`           |
-| Document version       | 1.2                           |
+| Document version       | 1.3 |
 | Last updated           | 2026-11-01                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.2 |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.3 |
 | Status reference       | `IMPLEMENTATION-STATUS.md`    |
 
 This log records decisions and their rationale. An accepted decision must not be silently changed during implementation. If new evidence requires a change, add a new ADR that supersedes the old one and obtain project-owner approval.
@@ -15,7 +15,7 @@ This log records decisions and their rationale. An accepted decision must not be
 ## ADR-001 — Use Scoped RBAC as the v1 authorization model
 
 **Status:** ACCEPTED  
-**Decision owner:** Project owner  
+**Decision owner:** Project owner
 **Date:** 2026-11-01
 
 ### Context
@@ -455,6 +455,37 @@ Git is the source of code/document change history. ChatGPT memory and conversati
 
 ---
 
+## ADR-019 — Explicit Permission Registry metadata and System Role grants
+
+**Status:** IMPLEMENTED — AWAITING PROJECT-OWNER APPROVAL IN PHASE 3
+**Decision owner:** Project owner
+**Date:** 2026-11-01
+
+### Context
+
+The architecture requires stable source-controlled Permission semantics, explicit delegation authority, and predictable built-in role grants. Dynamically granting every catalog Permission to `ORGANIZATION_OWNER` would silently expand privileges when new permissions are added.
+
+### Decision implemented
+
+- Preserve all 18 existing Permission codes and add exactly five: `organization.roles.read`, `organization.roles.create`, `organization.roles.update`, `organization.roles.archive`, and `organization.members.permissions.manage`.
+- Define every entry with localized English/Persian name and description, `targetScope`, `resource`, `action`, and explicit `delegable`.
+- Use 16 ORGANIZATION-target and 7 BRANCH-target permissions.
+- Mark exactly 16 permissions delegable: `organization.read`, `organization.branches.read`, `organization.branches.create`, `organization.branches.update`, `organization.members.read`, `organization.members.invite`, `organization.members.update`, `organization.roles.read`, `organization.roles.assign`, `branch.dashboard.read`, `branch.staff.read`, `branch.staff.invite`, `branch.staff.update`, `branch.staff.suspend`, `branch.staff.remove`, and `branch.roles.assign`.
+- Mark the remaining seven non-delegable: `organization.update`, `organization.branches.suspend`, `organization.members.remove`, `organization.roles.create`, `organization.roles.update`, `organization.roles.archive`, and `organization.members.permissions.manage`.
+- Set `organization.members.permissions.manage` to ORGANIZATION target scope, resource `organization.members.permissions`, action `MANAGE`, and `delegable = false`.
+- Give `ORGANIZATION_OWNER` an explicit static set of all 23 codes; it remains ORGANIZATION-assigned and non-assignable.
+- Give `BRANCH_MANAGER` an explicit static set of the seven Branch permissions; it remains BRANCH-assigned and assignable. Assignability does not replace later application-level authority/delegation checks.
+- Synchronize the Registry and two managed System Roles inside one caller-owned Prisma interactive transaction. Validate existing managed roles before the first write; fail for archived roles, assignment-scope drift, or unexpected Organization ownership.
+- Never delete Permission rows or mutate Organization-defined custom roles, RoleAssignments, or UserPermissionOverrides. Replace RolePermission links only for the two managed System Role IDs.
+
+### Consequences
+
+- Adding a Permission cannot silently expand either System Role.
+- Delegation policy is explicit for later Application use cases.
+- Historical Permission rows are retained; retirement requires a separate compatibility/data-retirement plan.
+- The Seed caller supplies one transaction; the synchronizer intentionally does not create a nested transaction.
+- Verification and limitations are recorded in `IMPLEMENTATION-STATUS.md` and `MASTER-ARCHITECTURE.md`. Formal phase closure remains subject to project-owner approval.
+
 ## Resolved implementation decisions
 
 The following implementation decisions were resolved during PHASE 2 and verified on 2026-11-01:
@@ -465,13 +496,10 @@ The following implementation decisions were resolved during PHASE 2 and verified
 
 ## Open implementation decisions (do not silently assume)
 
-The approved architectural direction is stable. The following details must be finalized in their relevant implementation phases:
+The PHASE 3 Registry contract, explicit System Role permission sets, delegability matrix, and override-management permission scope are implemented and recorded in ADR-019. Formal PHASE 3 closure awaits project-owner approval.
 
-1. **Explicit system-role permission sets — PHASE 3:** define the exact permission sets for `ORGANIZATION_OWNER` and `BRANCH_MANAGER`; do not use a dynamic all-permissions grant.
-2. **Delegability policy — PHASE 3:** define `delegable` explicitly for every Permission and ensure the policy is consistent with the ability to assign roles containing those permissions.
-3. **Override management scope — PHASE 3:** confirm the target scope and operation semantics for `organization.members.permissions.manage`.
-4. **Identity status integration — PHASE 8:** verify how `User.status` is enforced for non-HTTP and application-level operations without transferring Identity lifecycle ownership.
-5. **Audit retention/access — PHASE 7:** define operational retention and who may read audit records.
-6. **Concurrency semantics — PHASES 5–6:** define exact transaction and locking behavior for delegation checks and sensitive assignment changes.
+The following details remain for their relevant later phases:
 
-When any item is resolved, add the decision and rationale here or in a new ADR, and update `IMPLEMENTATION-STATUS.md`.
+1. **Identity status integration — PHASE 8:** verify how `User.status` is enforced for non-HTTP and application-level operations without transferring Identity lifecycle ownership.
+2. **Audit retention/access — PHASE 7:** define operational retention and who may read audit records.
+3. **Concurrency semantics — PHASES 5–6:** define exact transaction and locking behavior for delegation checks and sensitive assignment changes.

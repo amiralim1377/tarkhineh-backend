@@ -10,7 +10,7 @@
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                      |
 | Architecture status          | Approved by project owner                                                   |
 | Repository audit             | PHASE 0 completed                                                           |
-| Current implementation phase | PHASE 3 — Permission Registry and Seed (in progress — design review)       |
+| Current implementation phase | PHASE 3 — Permission Registry and Seed (implementation complete; awaiting owner approval) |
 | Source of truth              | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -581,7 +581,7 @@ Permission attachment must validate target-scope compatibility and delegation be
 
 The source-code registry is the source of truth for permission metadata. The database Permission row should retain stable identity/code and required relations, not a competing localized metadata copy.
 
-During PHASE 2, Permission metadata consumers were audited in the repository. The targeted search in `src`, `prisma`, and `test` found no additional consumers beyond the catalog and Seed. The database `name` and `description` columns were removed through the approved forward migration. The source-code catalog remains the metadata source pending its formalization in PHASE 3.
+During PHASE 2, Permission metadata consumers were audited in the repository. The targeted search in `src`, `prisma`, and `test` found no additional consumers beyond the catalog and Seed. The database `name` and `description` columns were removed through the approved forward migration. The source-code catalog was formalized as the Permission Registry in PHASE 3.
 
 Seed must upsert known registry permissions and must not delete customer-defined roles or operational user data. Retired permission codes must be handled deliberately; do not silently delete referenced permissions.
 
@@ -940,43 +940,187 @@ Acceptance criteria:
 - Prisma validation and client generation succeed.
 - Database constraints and triggers are inspected after migration; behavior-level negative-write integration tests are scheduled for PHASE 6.
 
+
 ## PHASE 3 — Permission Registry and Seed
 
-Status: **IN PROGRESS — DESIGN REVIEW**.
+Status: **IMPLEMENTATION COMPLETE — AWAITING PROJECT-OWNER APPROVAL**.
 
-No PHASE 3 implementation code has been changed yet. The current task is to finalize the Registry contract, explicit system-role permission sets, delegability policy, and Seed safety rules before implementation.
+### Permission Registry
 
-Activities:
+The source-controlled Registry is the single source of truth for Permission metadata.
 
-1. Separate permission codes/types as justified.
-2. Define target scopes, resources, and actions.
-3. Complete localized registry metadata.
-4. Add explicit `delegable` metadata.
-5. Add the required role-management and override-management permission codes.
-6. Validate code uniqueness and metadata consistency.
-7. Refactor Seed.
-8. Explicitly define each system role's permission set.
-9. Preserve customer-defined roles and assignments.
-10. Handle retired permissions deliberately.
+It contains exactly 23 stable Permission codes:
+- All 18 existing codes are preserved.
+- Exactly five codes are added:
+  - `organization.roles.read`
+  - `organization.roles.create`
+  - `organization.roles.update`
+  - `organization.roles.archive`
+  - `organization.members.permissions.manage`
+- `organization.roles.assign` is an existing code and remains unchanged.
+- No existing code was renamed or removed.
 
-Initial management permission codes to evaluate and include as approved:
+Every Registry entry explicitly defines:
+- Stable `code`.
+- English and Persian `name` and `description`.
+- `targetScope`: `ORGANIZATION` or `BRANCH`.
+- `resource`.
+- `action`.
+- Explicit `delegable` boolean.
 
+Scope distribution: 16 ORGANIZATION and 7 BRANCH.
+
+Defined actions: `READ`, `CREATE`, `UPDATE`, `INVITE`, `SUSPEND`, `REMOVE`, `ASSIGN`, `ARCHIVE`, and `MANAGE`.
+
+`organization.members.permissions.manage` is:
+- Target scope: `ORGANIZATION`
+- Resource: `organization.members.permissions`
+- Action: `MANAGE`
+- Delegable: `false`
+
+It covers Organization-member permission overrides, including branch-specific exceptions. Its target scope remains ORGANIZATION.
+
+### Delegability policy
+
+Exactly 16 permissions are delegable:
+
+- `organization.read`
+- `organization.branches.read`
+- `organization.branches.create`
+- `organization.branches.update`
+- `organization.members.read`
+- `organization.members.invite`
+- `organization.members.update`
+- `organization.roles.read`
+- `organization.roles.assign`
+- `branch.dashboard.read`
+- `branch.staff.read`
+- `branch.staff.invite`
+- `branch.staff.update`
+- `branch.staff.suspend`
+- `branch.staff.remove`
+- `branch.roles.assign`
+
+Exactly 7 permissions are non-delegable:
+
+- `organization.update`
+- `organization.branches.suspend`
+- `organization.members.remove`
+- `organization.roles.create`
+- `organization.roles.update`
+- `organization.roles.archive`
+- `organization.members.permissions.manage`
+
+Delegability determines whether a permission may be granted to another principal through later role/override workflows. It does not determine whether the holder may perform the operation.
+
+### Explicit System Role permission sets
+
+Both permission sets are static source-controlled lists. They are never derived from the complete Registry.
+
+`ORGANIZATION_OWNER` has exactly 23 permissions:
+
+- `organization.read`
+- `organization.update`
+- `organization.branches.read`
+- `organization.branches.create`
+- `organization.branches.update`
+- `organization.branches.suspend`
+- `organization.members.read`
+- `organization.members.invite`
+- `organization.members.update`
+- `organization.members.remove`
+- `organization.roles.assign`
 - `organization.roles.read`
 - `organization.roles.create`
 - `organization.roles.update`
 - `organization.roles.archive`
-- `organization.roles.assign`
 - `organization.members.permissions.manage`
+- `branch.dashboard.read`
+- `branch.staff.read`
+- `branch.staff.invite`
+- `branch.staff.update`
+- `branch.staff.suspend`
+- `branch.staff.remove`
+- `branch.roles.assign`
 
-Existing codes must be reviewed and preserved unless there is a documented compatibility plan.
+`BRANCH_MANAGER` has exactly 7 permissions:
 
-Acceptance criteria:
+- `branch.dashboard.read`
+- `branch.staff.read`
+- `branch.staff.invite`
+- `branch.staff.update`
+- `branch.staff.suspend`
+- `branch.staff.remove`
+- `branch.roles.assign`
 
-- Registry is the single source of permission metadata.
-- Seed is repeatable/idempotent.
-- New permissions do not silently expand system role privileges.
-- Customer-defined roles are never deleted or overwritten by system seed.
-- Registry and seed tests pass.
+Role configuration:
+- `ORGANIZATION_OWNER`: `assignmentScope = ORGANIZATION`, `isAssignable = false`.
+- `BRANCH_MANAGER`: `assignmentScope = BRANCH`, `isAssignable = true`.
+
+`isAssignable` is not itself assignment authority. Application-level assignment and delegation rules remain for the later Application phase.
+
+### Seed synchronization and safety
+
+The production Seed invokes `synchronizeAccessControlRegistry` inside one Prisma interactive transaction.
+
+The synchronizer:
+
+1. Reads the two known System Roles.
+2. Validates all existing managed roles before the first write.
+3. Fails if either managed role is ARCHIVED, has an unexpected assignment scope, or unexpectedly belongs to an Organization.
+4. Upserts the 23 source-controlled Permission codes.
+5. Creates or updates only the two known SYSTEM roles.
+6. Replaces RolePermission links only for those exact System Role IDs.
+7. Does not overwrite existing System Role status.
+8. Never deletes Permission rows.
+9. Never modifies Organization-defined custom roles, RoleAssignments, or UserPermissionOverrides.
+
+No Prisma schema, migration, or database reset was part of PHASE 3.
+
+The production CLI Seed was not executed against either development or test database during this implementation checkpoint.
+
+### PHASE 3 verification
+
+| Check | Observed result |
+| --- | --- |
+| `npx vitest run` | 63 files passed; 723 tests passed; 0 failed |
+| Registry Unit Tests | 25 passed |
+| System Role permission-set Unit Tests | 4 passed |
+| Seed precondition Unit Tests | 3 passed |
+| Access Control Integration Tests | 1 file passed; 2 tests passed |
+| `npx tsc --noEmit` | Completed without reported errors |
+| `npm run build` | Exit code 0 |
+| `npm run lint` | Exit code 0; 0 errors; 102 warnings |
+| `git diff --check` | No whitespace errors |
+
+The focused Access Control Integration tests use the real `tarkhineh_test` database through a guarded URL. Test fixtures and synchronization writes are contained in interactive transactions and deliberately rolled back.
+
+The tests cover:
+- Repeated synchronization and idempotency.
+- Exact System Role grants.
+- Preservation of custom roles and their permissions.
+- Preservation of RoleAssignments and UserPermissionOverrides.
+- Preservation of historical Permission rows.
+- Archived System Role rejection before synchronization writes.
+
+Known limitations:
+- The Integration tests do not inject a database failure midway through Seed statements. They verify precondition failures and deliberate transaction rollback after successful assertions.
+- The full project Integration Suite was not rerun in this checkpoint.
+- The previously documented unrelated Outbound Email retry/lease Integration failure remains deferred and unresolved.
+- Lint reports 102 warnings and zero errors; warnings were not suppressed.
+- The production CLI Seed was not run against `tarkhineh_db` or `tarkhineh_test`.
+
+### PHASE 3 acceptance
+
+- [x] Registry is the single source of Permission metadata.
+- [x] All 18 existing codes are preserved; five approved codes added.
+- [x] Scope, resource, action, localized metadata, and delegability are explicit.
+- [x] System Role permission sets are explicit and static.
+- [x] Seed synchronizes only the two managed System Roles.
+- [x] Custom roles, assignments, overrides, and historical Permission rows are preserved.
+- [x] Unit, focused Integration, TypeScript, Build, Lint, and diff checks completed.
+
+**Implementation is ready for project-owner review. Formal completion and PHASE 4 start require project-owner approval.**
 
 ## PHASE 4 — Domain Model
 
@@ -1202,6 +1346,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The immediate next phase is **PHASE 3 — Permission Registry and Seed**. First reconcile the existing Permission Catalog and Seed with the approved architecture, then present the Registry contract, explicit system-role permission sets, delegability policy, and Seed synchronization rules for project-owner approval. Do not start PHASE 4 Domain or PHASE 5 Application implementation prematurely.
+The current implementation checkpoint is **PHASE 3 — Permission Registry and Seed**, implemented and awaiting project-owner approval. After approval, proceed to **PHASE 4 — Domain Model**. Do not start PHASE 5 Application implementation before PHASE 4 is completed and approved.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.
