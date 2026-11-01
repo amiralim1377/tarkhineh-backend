@@ -850,9 +850,10 @@ The Unit of Work callback contract continues to prohibit external side effects. 
 - Mutation handlers pass the Unit of Work's transaction-bound reader to `AuthorizationApplicationService`; their authorization reads therefore use the same `Serializable` transaction as the mutation.
 - `loadDelegationSnapshots` loads active Branch identifiers and constructs the Organization snapshot plus each active Branch snapshot sequentially within the supplied transaction.
 - The reader deliberately sequences Prisma operations on the same PostgreSQL transaction client rather than issuing parallel relation reads on that client.
-- The focused Integration test demonstrates read-your-writes behavior for Role, RoleAssignment, and Permission Override records inside the same Unit of Work, and checks the standalone snapshot after commit.
+- The focused Integration suite verifies read-your-writes behavior inside one Unit of Work and committed standalone snapshots.
+- Multi-Branch snapshot coverage is now present: the fixture creates two active Branches in the same Organization and verifies that a Branch-scoped permission is not considered delegable until the required assignment exists across the active Branch snapshots.
 
-The current Integration fixture has one active Branch. A multi-Branch snapshot and large-Organization query-plan benchmark remain unverified.
+This verifies the multi-Branch behavior for the tested fixture. It is not a large-Organization performance benchmark.
 
 ### 8.4 NestJS composition and error handling
 
@@ -887,46 +888,49 @@ Focused tests:
 
 ### 8.6 Observed verification
 
-The following results were observed after the final code changes and Prettier formatting:
+The following results were observed after the final code changes and Prettier formatting in the user's terminal:
 
 | Command | Observed result |
 | --- | --- |
-| `npx vitest run src/contexts/access-control` | 21 files passed; 322 tests passed |
-| `npx vitest run --config ./vitest.config.integration.ts test/integration/access-control` | 2 files passed; 6 tests passed (4 Persistence, 2 Registry Seed) |
+| `npm run test:integration -- test/integration/access-control` | 2 files passed; 16 tests passed (14 Persistence, 2 Registry Seed) |
+| `npm test -- src/contexts/access-control` | 21 files passed; 322 tests passed |
 | `npx tsc --noEmit` | Passed; no TypeScript diagnostics |
-| `npx oxlint src/contexts/access-control test/integration/access-control/persistence` | 82 files; 0 warnings; 0 errors |
-| Prettier check for the eight Phase 6 code files | Passed |
+| `npx oxlint src/contexts/access-control test/integration/access-control` | 83 files; 0 warnings; 0 errors |
+| `npx prettier --check test/integration/access-control/persistence/access-control-persistence.integration.spec.ts` | Passed |
 | `git diff --check` | Passed; no whitespace errors |
+| `npm run build` | Completed successfully |
 
-`npm run build` also completed successfully during the Phase 6 implementation verification before the final formatting-only pass. It was not rerun in the last post-format validation command.
+The Access Control-focused validation therefore covers 338 passing tests across 23 test files (322 Unit + 16 Integration). The commands above were run in the guarded development/test setup. The Integration fixture rewrites the configured development database URL to `tarkhineh_test` and refuses an unexpected source database name.
 
-The targeted Integration suite uses the guarded `tarkhineh_test` database. Its fixture builder rewrites the configured development database URL to `tarkhineh_test` and refuses an unexpected source database name. Temporary User, Organization, membership, Branch, Role, assignment, and Override fixtures are cleaned after each test. Shared Registry Permission rows are upserted and are not deleted by fixture cleanup.
+This is not evidence that the full-project Integration suite passed; that suite was not rerun during this focused verification.
 
 ### 8.7 Integration coverage actually present
 
-The four Persistence Integration tests currently cover:
+The 14 Persistence Integration tests now cover the following acceptance areas:
 
-1. Committing an Organization Role and its complete Permission relation set.
-2. Rolling back Role creation when the Unit of Work callback throws.
-3. Persisting and reading RoleAssignments and Permission Overrides in the same transaction; revoking assignments; updating and deleting an Override; and checking committed/standalone snapshot state.
-4. Concurrent creation of the same Permission Override key, asserting one persisted row and two idempotent results with the same Override ID.
+1. **Transaction behavior:** commit, rollback, transaction-bound read-your-writes, and committed snapshot behavior.
+2. **Tenant isolation:** separate Organizations and Branches prove that Role, RoleAssignment, and authorization snapshot reads do not leak across tenant boundaries.
+3. **Database guards:** negative writes assert PostgreSQL `23514` check/trigger violations for Branch/Organization mismatch, cross-tenant Organization-owned Role assignment, and immutable Role ownership/assignment scope; a cross-tenant Branch reference for a Permission Override asserts `23503`.
+4. **Real Handler concurrency:** two concurrent calls to `SetPermissionOverrideHandler.execute()` use the real PostgreSQL Unit of Work; one reports a change, the other reports no change, and exactly one Override remains persisted.
+5. **Assignment and Role races:** concurrent duplicate `AssignRoleHandler` calls produce one active assignment and one duplicate-assignment error; concurrent same-code Role creation produces one Role and one duplicate-code error.
+6. **Role permission-set race:** concurrent `UpdateRoleHandler` calls replacing the complete permission set both complete under the Serializable/retry strategy; the persisted set equals one complete submitted set rather than a partial mixture.
+7. **Multi-Branch snapshots:** delegation snapshots include both active Branches and only treat a Branch-scoped permission as delegable when the required assignment exists across those active Branches.
+8. **Permission Override persistence race:** concurrent creation of the same composite key results in one persisted row and idempotent results.
 
-The fourth test forces two independent Serializable Unit of Work callbacks to observe a missing key before insertion. It exercises the concrete repositories and Unit of Work against PostgreSQL. **It reproduces the check/read/create behavior; it does not invoke `SetPermissionOverrideHandler.execute()`.** A separate Handler-level concurrency Integration test is still desirable to prove the complete Application-to-Infrastructure path.
+The two Registry Seed Integration tests bring the focused Access Control Integration total to 16; they are not counted as new PHASE 6 Persistence tests.
 
-The Registry Seed Integration file contributes two tests to the six-test Access Control Integration total; it is not new PHASE 6 persistence coverage.
+### 8.8 Query-plan review and remaining limitations
 
-### 8.8 Acceptance items still open
+A PostgreSQL 18.6 `EXPLAIN` review was performed for representative Branch, Membership, RoleAssignment, RolePermission, and PermissionOverride access paths. The schema already contains the expected tenant/scope and active-assignment indexes, including Organization/Branch status indexes, Membership lookup indexes, active RoleAssignment uniqueness/index paths, the RolePermission composite primary key, and PermissionOverride tenant/composite-key indexes. Based on the inspected plans and current schema, no additional index or migration is recommended at this checkpoint.
 
-The current implementation is not evidence that every PHASE 6 acceptance scenario has been covered. The following items remain open:
+The plans were collected against a small test dataset using synthetic/probe identifiers. PostgreSQL selected sequential scans for several low-cardinality or empty-table probes, with observed execution times around 0.017–0.077 ms. Those plans are expected for tiny relations and do **not** establish a missing-index defect or demonstrate production-scale performance. A representative data-volume benchmark with `EXPLAIN (ANALYZE, BUFFERS)` remains a production-readiness activity.
 
-- **Explicit tenant-isolation Integration tests:** add distinct Organizations and Branches, then prove that repository lookups and snapshot reads cannot cross tenant boundaries. Queries contain tenant scoping, but the current Persistence Integration fixture does not provide a dedicated two-tenant negative test.
-- **Database guard behavior:** add negative-write tests for retained check constraints, composite foreign keys, cross-scope/cross-tenant protection, and immutable Role ownership. These were explicitly deferred from PHASE 2.
-- **Broader concurrency tests:** cover duplicate concurrent RoleAssignments and races involving Role/Permission changes or authorization changes, in addition to the implemented Permission Override creation race.
-- **Handler-level Override race:** invoke `SetPermissionOverrideHandler.execute()` concurrently using the real Unit of Work and PostgreSQL, rather than only reproducing its check/read/create sequence in the Persistence Integration test.
-- **Multi-Branch snapshot coverage:** prove delegation snapshots include all active Branches and exclude inactive or foreign-Organization Branches using a fixture with more than one Branch.
-- **Query-plan and index review:** inspect relevant indexes and representative PostgreSQL query plans (including the active-assignment and snapshot queries). No `EXPLAIN (ANALYZE, BUFFERS)` evidence is recorded in this checkpoint.
-- **Full module/application DI verification:** the default snapshot reader has a focused Nest container test; a full application boot/complete AccessControlModule graph test has not been recorded here.
-- **Full-project Integration suite:** it was not rerun as part of the final PHASE 6 verification. A previously isolated, unrelated Outbound Email retry/lease Integration test remains failing and deferred: `schedules retry and releases the current lease after an enqueue failure`. It must be investigated separately and must not be masked by Access Control changes.
+The remaining PHASE 6 review items are:
+
+- **Full module/application DI verification:** the default snapshot reader has a focused Nest testing-module test, but a full application boot/complete `AccessControlModule` dependency-graph test has not been recorded.
+- **Full-project Integration suite:** it was not rerun as part of the final focused PHASE 6 validation. A previously isolated, unrelated Outbound Email retry/lease Integration test remains failing and deferred: `schedules retry and releases the current lease after an enqueue failure`. It must be investigated separately and must not be masked by Access Control changes.
+- **Production-scale query benchmark:** repeat query-plan inspection with representative row counts and real fixture distributions before making production capacity claims.
+- **Project-owner review:** formal PHASE 6 closure still requires explicit owner approval.
 
 No Prisma schema change or migration was created in PHASE 6. The Integration tests ran against `tarkhineh_test`; no production CLI Seed run or intentional schema change was part of this phase.
 
@@ -939,17 +943,19 @@ No Prisma schema change or migration was created in PHASE 6. The Integration tes
 - [x] Bounded P2034 retry implemented.
 - [x] Targeted Permission Override composite-key P2002 retry implemented; unrelated unique violations are not retried.
 - [x] Nest provider/token wiring added; reader constructor injection tested.
+- [x] Dedicated cross-tenant isolation and database-guard negative-write Integration tests.
+- [x] Concurrent duplicate RoleAssignment and same-code Role creation tests.
+- [x] Role permission-set mutation race under the Serializable Unit of Work.
+- [x] `SetPermissionOverrideHandler.execute()` concurrency test using the real Unit of Work and PostgreSQL.
+- [x] Multi-Branch delegation snapshot coverage.
+- [x] Query-plan/index review completed; small/synthetic-data limitations documented and no index change justified by current evidence.
 - [x] Focused Unit and PostgreSQL Integration tests pass.
 - [x] TypeScript, Access Control lint, Prettier, diff check, and production build have passed in the recorded runs.
-- [ ] Dedicated cross-tenant and database-guard negative-write Integration tests.
-- [ ] Broader duplicate-assignment and Role/Permission concurrency Integration tests.
-- [ ] Handler-level Permission Override concurrency Integration test.
-- [ ] Multi-Branch snapshot coverage and PostgreSQL query-plan/index review.
+- [ ] Full application boot/complete AccessControlModule dependency-graph verification.
+- [ ] Full-project Integration suite review; the known unrelated Outbound Email retry/lease failure remains deferred.
 - [ ] Project-owner review and formal PHASE 6 approval.
 
-**PHASE 6 remains the active phase. Do not mark it closed or begin PHASE 7 until the project owner has reviewed the open acceptance items and explicitly approved closure or accepted their deferral.**
-
----
+**The PHASE 6 persistence acceptance scenarios requested for this work are implemented and verified. PHASE 6 remains active pending the remaining review items and explicit project-owner approval; do not mark it closed or begin PHASE 7 without that approval.**
 
 ## 9. Open items and deferred work
 
@@ -991,6 +997,6 @@ The repository documents and Git history are the project source of truth. Conver
 
 ## 11. Exact next step
 
-PHASE 5 is closed. PHASE 6 core Infrastructure implementation is present, but its acceptance items remain open as documented in section 8. The next step is to review the remaining PHASE 6 test/performance gaps and obtain an explicit project-owner decision on whether they must be completed before closure or may be deferred with documented risk acceptance.
+PHASE 5 is closed. The requested PHASE 6 tenant-isolation, database-guard, Handler-concurrency, Role/Permission-race, and Multi-Branch snapshot acceptance scenarios are verified. The next step is project-owner review of the remaining full application dependency-graph and full-project Integration limitations documented in section 8, followed by an explicit decision on PHASE 6 closure or documented deferral.
 
 Do not begin PHASE 7 (Audit Logging) until PHASE 6 has been formally approved. After PHASE 6 approval, proceed sequentially to PHASE 7 and then PHASE 8. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
