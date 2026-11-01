@@ -89,6 +89,27 @@ describe('AuthorizationApplicationService', () => {
   });
 
   describe('checkPermission', () => {
+    it('uses the supplied transaction-bound snapshot reader', async () => {
+      const transactionLoadSnapshot = vi.fn().mockResolvedValue(sut.snapshot);
+      const transactionReader = {
+        loadSnapshot: transactionLoadSnapshot,
+        loadDelegationSnapshots: vi.fn(),
+      } as AuthorizationSnapshotReader;
+
+      const decision = await sut.service.checkPermission(
+        {
+          userId: 'user-1',
+          organizationId: 'org-1',
+          permissionCode: 'organization.read',
+        },
+        transactionReader,
+      );
+
+      expect(decision.isAllowed()).toBe(true);
+      expect(transactionLoadSnapshot).toHaveBeenCalledOnce();
+      expect(sut.loadSnapshot).not.toHaveBeenCalled();
+    });
+
     it('checks a permission against a loaded authorization snapshot', async () => {
       const decision = await sut.service.checkPermission({
         userId: 'user-1',
@@ -158,6 +179,26 @@ describe('AuthorizationApplicationService', () => {
   });
 
   describe('getEffectiveAuthorizationContext', () => {
+    it('uses the supplied transaction-bound snapshot reader', async () => {
+      const transactionLoadSnapshot = vi.fn().mockResolvedValue(sut.snapshot);
+      const transactionReader = {
+        loadSnapshot: transactionLoadSnapshot,
+        loadDelegationSnapshots: vi.fn(),
+      } as AuthorizationSnapshotReader;
+
+      const result = await sut.service.getEffectiveAuthorizationContext(
+        {
+          userId: 'user-1',
+          organizationId: 'org-1',
+        },
+        transactionReader,
+      );
+
+      expect(result.permissionCodes).toEqual(['organization.read']);
+      expect(transactionLoadSnapshot).toHaveBeenCalledOnce();
+      expect(sut.loadSnapshot).not.toHaveBeenCalled();
+    });
+
     it('returns only Organization-target permissions without a Branch context', async () => {
       const result = await sut.service.getEffectiveAuthorizationContext({
         userId: 'user-1',
@@ -246,6 +287,29 @@ describe('AuthorizationApplicationService', () => {
   });
 
   describe('getEffectiveDelegationPermissionCodes', () => {
+    it('uses the supplied transaction-bound snapshot reader', async () => {
+      const transactionLoadDelegationSnapshots = vi.fn().mockResolvedValue({
+        organizationSnapshot: sut.snapshot,
+        activeBranchSnapshots: [sut.snapshot],
+      });
+      const transactionReader = {
+        loadSnapshot: vi.fn(),
+        loadDelegationSnapshots: transactionLoadDelegationSnapshots,
+      } as AuthorizationSnapshotReader;
+
+      const permissions = await sut.service.getEffectiveDelegationPermissionCodes(
+        {
+          userId: 'user-1',
+          organizationId: 'org-1',
+        },
+        transactionReader,
+      );
+
+      expect(permissions).toContain('organization.read');
+      expect(transactionLoadDelegationSnapshots).toHaveBeenCalledOnce();
+      expect(sut.loadDelegationSnapshots).not.toHaveBeenCalled();
+    });
+
     it('includes a Branch permission only when effective across every active Branch', async () => {
       const secondBranchSnapshot = createSnapshot();
       secondBranchSnapshot.roles[0].replacePermissionCodes([

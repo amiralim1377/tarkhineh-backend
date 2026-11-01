@@ -14,9 +14,9 @@ import { AccessControlForbiddenError } from '../../errors/access-control-forbidd
 import { InvalidPermissionOverrideRequestError } from '../../errors/invalid-permission-override-request.error.js';
 import { PermissionOverrideTargetNotFoundError } from '../../errors/permission-override-target-not-found.error.js';
 import {
-  PERMISSION_OVERRIDE_REPOSITORY,
-  type PermissionOverrideRepository,
-} from '../../ports/permission-override.repository.js';
+  ACCESS_CONTROL_UNIT_OF_WORK,
+  type AccessControlUnitOfWork,
+} from '../../ports/access-control-unit-of-work.port.js';
 import { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import {
   SetPermissionOverrideCommand,
@@ -24,15 +24,18 @@ import {
 } from './set-permission-override.command.js';
 
 @CommandHandler(SetPermissionOverrideCommand)
-export class SetPermissionOverrideHandler implements ICommandHandler<
-  SetPermissionOverrideCommand,
-  SetPermissionOverrideResult
-> {
+export class SetPermissionOverrideHandler
+  implements
+    ICommandHandler<
+      SetPermissionOverrideCommand,
+      SetPermissionOverrideResult
+    >
+{
   private readonly delegationPolicy = new PermissionDelegationPolicy();
 
   constructor(
-    @Inject(PERMISSION_OVERRIDE_REPOSITORY)
-    private readonly overrides: PermissionOverrideRepository,
+    @Inject(ACCESS_CONTROL_UNIT_OF_WORK)
+    private readonly unitOfWork: AccessControlUnitOfWork,
     private readonly authorization: AuthorizationApplicationService,
     @Inject(CLOCK)
     private readonly clock: Clock,
@@ -63,88 +66,94 @@ export class SetPermissionOverrideHandler implements ICommandHandler<
       throw new InvalidPermissionOverrideRequestError();
     }
 
-    // Load the actor's permissions in the exact target Branch context.
-    // Organization-level override-management permission is included in
-    // this context; ALLOW additionally needs the Branch permission itself.
-    const actorContext =
-      await this.authorization.getEffectiveAuthorizationContext({
-        userId: actorUserId,
-        organizationId,
-        branchId,
+    return this.unitOfWork.execute(async (context) => {
+      // Authorization and persistence must share the same transaction.
+      // ALLOW can grant access, so delegation is checked before target reads.
+      const actorContext =
+        await this.authorization.getEffectiveAuthorizationContext(
+          {
+            userId: actorUserId,
+            organizationId,
+            branchId,
+          },
+          context.authorizationSnapshotReader,
+        );
+
+      const decision = this.delegationPolicy.canSetPermissionOverride({
+        permissionCode,
+        effect,
+        actorEffectivePermissionCodes: actorContext.permissionCodes,
       });
 
-    const decision = this.delegationPolicy.canSetPermissionOverride({
-      permissionCode,
-      effect,
-      actorEffectivePermissionCodes: actorContext.permissionCodes,
-    });
+      if (!decision.allowed) {
+        throw new AccessControlForbiddenError(decision.reasonCode);
+      }
 
-    if (!decision.allowed) {
-      throw new AccessControlForbiddenError(decision.reasonCode);
-    }
+      // The repository verifies active Organization, Membership, and Branch
+      // state. BranchMembership is deliberately not required here.
+      const target =
+        await context.permissionOverrideRepository.findActiveTarget({
+          organizationId,
+          organizationMembershipId,
+          branchId,
+        });
 
-    // The reader checks active Organization, OrganizationMembership, and
-    // Branch state. It must not require a BranchMembership.
-    const target = await this.overrides.findActiveTarget({
-      organizationId,
-      organizationMembershipId,
-      branchId,
-    });
+      if (!target) {
+        throw new PermissionOverrideTargetNotFoundError();
+      }
 
-    if (!target) {
-      throw new PermissionOverrideTargetNotFoundError();
-    }
+      const key = {
+        organizationId,
+        organizationMembershipId,
+        branchId,
+        permissionCode,
+      };
 
-    const key = {
-      organizationId,
-      organizationMembershipId,
-      branchId,
-      permissionCode,
-    };
+      const existing =
+        await context.permissionOverrideRepository.findByUniqueKey(key);
 
-    const existing = await this.overrides.findByUniqueKey(key);
+      if (existing) {
+        // Repeating the same effect is an idempotent success.
+        if (existing.effect === effect) {
+          return {
+            overrideId: existing.id,
+            changed: false,
+          };
+        }
 
-    if (existing) {
-      // Repeating the same effect is an idempotent success.
-      if (existing.effect === effect) {
+        const changed = existing.changeEffect(effect, this.clock.now());
+
+        if (!changed) {
+          return {
+            overrideId: existing.id,
+            changed: false,
+          };
+        }
+
+        await context.permissionOverrideRepository.update(existing);
+
         return {
           overrideId: existing.id,
-          changed: false,
+          changed: true,
         };
       }
 
-      const changed = existing.changeEffect(effect, this.clock.now());
+      const override = PermissionOverride.create({
+        organizationId,
+        organizationMembership: target.organizationMembership,
+        branch: target.branch,
+        permissionCode,
+        assignedById: actorUserId,
+        effect,
+        createdAt: this.clock.now(),
+      });
 
-      if (!changed) {
-        return {
-          overrideId: existing.id,
-          changed: false,
-        };
-      }
-
-      await this.overrides.update(existing);
+      await context.permissionOverrideRepository.save(override);
 
       return {
-        overrideId: existing.id,
+        overrideId: override.id,
         changed: true,
       };
-    }
-
-    const override = PermissionOverride.create({
-      organizationId,
-      organizationMembership: target.organizationMembership,
-      branch: target.branch,
-      permissionCode,
-      assignedById: actorUserId,
-      effect,
-      createdAt: this.clock.now(),
     });
-
-    await this.overrides.save(override);
-
-    return {
-      overrideId: override.id,
-      changed: true,
-    };
   }
 }

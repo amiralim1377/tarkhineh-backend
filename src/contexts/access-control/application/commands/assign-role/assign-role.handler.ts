@@ -21,13 +21,9 @@ import { RoleAssignmentAlreadyExistsError } from '../../errors/role-assignment-a
 import { RoleAssignmentTargetNotFoundError } from '../../errors/role-assignment-target-not-found.error.js';
 import { RoleNotFoundError } from '../../errors/role-not-found.error.js';
 import {
-  ROLE_REPOSITORY,
-  type RoleRepository,
-} from '../../ports/role.repository.js';
-import {
-  ROLE_ASSIGNMENT_REPOSITORY,
-  type RoleAssignmentRepository,
-} from '../../ports/role-assignment.repository.js';
+  ACCESS_CONTROL_UNIT_OF_WORK,
+  type AccessControlUnitOfWork,
+} from '../../ports/access-control-unit-of-work.port.js';
 import { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import {
   AssignRoleCommand,
@@ -35,17 +31,14 @@ import {
 } from './assign-role.command.js';
 
 @CommandHandler(AssignRoleCommand)
-export class AssignRoleHandler implements ICommandHandler<
-  AssignRoleCommand,
-  AssignRoleResult
-> {
+export class AssignRoleHandler
+  implements ICommandHandler<AssignRoleCommand, AssignRoleResult>
+{
   private readonly delegationPolicy = new PermissionDelegationPolicy();
 
   constructor(
-    @Inject(ROLE_REPOSITORY)
-    private readonly roles: RoleRepository,
-    @Inject(ROLE_ASSIGNMENT_REPOSITORY)
-    private readonly assignments: RoleAssignmentRepository,
+    @Inject(ACCESS_CONTROL_UNIT_OF_WORK)
+    private readonly unitOfWork: AccessControlUnitOfWork,
     private readonly authorization: AuthorizationApplicationService,
     @Inject(CLOCK)
     private readonly clock: Clock,
@@ -87,109 +80,126 @@ export class AssignRoleHandler implements ICommandHandler<
       );
     }
 
-    // Resolve Actor authority in the exact target context before reading
-    // Role or membership records. This avoids target-data probing by actors
-    // who do not hold the corresponding assignment-management permission.
-    const actorEffectivePermissionCodes = organizationTarget
-      ? await this.authorization.getEffectiveDelegationPermissionCodes({
-          userId: actorUserId,
-          organizationId,
-          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
-        })
-      : (
-          await this.authorization.getEffectiveAuthorizationContext({
-            userId: actorUserId,
+    return this.unitOfWork.execute(async (context) => {
+      // Resolve Actor authority in the exact target context.
+      // This read uses the same transaction as all subsequent validation
+      // and persistence operations.
+      const actorEffectivePermissionCodes = organizationTarget
+        ? await this.authorization.getEffectiveDelegationPermissionCodes(
+            {
+              userId: actorUserId,
+              organizationId,
+              assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+            },
+            context.authorizationSnapshotReader,
+          )
+        : (
+            await this.authorization.getEffectiveAuthorizationContext(
+              {
+                userId: actorUserId,
+                organizationId,
+                branchId: branchId!,
+              },
+              context.authorizationSnapshotReader,
+            )
+          ).permissionCodes;
+
+      const requiredManagementPermission = organizationTarget
+        ? PERMISSION_CODE.ORGANIZATION_ROLES_ASSIGN
+        : PERMISSION_CODE.BRANCH_ROLES_ASSIGN;
+
+      if (
+        !actorEffectivePermissionCodes.includes(requiredManagementPermission)
+      ) {
+        throw new AccessControlForbiddenError(
+          DELEGATION_DECISION_REASON.MANAGEMENT_PERMISSION_MISSING,
+        );
+      }
+
+      // Load only a Role that can be assigned in this Organization.
+      const role = await context.roleRepository.findAssignableById(
+        organizationId,
+        roleId,
+      );
+
+      if (!role) {
+        throw new RoleNotFoundError(organizationId, roleId);
+      }
+
+      const expectedScope = organizationTarget
+        ? ROLE_ASSIGNMENT_SCOPE.ORGANIZATION
+        : ROLE_ASSIGNMENT_SCOPE.BRANCH;
+
+      if (role.getAssignmentScope() !== expectedScope) {
+        throw new InvalidRoleAssignmentError(
+          ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_SCOPE_MISMATCH,
+          'Role assignment scope does not match the supplied membership target.',
+        );
+      }
+
+      const delegationDecision = this.delegationPolicy.canAssignRole({
+        role,
+        targetOrganizationId: organizationId,
+        actorEffectivePermissionCodes,
+      });
+
+      if (!delegationDecision.allowed) {
+        throw new AccessControlForbiddenError(delegationDecision.reasonCode);
+      }
+
+      // Target readers must verify ACTIVE status and tenant consistency.
+      const organizationMembership = organizationTarget
+        ? await context.roleAssignmentRepository.findActiveOrganizationMembership(
             organizationId,
-            branchId: branchId!,
-          })
-        ).permissionCodes;
+            organizationMembershipId!,
+          )
+        : null;
 
-    const requiredManagementPermission = organizationTarget
-      ? PERMISSION_CODE.ORGANIZATION_ROLES_ASSIGN
-      : PERMISSION_CODE.BRANCH_ROLES_ASSIGN;
+      const branchMembership = branchTarget
+        ? await context.roleAssignmentRepository.findActiveBranchMembership(
+            organizationId,
+            branchId!,
+            branchMembershipId!,
+          )
+        : null;
 
-    if (!actorEffectivePermissionCodes.includes(requiredManagementPermission)) {
-      throw new AccessControlForbiddenError(
-        DELEGATION_DECISION_REASON.MANAGEMENT_PERMISSION_MISSING,
-      );
-    }
+      if (
+        (organizationTarget && !organizationMembership) ||
+        (branchTarget && !branchMembership)
+      ) {
+        throw new RoleAssignmentTargetNotFoundError();
+      }
 
-    const role = await this.roles.findAssignableById(organizationId, roleId);
+      // This is an early conflict check. PostgreSQL partial unique
+      // constraints remain authoritative for concurrent requests.
+      const duplicate =
+        await context.roleAssignmentRepository.existsActiveForTarget({
+          roleId: role.getId().getValue(),
+          ...(organizationMembership === null
+            ? {}
+            : { organizationMembershipId: organizationMembership.id }),
+          ...(branchMembership === null
+            ? {}
+            : { branchMembershipId: branchMembership.id }),
+        });
 
-    if (!role) {
-      throw new RoleNotFoundError(organizationId, roleId);
-    }
+      if (duplicate) {
+        throw new RoleAssignmentAlreadyExistsError();
+      }
 
-    const expectedScope = organizationTarget
-      ? ROLE_ASSIGNMENT_SCOPE.ORGANIZATION
-      : ROLE_ASSIGNMENT_SCOPE.BRANCH;
+      const assignment = RoleAssignment.create({
+        role,
+        organizationMembership,
+        branchMembership,
+        assignedById: actorUserId,
+        createdAt: this.clock.now(),
+      });
 
-    if (role.getAssignmentScope() !== expectedScope) {
-      throw new InvalidRoleAssignmentError(
-        ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_SCOPE_MISMATCH,
-        'Role assignment scope does not match the supplied membership target.',
-      );
-    }
+      await context.roleAssignmentRepository.save(assignment);
 
-    const delegationDecision = this.delegationPolicy.canAssignRole({
-      role,
-      targetOrganizationId: organizationId,
-      actorEffectivePermissionCodes,
+      return {
+        assignmentId: assignment.getId().getValue(),
+      };
     });
-
-    if (!delegationDecision.allowed) {
-      throw new AccessControlForbiddenError(delegationDecision.reasonCode);
-    }
-
-    // The target reader guarantees ACTIVE status and tenant consistency.
-    const organizationMembership = organizationTarget
-      ? await this.assignments.findActiveOrganizationMembership(
-          organizationId,
-          organizationMembershipId!,
-        )
-      : null;
-
-    const branchMembership = branchTarget
-      ? await this.assignments.findActiveBranchMembership(
-          organizationId,
-          branchId!,
-          branchMembershipId!,
-        )
-      : null;
-
-    if (
-      (organizationTarget && !organizationMembership) ||
-      (branchTarget && !branchMembership)
-    ) {
-      throw new RoleAssignmentTargetNotFoundError();
-    }
-
-    const duplicate = await this.assignments.existsActiveForTarget({
-      roleId: role.getId().getValue(),
-      ...(organizationMembership === null
-        ? {}
-        : { organizationMembershipId: organizationMembership.id }),
-      ...(branchMembership === null
-        ? {}
-        : { branchMembershipId: branchMembership.id }),
-    });
-
-    if (duplicate) {
-      throw new RoleAssignmentAlreadyExistsError();
-    }
-
-    const assignment = RoleAssignment.create({
-      role,
-      organizationMembership,
-      branchMembership,
-      assignedById: actorUserId,
-      createdAt: this.clock.now(),
-    });
-
-    await this.assignments.save(assignment);
-
-    return {
-      assignmentId: assignment.getId().getValue(),
-    };
   }
 }

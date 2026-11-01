@@ -7,9 +7,9 @@ import { AccessControlForbiddenError } from '../../errors/access-control-forbidd
 import { InvalidRoleArchiveError } from '../../errors/invalid-role-archive.error.js';
 import { RoleNotFoundError } from '../../errors/role-not-found.error.js';
 import {
-  ROLE_REPOSITORY,
-  type RoleRepository,
-} from '../../ports/role.repository.js';
+  ACCESS_CONTROL_UNIT_OF_WORK,
+  type AccessControlUnitOfWork,
+} from '../../ports/access-control-unit-of-work.port.js';
 import { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import {
   ArchiveRoleCommand,
@@ -17,13 +17,12 @@ import {
 } from './archive-role.command.js';
 
 @CommandHandler(ArchiveRoleCommand)
-export class ArchiveRoleHandler implements ICommandHandler<
-  ArchiveRoleCommand,
-  ArchiveRoleResult
-> {
+export class ArchiveRoleHandler
+  implements ICommandHandler<ArchiveRoleCommand, ArchiveRoleResult>
+{
   constructor(
-    @Inject(ROLE_REPOSITORY)
-    private readonly roles: RoleRepository,
+    @Inject(ACCESS_CONTROL_UNIT_OF_WORK)
+    private readonly unitOfWork: AccessControlUnitOfWork,
     private readonly authorization: AuthorizationApplicationService,
   ) {}
 
@@ -41,41 +40,51 @@ export class ArchiveRoleHandler implements ICommandHandler<
       throw new InvalidRoleArchiveError();
     }
 
-    // Check archive authority before looking up the Role, so an unauthorized
-    // actor cannot use this operation to probe tenant Role identifiers.
-    const authorizationContext =
-      await this.authorization.getEffectiveAuthorizationContext({
-        userId: actorUserId,
+    return this.unitOfWork.execute(async (context) => {
+      // Check archive authority before looking up the Role.
+      // This prevents unauthorized callers from probing tenant Role IDs.
+      const authorizationContext =
+        await this.authorization.getEffectiveAuthorizationContext(
+          {
+            userId: actorUserId,
+            organizationId,
+          },
+          context.authorizationSnapshotReader,
+        );
+
+      const archivePermission = PERMISSION_CODE.ORGANIZATION_ROLES_ARCHIVE;
+
+      if (
+        !authorizationContext.permissionCodes.includes(archivePermission)
+      ) {
+        throw new AccessControlForbiddenError(archivePermission);
+      }
+
+      // This lookup is tenant-scoped and transaction-bound.
+      const role = await context.roleRepository.findById(
         organizationId,
-      });
+        roleId,
+      );
 
-    const archivePermission = PERMISSION_CODE.ORGANIZATION_ROLES_ARCHIVE;
+      if (
+        !role ||
+        role.getDefinitionScope() !== ROLE_DEFINITION_SCOPE.ORGANIZATION ||
+        role.getOrganizationId() !== organizationId
+      ) {
+        throw new RoleNotFoundError(organizationId, roleId);
+      }
 
-    if (!authorizationContext.permissionCodes.includes(archivePermission)) {
-      throw new AccessControlForbiddenError(archivePermission);
-    }
+      // Archiving is idempotent. Historical assignments remain untouched.
+      if (!role.isEffectiveForAuthorization()) {
+        return { roleId: role.getId().getValue() };
+      }
 
-    // This lookup must be tenant-scoped by the Infrastructure adapter.
-    const role = await this.roles.findById(organizationId, roleId);
+      // Archiving only reduces access; it does not require permission
+      // delegation for the permissions currently contained in the Role.
+      role.archive();
+      await context.roleRepository.update(role);
 
-    if (
-      !role ||
-      role.getDefinitionScope() !== ROLE_DEFINITION_SCOPE.ORGANIZATION ||
-      role.getOrganizationId() !== organizationId
-    ) {
-      throw new RoleNotFoundError(organizationId, roleId);
-    }
-
-    // Archiving is idempotent. Historical assignments remain untouched.
-    if (!role.isEffectiveForAuthorization()) {
       return { roleId: role.getId().getValue() };
-    }
-
-    // Archiving only reduces access. It does not require permission
-    // delegation for the permissions currently contained in the Role.
-    role.archive();
-    await this.roles.update(role);
-
-    return { roleId: role.getId().getValue() };
+    });
   }
 }

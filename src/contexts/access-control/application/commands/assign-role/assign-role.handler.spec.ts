@@ -2,15 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Role } from '../../../domain/roles/role.js';
 import { InvalidRoleAssignmentError } from '../../../domain/errors/invalid-role-assignment.error.js';
 import { RoleAssignment } from '../../../domain/role-assignments/role-assignment.js';
-import type { RoleRepository } from '../../ports/role.repository.js';
-import type { RoleAssignmentRepository } from '../../ports/role-assignment.repository.js';
-import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import type { Clock } from '../../../../../shared/application/ports/clock.port.js';
 import { AccessControlActorRequiredError } from '../../errors/access-control-actor-required.error.js';
 import { AccessControlForbiddenError } from '../../errors/access-control-forbidden.error.js';
 import { RoleAssignmentAlreadyExistsError } from '../../errors/role-assignment-already-exists.error.js';
 import { RoleAssignmentTargetNotFoundError } from '../../errors/role-assignment-target-not-found.error.js';
 import { RoleNotFoundError } from '../../errors/role-not-found.error.js';
+import type { AuthorizationSnapshotReader } from '../../ports/authorization-snapshot-reader.port.js';
+import type {
+  AccessControlUnitOfWork,
+  AccessControlUnitOfWorkContext,
+} from '../../ports/access-control-unit-of-work.port.js';
+import type { PermissionOverrideRepository } from '../../ports/permission-override.repository.js';
+import type { RoleAssignmentRepository } from '../../ports/role-assignment.repository.js';
+import type { RoleRepository } from '../../ports/role.repository.js';
+import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import { AssignRoleCommand } from './assign-role.command.js';
 import { AssignRoleHandler } from './assign-role.handler.js';
 
@@ -92,72 +98,136 @@ function createCommand(
 }
 
 function createSut(role: Role | null = createOrganizationRole()) {
-  const findAssignableById = vi.fn().mockResolvedValue(role);
-  const findById = vi.fn().mockResolvedValue(null);
-  const existsByCode = vi.fn().mockResolvedValue(false);
-  const saveRole = vi.fn().mockResolvedValue(undefined);
-  const updateRole = vi.fn().mockResolvedValue(undefined);
+  let transactionActive = false;
 
-  const findActiveOrganizationMembership = vi.fn().mockResolvedValue({
-    id: 'membership-1',
-    organizationId: 'org-1',
+  const transactionReader = {
+    loadSnapshot: vi.fn(),
+    loadDelegationSnapshots: vi.fn(),
+  } as AuthorizationSnapshotReader;
+
+  const findAssignableById = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+    return role;
   });
 
-  const findActiveBranchMembership = vi.fn().mockResolvedValue({
-    id: 'branch-membership-1',
-    organizationId: 'org-1',
-    branchId: 'branch-1',
-  });
-
-  const existsActiveForTarget = vi.fn().mockResolvedValue(false);
-  const findByIdForRevocation = vi.fn().mockResolvedValue(null);
-  const saveAssignment = vi.fn().mockResolvedValue(undefined);
-  const updateAssignment = vi.fn().mockResolvedValue(undefined);
-
-  const getEffectiveDelegationPermissionCodes = vi
+  const findActiveOrganizationMembership = vi
     .fn()
-    .mockResolvedValue([
-      'organization.roles.assign',
-      'organization.read',
-      'branch.dashboard.read',
-    ]);
+    .mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
 
-  const getEffectiveAuthorizationContext = vi.fn().mockResolvedValue({
-    snapshot: {},
-    permissionCodes: [
-      'organization.read',
-      'branch.roles.assign',
-      'branch.dashboard.read',
-    ],
+      return {
+        id: 'membership-1',
+        organizationId: 'org-1',
+      };
+    });
+
+  const findActiveBranchMembership = vi
+    .fn()
+    .mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+
+      return {
+        id: 'branch-membership-1',
+        organizationId: 'org-1',
+        branchId: 'branch-1',
+      };
+    });
+
+  const existsActiveForTarget = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+    return false;
+  });
+
+  const saveAssignment = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
   });
 
   const roles = {
-    existsByCode,
+    existsByCode: vi.fn(),
     findAssignableById,
-    findById,
-    save: saveRole,
-    update: updateRole,
+    findById: vi.fn(),
+    save: vi.fn(),
+    update: vi.fn(),
   } as RoleRepository;
 
   const assignments = {
     findActiveOrganizationMembership,
     findActiveBranchMembership,
     existsActiveForTarget,
-    findByIdForRevocation,
+    findByIdForRevocation: vi.fn(),
     save: saveAssignment,
-    update: updateAssignment,
+    update: vi.fn(),
   } as RoleAssignmentRepository;
+
+  const context: AccessControlUnitOfWorkContext = {
+    authorizationSnapshotReader: transactionReader,
+    roleRepository: roles,
+    roleAssignmentRepository: assignments,
+    permissionOverrideRepository: {} as PermissionOverrideRepository,
+  };
+
+  const executeOperation = async <T>(
+    operation: (
+      context: AccessControlUnitOfWorkContext,
+    ) => Promise<T>,
+  ): Promise<T> => {
+    transactionActive = true;
+
+    try {
+      return await operation(context);
+    } finally {
+      transactionActive = false;
+    }
+  };
+
+  const execute = vi.fn(executeOperation);
+
+  const unitOfWork = {
+    execute,
+  } as unknown as AccessControlUnitOfWork;
+
+  const getEffectiveDelegationPermissionCodes = vi
+    .fn()
+    .mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+
+      return [
+        'organization.roles.assign',
+        'organization.read',
+        'branch.dashboard.read',
+      ];
+    });
+
+  const getEffectiveAuthorizationContext = vi
+    .fn()
+    .mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+
+      return {
+        snapshot: {},
+        permissionCodes: [
+          'organization.read',
+          'branch.roles.assign',
+          'branch.dashboard.read',
+        ],
+      };
+    });
 
   const authorization = {
     getEffectiveDelegationPermissionCodes,
     getEffectiveAuthorizationContext,
   } as unknown as AuthorizationApplicationService;
 
-  const now = vi.fn((): Date => FIXED_TIME);
+  const now = vi.fn((): Date => {
+    expect(transactionActive).toBe(true);
+    return FIXED_TIME;
+  });
+
   const clock: Clock = { now };
 
   return {
-    handler: new AssignRoleHandler(roles, assignments, authorization, clock),
+    handler: new AssignRoleHandler(unitOfWork, authorization, clock),
+    execute,
     findAssignableById,
     findActiveOrganizationMembership,
     findActiveBranchMembership,
@@ -165,7 +235,9 @@ function createSut(role: Role | null = createOrganizationRole()) {
     saveAssignment,
     getEffectiveDelegationPermissionCodes,
     getEffectiveAuthorizationContext,
+    transactionReader,
     now,
+    isTransactionActive: () => transactionActive,
   };
 }
 
@@ -176,18 +248,23 @@ describe('AssignRoleHandler', () => {
     sut = createSut();
   });
 
-  it('assigns an Organization Role after management and delegation checks', async () => {
+  it('assigns an Organization Role inside one Unit of Work after management and delegation checks', async () => {
     const result = await sut.handler.execute(createCommand());
 
     expect(result.assignmentId).toEqual(expect.any(String));
+    expect(sut.execute).toHaveBeenCalledOnce();
 
-    expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledWith({
-      userId: 'actor-1',
-      organizationId: 'org-1',
-      assignmentScope: 'ORGANIZATION',
-    });
+    expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledWith(
+      {
+        userId: 'actor-1',
+        organizationId: 'org-1',
+        assignmentScope: 'ORGANIZATION',
+      },
+      sut.transactionReader,
+    );
 
     expect(sut.findAssignableById).toHaveBeenCalledWith('org-1', 'role-1');
+
     expect(sut.findActiveOrganizationMembership).toHaveBeenCalledWith(
       'org-1',
       'membership-1',
@@ -210,6 +287,8 @@ describe('AssignRoleHandler', () => {
     expect(assignment.assignedById).toBe('actor-1');
     expect(assignment.createdAt).toEqual(FIXED_TIME);
     expect(assignment.isRevoked()).toBe(false);
+
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('assigns a Branch Role using the exact target Branch authorization context', async () => {
@@ -220,12 +299,16 @@ describe('AssignRoleHandler', () => {
     );
 
     expect(result.assignmentId).toEqual(expect.any(String));
+    expect(sut.execute).toHaveBeenCalledOnce();
 
-    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith({
-      userId: 'actor-1',
-      organizationId: 'org-1',
-      branchId: 'branch-1',
-    });
+    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith(
+      {
+        userId: 'actor-1',
+        organizationId: 'org-1',
+        branchId: 'branch-1',
+      },
+      sut.transactionReader,
+    );
 
     expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
 
@@ -243,6 +326,8 @@ describe('AssignRoleHandler', () => {
     const assignment = sut.saveAssignment.mock.calls[0]?.[0] as RoleAssignment;
     expect(assignment.organizationMembershipId).toBeNull();
     expect(assignment.branchMembershipId).toBe('branch-membership-1');
+
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('allows an assignable System Branch Role within an Organization', async () => {
@@ -257,18 +342,19 @@ describe('AssignRoleHandler', () => {
     expect(sut.saveAssignment).toHaveBeenCalledOnce();
   });
 
-  it('rejects an empty actor before authorization or repository access', async () => {
+  it('rejects an empty actor before opening a transaction', async () => {
     await expect(
       sut.handler.execute(createCommand({ actorUserId: '  ' })),
     ).rejects.toBeInstanceOf(AccessControlActorRequiredError);
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
     expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
     expect(sut.findAssignableById).not.toHaveBeenCalled();
     expect(sut.saveAssignment).not.toHaveBeenCalled();
   });
 
-  it('rejects an incomplete or ambiguous membership target before authorization', async () => {
+  it('rejects an incomplete or ambiguous membership target before opening a transaction', async () => {
     await expect(
       sut.handler.execute(createCommand({ target: 'NONE' })),
     ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
@@ -295,12 +381,13 @@ describe('AssignRoleHandler', () => {
       ),
     ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
     expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
     expect(sut.findAssignableById).not.toHaveBeenCalled();
   });
 
-  it('rejects missing Organization or Role identifiers before authorization', async () => {
+  it('rejects missing Organization or Role identifiers before opening a transaction', async () => {
     await expect(
       sut.handler.execute(createCommand({ organizationId: '  ' })),
     ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
@@ -309,6 +396,7 @@ describe('AssignRoleHandler', () => {
       sut.handler.execute(createCommand({ roleId: '  ' })),
     ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.findAssignableById).not.toHaveBeenCalled();
   });
 
@@ -321,9 +409,11 @@ describe('AssignRoleHandler', () => {
       AccessControlForbiddenError,
     );
 
+    expect(sut.execute).toHaveBeenCalledOnce();
     expect(sut.findAssignableById).not.toHaveBeenCalled();
     expect(sut.findActiveOrganizationMembership).not.toHaveBeenCalled();
     expect(sut.saveAssignment).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('requires Branch role-assignment authority in the exact Branch context', async () => {
@@ -339,6 +429,7 @@ describe('AssignRoleHandler', () => {
     expect(sut.findAssignableById).not.toHaveBeenCalled();
     expect(sut.findActiveBranchMembership).not.toHaveBeenCalled();
     expect(sut.saveAssignment).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('returns not found when the Role is not available for assignment', async () => {
@@ -350,6 +441,7 @@ describe('AssignRoleHandler', () => {
 
     expect(sut.findActiveOrganizationMembership).not.toHaveBeenCalled();
     expect(sut.saveAssignment).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('rejects a Role whose assignment scope does not match the target', async () => {
@@ -359,6 +451,7 @@ describe('AssignRoleHandler', () => {
 
     expect(sut.findActiveBranchMembership).not.toHaveBeenCalled();
     expect(sut.saveAssignment).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('rejects a Role permission the actor cannot delegate', async () => {
@@ -372,6 +465,7 @@ describe('AssignRoleHandler', () => {
 
     expect(sut.findActiveOrganizationMembership).not.toHaveBeenCalled();
     expect(sut.saveAssignment).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('rejects an archived Role', async () => {
@@ -452,6 +546,7 @@ describe('AssignRoleHandler', () => {
 
     expect(sut.findAssignableById).not.toHaveBeenCalled();
     expect(sut.saveAssignment).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates target lookup failures without saving an assignment', async () => {
@@ -464,6 +559,7 @@ describe('AssignRoleHandler', () => {
     );
 
     expect(sut.saveAssignment).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates assignment persistence failures', async () => {
@@ -476,5 +572,6 @@ describe('AssignRoleHandler', () => {
     );
 
     expect(sut.saveAssignment).toHaveBeenCalledOnce();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 });

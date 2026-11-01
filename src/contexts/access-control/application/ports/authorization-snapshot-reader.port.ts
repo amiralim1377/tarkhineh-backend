@@ -11,8 +11,10 @@ export interface LoadAuthorizationSnapshotInput {
 }
 
 /**
- * Loads a consistent authorization snapshot for one user and tenant context.
+ * Loads an authorization snapshot for one user and tenant context.
  * The Infrastructure adapter is responsible for persistence and mapping.
+ * When supplied by AccessControlUnitOfWork, this reader must use the same
+ * transaction-bound client as the Repository ports in that context.
  */
 export interface AuthorizationDelegationSnapshots {
   /** Snapshot without a Branch target, used for Organization permissions. */
@@ -29,7 +31,8 @@ export interface AuthorizationSnapshotReader {
 
   /**
    * Loads the Organization snapshot and all active Branch snapshots from one
-   * consistent persistence view.
+   * consistent persistence view, using the active Unit of Work transaction
+   * when this reader is transaction-bound.
    */
   loadDelegationSnapshots(
     input: Omit<LoadAuthorizationSnapshotInput, 'branchId'>,

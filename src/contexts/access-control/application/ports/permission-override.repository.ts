@@ -20,6 +20,9 @@ export interface ActivePermissionOverrideTarget {
  * and Branch are ACTIVE and tenant-consistent. BranchMembership is
  * deliberately not required: Organization members can have overrides for
  * individual Branches without belonging to those Branches.
+ *
+ * When supplied by AccessControlUnitOfWork, every method must use its
+ * transaction-bound client and must not open or manage another transaction.
  */
 export interface PermissionOverrideRepository {
   findActiveTarget(input: {

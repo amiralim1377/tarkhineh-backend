@@ -17,6 +17,9 @@ export interface ActiveBranchAssignmentTarget extends RoleAssignmentMembershipRe
  * The database partial unique constraints remain authoritative against
  * concurrent duplicate assignment attempts. The existence check is only
  * an early application-level conflict check.
+ *
+ * When supplied by AccessControlUnitOfWork, every method must use its
+ * transaction-bound client and must not open or manage another transaction.
  */
 export interface RoleAssignmentRepository {
   findActiveOrganizationMembership(

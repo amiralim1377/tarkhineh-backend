@@ -4,6 +4,13 @@ import { RoleNotFoundError } from '../../errors/role-not-found.error.js';
 import { AccessControlActorRequiredError } from '../../errors/access-control-actor-required.error.js';
 import { AccessControlForbiddenError } from '../../errors/access-control-forbidden.error.js';
 import { InvalidRoleUpdateError } from '../../errors/invalid-role-update.error.js';
+import type { AuthorizationSnapshotReader } from '../../ports/authorization-snapshot-reader.port.js';
+import type {
+  AccessControlUnitOfWork,
+  AccessControlUnitOfWorkContext,
+} from '../../ports/access-control-unit-of-work.port.js';
+import type { PermissionOverrideRepository } from '../../ports/permission-override.repository.js';
+import type { RoleAssignmentRepository } from '../../ports/role-assignment.repository.js';
 import type { RoleRepository } from '../../ports/role.repository.js';
 import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import { UpdateRoleCommand } from './update-role.command.js';
@@ -53,23 +60,24 @@ function createCommand(
 }
 
 function createSut(role: Role | null = createOrganizationRole()) {
-  const findById = vi.fn().mockResolvedValue(role);
-  const update = vi.fn().mockResolvedValue(undefined);
-  const existsByCode = vi.fn().mockResolvedValue(false);
-  const save = vi.fn().mockResolvedValue(undefined);
+  let transactionActive = false;
 
-  const getEffectiveAuthorizationContext = vi.fn().mockResolvedValue({
-    snapshot: {},
-    permissionCodes: ['organization.roles.update'],
+  const transactionReader = {
+    loadSnapshot: vi.fn(),
+    loadDelegationSnapshots: vi.fn(),
+  } as AuthorizationSnapshotReader;
+
+  const findById = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+    return role;
   });
 
-  const getEffectiveDelegationPermissionCodes = vi
-    .fn()
-    .mockResolvedValue([
-      'organization.roles.update',
-      'organization.read',
-      'branch.dashboard.read',
-    ]);
+  const update = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+  });
+
+  const existsByCode = vi.fn().mockResolvedValue(false);
+  const save = vi.fn().mockResolvedValue(undefined);
 
   const roles = {
     existsByCode,
@@ -79,19 +87,72 @@ function createSut(role: Role | null = createOrganizationRole()) {
     update,
   } as RoleRepository;
 
+  const context: AccessControlUnitOfWorkContext = {
+    authorizationSnapshotReader: transactionReader,
+    roleRepository: roles,
+    roleAssignmentRepository: {} as RoleAssignmentRepository,
+    permissionOverrideRepository: {} as PermissionOverrideRepository,
+  };
+
+  const executeOperation = async <T>(
+    operation: (
+      context: AccessControlUnitOfWorkContext,
+    ) => Promise<T>,
+  ): Promise<T> => {
+    transactionActive = true;
+
+    try {
+      return await operation(context);
+    } finally {
+      transactionActive = false;
+    }
+  };
+
+  const execute = vi.fn(executeOperation);
+
+  const unitOfWork = {
+    execute,
+  } as unknown as AccessControlUnitOfWork;
+
+  const getEffectiveAuthorizationContext = vi
+    .fn()
+    .mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+
+      return {
+        snapshot: {},
+        permissionCodes: ['organization.roles.update'],
+      };
+    });
+
+  const getEffectiveDelegationPermissionCodes = vi
+    .fn()
+    .mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+
+      return [
+        'organization.roles.update',
+        'organization.read',
+        'branch.dashboard.read',
+      ];
+    });
+
   const authorization = {
     getEffectiveAuthorizationContext,
     getEffectiveDelegationPermissionCodes,
   } as unknown as AuthorizationApplicationService;
 
-  const handler = new UpdateRoleHandler(roles, authorization);
+  const handler = new UpdateRoleHandler(unitOfWork, authorization);
 
   return {
     handler,
+    execute,
     findById,
     update,
     getEffectiveAuthorizationContext,
     getEffectiveDelegationPermissionCodes,
+    transactionReader,
+    isTransactionActive: () => transactionActive,
   };
 }
 
@@ -102,27 +163,40 @@ describe('UpdateRoleHandler', () => {
     sut = createSut();
   });
 
-  it('updates Role details after management and delegation checks', async () => {
+  it('updates Role details inside one Unit of Work', async () => {
     const result = await sut.handler.execute(
       createCommand({ name: '  Sales Director  ' }),
     );
 
     expect(result).toEqual({ roleId: 'role-1' });
-    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith({
-      userId: 'actor-1',
-      organizationId: 'org-1',
-    });
+    expect(sut.execute).toHaveBeenCalledOnce();
+
+    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith(
+      {
+        userId: 'actor-1',
+        organizationId: 'org-1',
+      },
+      sut.transactionReader,
+    );
+
     expect(sut.findById).toHaveBeenCalledWith('org-1', 'role-1');
-    expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledWith({
-      userId: 'actor-1',
-      organizationId: 'org-1',
-      assignmentScope: 'ORGANIZATION',
-    });
+
+    expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledWith(
+      {
+        userId: 'actor-1',
+        organizationId: 'org-1',
+        assignmentScope: 'ORGANIZATION',
+      },
+      sut.transactionReader,
+    );
+
     expect(sut.update).toHaveBeenCalledOnce();
 
     const updatedRole = sut.update.mock.calls[0]?.[0] as Role;
     expect(updatedRole.getName()).toBe('Sales Director');
     expect(updatedRole.getDescription()).toBe('Existing description');
+
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('replaces the complete Permission set and clears the description', async () => {
@@ -145,11 +219,12 @@ describe('UpdateRoleHandler', () => {
     ]);
   });
 
-  it('rejects an empty actor before authorization or repository access', async () => {
+  it('rejects an empty actor before opening a transaction', async () => {
     await expect(
       sut.handler.execute(createCommand({ actorUserId: '  ' })),
     ).rejects.toBeInstanceOf(AccessControlActorRequiredError);
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
     expect(sut.findById).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
@@ -168,6 +243,7 @@ describe('UpdateRoleHandler', () => {
       InvalidRoleUpdateError,
     );
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
     expect(sut.findById).not.toHaveBeenCalled();
   });
@@ -185,6 +261,7 @@ describe('UpdateRoleHandler', () => {
     expect(sut.findById).not.toHaveBeenCalled();
     expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('returns not found when the Role does not belong to the supplied Organization', async () => {
@@ -197,6 +274,7 @@ describe('UpdateRoleHandler', () => {
     expect(sut.findById).toHaveBeenCalledWith('org-1', 'role-1');
     expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('rejects modification of an archived Role', async () => {
@@ -210,6 +288,7 @@ describe('UpdateRoleHandler', () => {
 
     expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('rejects a non-delegable permission without persisting changes', async () => {
@@ -248,6 +327,7 @@ describe('UpdateRoleHandler', () => {
 
     expect(sut.findById).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates the delegation snapshot failure without persistence', async () => {
@@ -261,6 +341,7 @@ describe('UpdateRoleHandler', () => {
 
     expect(sut.findById).toHaveBeenCalledOnce();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates Role persistence failures', async () => {
@@ -271,5 +352,6 @@ describe('UpdateRoleHandler', () => {
     ).rejects.toThrow('Role update failed');
 
     expect(sut.update).toHaveBeenCalledOnce();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 });

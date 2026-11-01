@@ -1,13 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Role } from '../../../domain/roles/role.js';
 import { RoleAssignment } from '../../../domain/role-assignments/role-assignment.js';
-import type { RoleAssignmentRepository } from '../../ports/role-assignment.repository.js';
-import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import type { Clock } from '../../../../../shared/application/ports/clock.port.js';
 import { AccessControlActorRequiredError } from '../../errors/access-control-actor-required.error.js';
 import { AccessControlForbiddenError } from '../../errors/access-control-forbidden.error.js';
 import { InvalidRoleAssignmentRevocationError } from '../../errors/invalid-role-assignment-revocation.error.js';
 import { RoleAssignmentNotFoundError } from '../../errors/role-assignment-not-found.error.js';
+import type { AuthorizationSnapshotReader } from '../../ports/authorization-snapshot-reader.port.js';
+import type {
+  AccessControlUnitOfWork,
+  AccessControlUnitOfWorkContext,
+} from '../../ports/access-control-unit-of-work.port.js';
+import type { PermissionOverrideRepository } from '../../ports/permission-override.repository.js';
+import type { RoleAssignmentRepository } from '../../ports/role-assignment.repository.js';
+import type { RoleRepository } from '../../ports/role.repository.js';
+import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import { RevokeRoleCommand } from './revoke-role.command.js';
 import { RevokeRoleHandler } from './revoke-role.handler.js';
 
@@ -69,12 +76,20 @@ function createCommand(
 }
 
 function createSut(assignment: RoleAssignment | null = createAssignment()) {
-  const findByIdForRevocation = vi.fn().mockResolvedValue(assignment);
-  const update = vi.fn().mockResolvedValue(undefined);
+  let transactionActive = false;
 
-  const getEffectiveAuthorizationContext = vi.fn().mockResolvedValue({
-    snapshot: {},
-    permissionCodes: ['organization.roles.assign', 'branch.roles.assign'],
+  const transactionReader = {
+    loadSnapshot: vi.fn(),
+    loadDelegationSnapshots: vi.fn(),
+  } as AuthorizationSnapshotReader;
+
+  const findByIdForRevocation = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+    return assignment;
+  });
+
+  const update = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
   });
 
   const assignments = {
@@ -86,19 +101,67 @@ function createSut(assignment: RoleAssignment | null = createAssignment()) {
     update,
   } as unknown as RoleAssignmentRepository;
 
+  const context: AccessControlUnitOfWorkContext = {
+    authorizationSnapshotReader: transactionReader,
+    roleRepository: {} as RoleRepository,
+    roleAssignmentRepository: assignments,
+    permissionOverrideRepository: {} as PermissionOverrideRepository,
+  };
+
+  const executeOperation = async <T>(
+    operation: (
+      context: AccessControlUnitOfWorkContext,
+    ) => Promise<T>,
+  ): Promise<T> => {
+    transactionActive = true;
+
+    try {
+      return await operation(context);
+    } finally {
+      transactionActive = false;
+    }
+  };
+
+  const execute = vi.fn(executeOperation);
+
+  const unitOfWork = {
+    execute,
+  } as unknown as AccessControlUnitOfWork;
+
+  const getEffectiveAuthorizationContext = vi
+    .fn()
+    .mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+
+      return {
+        snapshot: {},
+        permissionCodes: [
+          'organization.roles.assign',
+          'branch.roles.assign',
+        ],
+      };
+    });
+
   const authorization = {
     getEffectiveAuthorizationContext,
   } as unknown as AuthorizationApplicationService;
 
-  const now = vi.fn((): Date => REVOKED_AT);
+  const now = vi.fn((): Date => {
+    expect(transactionActive).toBe(true);
+    return REVOKED_AT;
+  });
+
   const clock: Clock = { now };
 
   return {
-    handler: new RevokeRoleHandler(assignments, authorization, clock),
+    handler: new RevokeRoleHandler(unitOfWork, authorization, clock),
+    execute,
     findByIdForRevocation,
     update,
     getEffectiveAuthorizationContext,
+    transactionReader,
     now,
+    isTransactionActive: () => transactionActive,
   };
 }
 
@@ -109,24 +172,33 @@ describe('RevokeRoleHandler', () => {
     sut = createSut();
   });
 
-  it('revokes an Organization assignment with Organization assignment authority', async () => {
+  it('revokes an Organization assignment inside one Unit of Work', async () => {
     const result = await sut.handler.execute(createCommand());
 
     expect(result).toEqual({ assignmentId: 'assignment-1' });
-    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith({
-      userId: 'actor-1',
-      organizationId: 'org-1',
-    });
+    expect(sut.execute).toHaveBeenCalledOnce();
+
+    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith(
+      {
+        userId: 'actor-1',
+        organizationId: 'org-1',
+      },
+      sut.transactionReader,
+    );
+
     expect(sut.findByIdForRevocation).toHaveBeenCalledWith({
       organizationId: 'org-1',
       assignmentId: 'assignment-1',
     });
+
     expect(sut.now).toHaveBeenCalledOnce();
     expect(sut.update).toHaveBeenCalledOnce();
 
     const updated = sut.update.mock.calls[0]?.[0] as RoleAssignment;
+    expect(updated).toBeInstanceOf(RoleAssignment);
     expect(updated.isRevoked()).toBe(true);
     expect(updated.revokedAt).toEqual(REVOKED_AT);
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('revokes a Branch assignment only in the supplied Branch context', async () => {
@@ -137,24 +209,31 @@ describe('RevokeRoleHandler', () => {
     );
 
     expect(result).toEqual({ assignmentId: 'assignment-1' });
-    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith({
-      userId: 'actor-1',
-      organizationId: 'org-1',
-      branchId: 'branch-1',
-    });
+    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith(
+      {
+        userId: 'actor-1',
+        organizationId: 'org-1',
+        branchId: 'branch-1',
+      },
+      sut.transactionReader,
+    );
+
     expect(sut.findByIdForRevocation).toHaveBeenCalledWith({
       organizationId: 'org-1',
       assignmentId: 'assignment-1',
       branchId: 'branch-1',
     });
+
     expect(sut.update).toHaveBeenCalledOnce();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
-  it('rejects an empty actor before authorization or repository access', async () => {
+  it('rejects an empty actor before opening a transaction', async () => {
     await expect(
       sut.handler.execute(createCommand({ actorUserId: '  ' })),
     ).rejects.toBeInstanceOf(AccessControlActorRequiredError);
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
     expect(sut.findByIdForRevocation).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
@@ -173,6 +252,7 @@ describe('RevokeRoleHandler', () => {
       sut.handler.execute(createCommand({ branchId: '  ' })),
     ).rejects.toBeInstanceOf(RoleAssignmentNotFoundError);
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
     expect(sut.findByIdForRevocation).not.toHaveBeenCalled();
   });
@@ -187,8 +267,10 @@ describe('RevokeRoleHandler', () => {
       AccessControlForbiddenError,
     );
 
+    expect(sut.execute).toHaveBeenCalledOnce();
     expect(sut.findByIdForRevocation).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('requires Branch assignment authority in the exact Branch context', async () => {
@@ -203,6 +285,7 @@ describe('RevokeRoleHandler', () => {
 
     expect(sut.findByIdForRevocation).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('does not require permission delegation to revoke an assignment', async () => {
@@ -223,6 +306,7 @@ describe('RevokeRoleHandler', () => {
     );
 
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('returns not found when the assignment belongs to another Organization', async () => {
@@ -249,8 +333,8 @@ describe('RevokeRoleHandler', () => {
       revokedAt: null,
     });
 
-    // The repository should enforce this filter. This assertion additionally
-    // proves the Handler fails closed if a faulty adapter returns a foreign row.
+    // The repository should enforce this filter. This also proves the Handler
+    // fails closed if an adapter unexpectedly returns a foreign row.
     sut.findByIdForRevocation.mockResolvedValueOnce(foreignAssignment);
 
     await expect(sut.handler.execute(createCommand())).rejects.toBeInstanceOf(
@@ -259,6 +343,7 @@ describe('RevokeRoleHandler', () => {
 
     expect(sut.update).not.toHaveBeenCalled();
     expect(foreignAssignment.isRevoked()).toBe(false);
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('treats an already revoked assignment as idempotent success', async () => {
@@ -271,6 +356,7 @@ describe('RevokeRoleHandler', () => {
     expect(result).toEqual({ assignmentId: 'assignment-1' });
     expect(sut.now).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('rejects a clock value earlier than the assignment creation time', async () => {
@@ -281,6 +367,7 @@ describe('RevokeRoleHandler', () => {
     );
 
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates authorization lookup failures without reading assignments', async () => {
@@ -294,6 +381,7 @@ describe('RevokeRoleHandler', () => {
 
     expect(sut.findByIdForRevocation).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates assignment lookup failures without persistence', async () => {
@@ -306,6 +394,7 @@ describe('RevokeRoleHandler', () => {
     );
 
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates revocation persistence failures', async () => {
@@ -316,5 +405,6 @@ describe('RevokeRoleHandler', () => {
     );
 
     expect(sut.update).toHaveBeenCalledOnce();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 });

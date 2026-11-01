@@ -58,6 +58,7 @@ export class AuthorizationApplicationService {
 
   async checkPermission(
     input: CheckPermissionInput,
+    snapshotReader: AuthorizationSnapshotReader = this.snapshotReader,
   ): Promise<AuthorizationDecision> {
     const userId = input.userId.trim();
     const organizationId = input.organizationId.trim();
@@ -89,7 +90,7 @@ export class AuthorizationApplicationService {
       });
     }
 
-    const snapshot = await this.snapshotReader.loadSnapshot({
+    const snapshot = await snapshotReader.loadSnapshot({
       userId,
       organizationId,
       ...(branchId === undefined ? {} : { branchId }),
@@ -110,6 +111,7 @@ export class AuthorizationApplicationService {
    */
   async getEffectiveAuthorizationContext(
     input: EffectiveAuthorizationContextInput,
+    snapshotReader: AuthorizationSnapshotReader = this.snapshotReader,
   ): Promise<EffectiveAuthorizationContext> {
     const userId = input.userId.trim();
     const organizationId = input.organizationId.trim();
@@ -127,7 +129,7 @@ export class AuthorizationApplicationService {
       };
     }
 
-    const snapshot = await this.snapshotReader.loadSnapshot({
+    const snapshot = await snapshotReader.loadSnapshot({
       userId,
       organizationId,
       ...(branchId === undefined ? {} : { branchId }),
@@ -170,11 +172,14 @@ export class AuthorizationApplicationService {
    *
    * With no active Branches, no Branch permission is assumed delegable.
    */
-  async getEffectiveDelegationPermissionCodes(input: {
-    readonly userId: string;
-    readonly organizationId: string;
-    readonly assignmentScope?: RoleAssignmentScope;
-  }): Promise<readonly PermissionCode[]> {
+  async getEffectiveDelegationPermissionCodes(
+    input: {
+      readonly userId: string;
+      readonly organizationId: string;
+      readonly assignmentScope?: RoleAssignmentScope;
+    },
+    snapshotReader: AuthorizationSnapshotReader = this.snapshotReader,
+  ): Promise<readonly PermissionCode[]> {
     const userId = input.userId.trim();
     const organizationId = input.organizationId.trim();
 
@@ -182,7 +187,7 @@ export class AuthorizationApplicationService {
       return [];
     }
 
-    const snapshots = await this.snapshotReader.loadDelegationSnapshots({
+    const snapshots = await snapshotReader.loadDelegationSnapshots({
       userId,
       organizationId,
     });

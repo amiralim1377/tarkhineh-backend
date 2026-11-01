@@ -3,9 +3,9 @@
 | Attribute              | Value                         |
 | ---------------------- | ----------------------------- |
 | Project                | `tarkhineh-backend`           |
-| Document version       | 1.6                           |
+| Document version       | 1.7                           |
 | Last updated           | 2026-11-01                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.4 |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.5 |
 | Implementation status  | `IMPLEMENTATION-STATUS.md`    |
 
 This document is the decision log for the Access Control bounded context. Each ADR records the context, the decision, and its consequences. Accepted decisions are binding implementation constraints. They must not be silently changed. If later evidence or a product requirement requires a change, add a new ADR that explicitly supersedes the affected decision and obtain project-owner approval before implementing the change.
@@ -564,6 +564,52 @@ The architecture requires stable source-controlled Permission semantics, explici
 
 ---
 
+## ADR-020 — Application mutations use a transaction-owning Access Control Unit of Work
+
+**Status:** IMPLEMENTED — AWAITING PROJECT-OWNER APPROVAL
+**Decision owner:** Project owner
+**Date:** 2026-11-01
+
+### Context
+
+Access Control mutation use cases combine authorization evaluation, tenant/target reads, delegation checks, and persistence writes.
+
+Performing authorization and mutation through independently acquired persistence paths creates a check-then-write window. It can also allow a future adapter to manage its own transaction, making it unclear whether authorization reads and writes share a transaction.
+
+The Application layer must define a transaction boundary without depending on Prisma or another Infrastructure implementation.
+
+### Decision implemented in PHASE 5
+
+Introduce the Application port `AccessControlUnitOfWork`.
+
+- `AccessControlUnitOfWork` owns the lifecycle of one operation's transaction: begin, commit on successful callback completion, and rollback when the callback throws.
+- The Unit of Work supplies an `AccessControlUnitOfWorkContext` containing transaction-bound instances of:
+  - `AuthorizationSnapshotReader`
+  - `RoleRepository`
+  - `RoleAssignmentRepository`
+  - `PermissionOverrideRepository`
+- Every supplied port must use the same underlying transaction client.
+- A repository supplied through the context must not open, commit, or roll back an independent or nested transaction.
+- Mutation handlers perform authorization reads, target reads, and persistence through the supplied context.
+- The callback must not perform external side effects.
+- Application remains independent of Prisma; Infrastructure provides the concrete implementation.
+
+### Concurrency and transaction guarantees
+
+This ADR establishes the Application contract; it does not select or claim a specific PostgreSQL isolation level or locking strategy.
+
+PHASE 6 must define and verify the concrete protection against concurrent authorization changes and sensitive check-then-write races. A transaction boundary by itself is not sufficient evidence of race-condition safety.
+
+Database uniqueness constraints remain authoritative for duplicate writes. Safe retry behavior for serialization/deadlock conflicts must be decided and implemented in Infrastructure without repeating external side effects.
+
+### Consequences
+
+- All seven PHASE 5 mutation handlers use the Unit of Work port.
+- `AuthorizationApplicationService` accepts an explicitly supplied snapshot reader so command authorization can use the transaction-bound reader; query handlers may continue using the default reader.
+- Mock-based Unit tests verify that handler reads and writes occur within the Unit of Work callback. They do not prove real database commit, rollback, transaction-client sharing, isolation, locking, or race-condition protection.
+- Concrete Prisma transaction binding, adapter implementation, and PostgreSQL Integration tests remain PHASE 6 work.
+- Runtime NestJS module/provider composition must be verified when the concrete Unit of Work adapter is available.
+
 ## Implementation notes and outstanding decisions
 
 This section summarizes implementation facts without changing the decision status of the ADRs above.
@@ -603,7 +649,7 @@ The following topics remain open and must be resolved in their relevant implemen
 
 1. **Identity status integration — PHASE 8:** determine how `User.status` is enforced for authenticated and non-HTTP operations without transferring Identity lifecycle ownership to Access Control.
 2. **Audit retention and access — PHASE 7:** define retention requirements and which principals may read audit records.
-3. **Concurrency semantics — PHASES 5–6:** define transaction and locking behavior for delegation validation, Role assignment, and sensitive access mutations.
+3. **PostgreSQL concurrency semantics — PHASE 6:** implement and verify isolation/locking and safe retry behavior. ADR-020 records the PHASE 5 Application transaction-boundary contract but does not select a concrete PostgreSQL strategy.
 4. **Database guard behavior tests — PHASE 6:** add integration tests for rejected cross-scope/cross-tenant writes and immutable Role ownership.
 5. **Backup recovery drill:** restore the development database backup into an isolated database before treating the backup process as recovery-tested.
 6. **Deferred unrelated Integration failure:** investigate the Outbound Email retry/lease Integration failure separately. It is not an Access Control defect and must not be masked by changes in this context.

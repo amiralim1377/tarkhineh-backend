@@ -6,7 +6,9 @@ export const ROLE_REPOSITORY = Symbol('ROLE_REPOSITORY');
  * Access Control Role aggregate persistence contract.
  *
  * save() and update() must persist the Role and its complete Permission
- * relation set atomically. The Infrastructure adapter owns the transaction.
+ * relation set atomically within the active Unit of Work transaction.
+ * Repository methods must use the transaction-bound client supplied by
+ * Infrastructure; they must not open or manage their own transaction.
  */
 export interface RoleRepository {
   existsByCode(organizationId: string, code: string): Promise<boolean>;

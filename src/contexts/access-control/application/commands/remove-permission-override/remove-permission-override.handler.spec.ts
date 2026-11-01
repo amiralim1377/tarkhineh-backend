@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PermissionOverride } from '../../../domain/permission-overrides/permission-override.js';
 import type { PermissionOverrideRepository } from '../../ports/permission-override.repository.js';
+import type { AuthorizationSnapshotReader } from '../../ports/authorization-snapshot-reader.port.js';
+import type {
+  AccessControlUnitOfWork,
+  AccessControlUnitOfWorkContext,
+} from '../../ports/access-control-unit-of-work.port.js';
+import type { RoleAssignmentRepository } from '../../ports/role-assignment.repository.js';
+import type { RoleRepository } from '../../ports/role.repository.js';
 import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
-import type { Clock } from '../../../../../shared/application/ports/clock.port.js';
 import { AccessControlActorRequiredError } from '../../errors/access-control-actor-required.error.js';
 import { AccessControlForbiddenError } from '../../errors/access-control-forbidden.error.js';
 import { InvalidPermissionOverrideRequestError } from '../../errors/invalid-permission-override-request.error.js';
@@ -54,29 +60,70 @@ function createCommand(
 function createSut(
   existing: PermissionOverride | null = createOverride('DENY'),
 ) {
-  const findByUniqueKey = vi.fn().mockResolvedValue(existing);
-  const save = vi.fn().mockResolvedValue(undefined);
-  const update = vi.fn().mockResolvedValue(undefined);
-  const deleteOverride = vi.fn().mockResolvedValue(undefined);
+  let transactionActive = false;
 
-  const getEffectiveAuthorizationContext = vi.fn().mockResolvedValue({
-    snapshot: {},
-    permissionCodes: [
-      'organization.members.permissions.manage',
-      'branch.dashboard.read',
-    ],
+  const transactionReader = {
+    loadSnapshot: vi.fn(),
+    loadDelegationSnapshots: vi.fn(),
+  } as AuthorizationSnapshotReader;
+
+  const findByUniqueKey = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+    return existing;
   });
 
-  const now = vi.fn((): Date => CREATED_AT);
-  const clock: Clock = { now };
+  const deleteOverride = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+  });
 
   const repository = {
-    findActiveTarget: vi.fn().mockResolvedValue(null),
+    findActiveTarget: vi.fn(),
     findByUniqueKey,
-    save,
-    update,
+    save: vi.fn(),
+    update: vi.fn(),
     delete: deleteOverride,
   } as PermissionOverrideRepository;
+
+  const context: AccessControlUnitOfWorkContext = {
+    authorizationSnapshotReader: transactionReader,
+    roleRepository: {} as RoleRepository,
+    roleAssignmentRepository: {} as RoleAssignmentRepository,
+    permissionOverrideRepository: repository,
+  };
+
+  const executeOperation = async <T>(
+    operation: (
+      context: AccessControlUnitOfWorkContext,
+    ) => Promise<T>,
+  ): Promise<T> => {
+    transactionActive = true;
+
+    try {
+      return await operation(context);
+    } finally {
+      transactionActive = false;
+    }
+  };
+
+  const execute = vi.fn(executeOperation);
+
+  const unitOfWork = {
+    execute,
+  } as unknown as AccessControlUnitOfWork;
+
+  const getEffectiveAuthorizationContext = vi
+    .fn()
+    .mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+
+      return {
+        snapshot: {},
+        permissionCodes: [
+          'organization.members.permissions.manage',
+          'branch.dashboard.read',
+        ],
+      };
+    });
 
   const authorization = {
     getEffectiveAuthorizationContext,
@@ -84,14 +131,15 @@ function createSut(
 
   return {
     handler: new RemovePermissionOverrideHandler(
-      repository,
+      unitOfWork,
       authorization,
-      clock,
     ),
+    execute,
     findByUniqueKey,
     deleteOverride,
     getEffectiveAuthorizationContext,
-    now,
+    transactionReader,
+    isTransactionActive: () => transactionActive,
   };
 }
 
@@ -110,11 +158,16 @@ describe('RemovePermissionOverrideHandler', () => {
       removed: true,
     });
 
-    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith({
-      userId: 'actor-1',
-      organizationId: 'org-1',
-      branchId: 'branch-1',
-    });
+    expect(sut.execute).toHaveBeenCalledOnce();
+
+    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith(
+      {
+        userId: 'actor-1',
+        organizationId: 'org-1',
+        branchId: 'branch-1',
+      },
+      sut.transactionReader,
+    );
 
     expect(sut.findByUniqueKey).toHaveBeenCalledWith({
       organizationId: 'org-1',
@@ -127,6 +180,7 @@ describe('RemovePermissionOverrideHandler', () => {
     expect(sut.deleteOverride).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'override-1' }),
     );
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('rejects removing DENY when the actor lacks the underlying permission', async () => {
@@ -141,10 +195,12 @@ describe('RemovePermissionOverrideHandler', () => {
 
     expect(sut.findByUniqueKey).toHaveBeenCalledOnce();
     expect(sut.deleteOverride).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('removes ALLOW with management authority without requiring the target permission', async () => {
     sut = createSut(createOverride('ALLOW'));
+
     sut.getEffectiveAuthorizationContext.mockResolvedValueOnce({
       snapshot: {},
       permissionCodes: ['organization.members.permissions.manage'],
@@ -157,6 +213,7 @@ describe('RemovePermissionOverrideHandler', () => {
       removed: true,
     });
     expect(sut.deleteOverride).toHaveBeenCalledOnce();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('returns an idempotent result when no matching Override exists', async () => {
@@ -170,19 +227,21 @@ describe('RemovePermissionOverrideHandler', () => {
     });
     expect(sut.findByUniqueKey).toHaveBeenCalledOnce();
     expect(sut.deleteOverride).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
-  it('rejects an empty actor before authorization or persistence', async () => {
+  it('rejects an empty actor before opening a transaction', async () => {
     await expect(
       sut.handler.execute(createCommand({ actorUserId: '  ' })),
     ).rejects.toBeInstanceOf(AccessControlActorRequiredError);
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
     expect(sut.findByUniqueKey).not.toHaveBeenCalled();
     expect(sut.deleteOverride).not.toHaveBeenCalled();
   });
 
-  it('rejects blank identifiers before authorization', async () => {
+  it('rejects blank identifiers before opening a transaction', async () => {
     const invalidInputs = [
       { organizationId: '  ' },
       { organizationMembershipId: '  ' },
@@ -196,6 +255,7 @@ describe('RemovePermissionOverrideHandler', () => {
       ).rejects.toBeInstanceOf(InvalidPermissionOverrideRequestError);
     }
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
     expect(sut.findByUniqueKey).not.toHaveBeenCalled();
   });
@@ -212,6 +272,7 @@ describe('RemovePermissionOverrideHandler', () => {
 
     expect(sut.findByUniqueKey).not.toHaveBeenCalled();
     expect(sut.deleteOverride).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('rejects Organization-target permissions before reading the Override', async () => {
@@ -247,6 +308,7 @@ describe('RemovePermissionOverrideHandler', () => {
 
     expect(sut.findByUniqueKey).not.toHaveBeenCalled();
     expect(sut.deleteOverride).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates Override lookup failures without deleting', async () => {
@@ -259,6 +321,7 @@ describe('RemovePermissionOverrideHandler', () => {
     );
 
     expect(sut.deleteOverride).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates persistence failures', async () => {
@@ -271,5 +334,6 @@ describe('RemovePermissionOverrideHandler', () => {
     );
 
     expect(sut.deleteOverride).toHaveBeenCalledOnce();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 });

@@ -5,12 +5,12 @@
 | Attribute                    | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
 | Document                     | Master Architecture & Implementation Specification                          |
-| Version                      | 1.4                                                                         |
+| Version                      | 1.5                                                                         |
 | Last updated                 | 2026-11-01                                                                  |
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                      |
 | Architecture status          | Approved by project owner                                                   |
 | Repository audit             | PHASE 0 completed                                                           |
-| Current implementation phase | PHASE 4 — Domain Model (completed and approved by project owner)            |
+| Current implementation phase | PHASE 5 — Application Layer and Use Cases (in progress; owner review pending) |
 | Source of truth              | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -862,7 +862,7 @@ Only one phase is active at a time. Do not mark a phase complete from code appea
 | 2     | Database Schema and Migration Design            | COMPLETED — APPROVED              |
 | 3     | Permission Registry and Seed                    | COMPLETED — APPROVED              |
 | 4     | Domain Model                                    | COMPLETED — APPROVED (2026-11-01) |
-| 5     | Application Layer and Use Cases                 | NOT STARTED                       |
+| 5     | Application Layer and Use Cases                 | IN PROGRESS — implementation verified; review pending |
 | 6     | Infrastructure and Authorization Persistence    | NOT STARTED                       |
 | 7     | Audit Logging                                   | NOT STARTED                       |
 | 8     | Cross-Context Integration                       | NOT STARTED                       |
@@ -1147,7 +1147,7 @@ The Access Control Domain model has been implemented with the following responsi
 
 - Domain implementation is isolated under `src/contexts/access-control/domain/`.
 - No Prisma schema, migration, database operation, or production Seed change was made in PHASE 4.
-- No Application use case, repository port, Prisma adapter, NestJS provider, controller, or HTTP guard was introduced. These remain in their designated later phases.
+- At the PHASE 4 checkpoint, no Application use case, repository port, Prisma adapter, NestJS provider, controller, or HTTP guard had yet been introduced. Application use cases and ports were implemented in PHASE 5; Prisma adapters and concrete provider composition remain PHASE 6 work, while controllers and HTTP guards remain PHASE 9 work.
 - The evaluator receives its authorization state as a snapshot; loading and constructing that snapshot belongs to later Application and Infrastructure work.
 - Identity account-status integration, audit persistence, transaction/locking semantics, and database constraint behavior tests remain deferred to their assigned phases.
 
@@ -1205,15 +1205,68 @@ The full project suite and production build were run before the final formatting
 
 ## PHASE 5 — Application Layer and Use Cases
 
-Status: NOT STARTED.
+Status: IN PROGRESS — implementation and Unit verification recorded; project-owner review pending.
 
-Implement focused commands, queries, ports, error types, transactions, authorization for administrative operations, and delegation. Actor identity must come from trusted authentication context. Application must not depend on Prisma models.
+### Implemented Application capabilities
+
+- Seven commands: CreateRole, UpdateRole, ArchiveRole, AssignRole, RevokeRole, SetPermissionOverride, and RemovePermissionOverride.
+- Application queries for permission checking, effective permissions, and available permissions.
+- AuthorizationApplicationService, using Application ports and Domain authorization policies.
+- Application error types and repository/read ports.
+- AccessControlUnitOfWork and AccessControlUnitOfWorkContext contracts.
+- All seven mutation handlers execute authorization reads, target reads, and persistence calls through the transaction-bound context supplied to the Unit of Work.
+- AuthorizationApplicationService accepts a transaction-bound AuthorizationSnapshotReader for command operations while retaining its default reader for query operations.
+- Actor identity remains an explicit command input that must be populated by a trusted authentication boundary; HTTP integration is deferred to PHASE 9.
+- Repository port documentation assigns transaction lifecycle ownership to the Unit of Work and prohibits nested or independent transactions in supplied adapters.
+
+### Application transaction boundary
+
+AccessControlUnitOfWork owns the transaction lifecycle. It supplies transaction-bound RoleRepository, RoleAssignmentRepository, PermissionOverrideRepository, and AuthorizationSnapshotReader ports through one context.
+
+The Application contract requires the supplied ports to share one underlying transaction client. The Unit of Work must commit on successful callback completion and roll back when the callback throws. Callbacks must not perform external side effects.
+
+This is an Application contract, not evidence that a real database transaction or concurrency guarantee has already been implemented. PostgreSQL isolation, locking, retry, and transaction-bound adapter behavior are PHASE 6 responsibilities.
+
+### PHASE 5 verification checkpoint
+
+Observed on 2026-11-01:
+
+- Access Control Unit tests: 15 files passed; 272 tests passed; 0 failed.
+- `npx tsc --noEmit`: completed without reported errors.
+- `npx oxlint --type-aware src/contexts/access-control/`: 68 files; 0 warnings; 0 errors.
+- `git diff --check`: no whitespace errors.
+- A source search found no direct legacy Repository or AuthorizationSnapshotReader injection tokens in the seven command-handler files.
+
+Limitations at this checkpoint:
+
+- Unit of Work tests use mocks and verify Application callback boundaries only. They do not prove PostgreSQL atomicity, rollback, isolation, locking, or race-condition behavior.
+- No Prisma-backed Access Control Unit of Work or transaction-bound repository adapters have been implemented.
+- Runtime NestJS provider/module composition using a concrete Unit of Work implementation remains to be completed and verified with Infrastructure.
+- A full production build and PostgreSQL Access Control Integration suite have not been run as part of this checkpoint.
+- No Prisma schema, migration, or database changes were made.
+
+PHASE 5 remains in progress until Application acceptance review is completed and the project owner approves the phase. Do not claim production transaction safety from the current mocked tests.
 
 ## PHASE 6 — Infrastructure and Authorization Persistence
 
 Status: NOT STARTED.
 
-Implement Prisma adapters, targeted authorization read repository, mapping, transaction behavior, error translation, indexes/query review, and integration tests. Avoid N+1 queries.
+Implement the concrete Prisma-backed AccessControlUnitOfWork and transaction-bound adapters for all supplied Application ports. All repositories and the authorization snapshot reader used by one operation must share the same Prisma interactive transaction client.
+
+Required work:
+
+- Implement transaction-bound RoleRepository, RoleAssignmentRepository, PermissionOverrideRepository, and AuthorizationSnapshotReader adapters.
+- Implement a consistent authorization snapshot read, including the Organization snapshot and all active Branch snapshots for delegation evaluation.
+- Define and implement PostgreSQL isolation/locking semantics for sensitive check-then-write operations. A transaction alone is not sufficient evidence of race-condition protection.
+- Handle serialization/deadlock retry only where safe; callbacks must remain free of external side effects.
+- Preserve and translate known Prisma/database errors without masking original application errors.
+- Keep database uniqueness constraints authoritative for duplicate writes.
+- Complete NestJS provider/module composition with the concrete adapters.
+- Add PostgreSQL Integration tests for commit, rollback, same-transaction binding, tenant isolation, concurrent authorization changes, duplicate assignments, Role/Permission mutation races, and database guard behavior.
+- Review indexes and query plans; avoid N+1 authorization reads.
+- Run relevant Integration tests, full Unit tests, TypeScript, production build, and lint.
+
+Do not move Prisma dependencies into Domain or Application. PHASE 6 implements the Application contracts defined in PHASE 5.
 
 ## PHASE 7 — Audit Logging
 
@@ -1421,6 +1474,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The current implementation checkpoint is **PHASE 4 — Domain Model**, completed and approved by the project owner on 2026-11-01. PHASE 3 is also closed. Proceed to PHASE 5 — Application Layer and Use Cases.
+The current implementation checkpoint is **PHASE 5 — Application Layer and Use Cases**, in progress with implementation and Unit verification recorded; project-owner review is pending. PHASES 0–4 are closed. Complete the PHASE 5 review before proceeding to PHASE 6.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.

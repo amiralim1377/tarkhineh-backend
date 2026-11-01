@@ -10,9 +10,9 @@ import { AccessControlForbiddenError } from '../../errors/access-control-forbidd
 import { InvalidRoleUpdateError } from '../../errors/invalid-role-update.error.js';
 import { RoleNotFoundError } from '../../errors/role-not-found.error.js';
 import {
-  ROLE_REPOSITORY,
-  type RoleRepository,
-} from '../../ports/role.repository.js';
+  ACCESS_CONTROL_UNIT_OF_WORK,
+  type AccessControlUnitOfWork,
+} from '../../ports/access-control-unit-of-work.port.js';
 import { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import {
   UpdateRoleCommand,
@@ -20,15 +20,14 @@ import {
 } from './update-role.command.js';
 
 @CommandHandler(UpdateRoleCommand)
-export class UpdateRoleHandler implements ICommandHandler<
-  UpdateRoleCommand,
-  UpdateRoleResult
-> {
+export class UpdateRoleHandler
+  implements ICommandHandler<UpdateRoleCommand, UpdateRoleResult>
+{
   private readonly delegationPolicy = new PermissionDelegationPolicy();
 
   constructor(
-    @Inject(ROLE_REPOSITORY)
-    private readonly roles: RoleRepository,
+    @Inject(ACCESS_CONTROL_UNIT_OF_WORK)
+    private readonly unitOfWork: AccessControlUnitOfWork,
     private readonly authorization: AuthorizationApplicationService,
   ) {}
 
@@ -52,66 +51,76 @@ export class UpdateRoleHandler implements ICommandHandler<
       throw new InvalidRoleUpdateError();
     }
 
-    // Check management authority before querying the Role. This prevents
-    // callers without tenant-level management rights from probing Role IDs.
-    const managementContext =
-      await this.authorization.getEffectiveAuthorizationContext({
-        userId: actorUserId,
+    return this.unitOfWork.execute(async (context) => {
+      // Check management authority before querying the Role.
+      // This prevents unauthorized callers from probing Role IDs.
+      const managementContext =
+        await this.authorization.getEffectiveAuthorizationContext(
+          {
+            userId: actorUserId,
+            organizationId,
+          },
+          context.authorizationSnapshotReader,
+        );
+
+      if (
+        !managementContext.permissionCodes.includes(
+          PERMISSION_CODE.ORGANIZATION_ROLES_UPDATE,
+        )
+      ) {
+        throw new AccessControlForbiddenError(
+          DELEGATION_DECISION_REASON.MANAGEMENT_PERMISSION_MISSING,
+        );
+      }
+
+      // The repository lookup is tenant-scoped and transaction-bound.
+      const role = await context.roleRepository.findById(
         organizationId,
+        roleId,
+      );
+
+      if (!role) {
+        throw new RoleNotFoundError(organizationId, roleId);
+      }
+
+      // Apply requested changes only to the loaded aggregate.
+      if (permissionCodes !== undefined) {
+        role.replacePermissionCodes(permissionCodes);
+      }
+
+      if (name !== undefined || description !== undefined) {
+        role.updateDetails(
+          name ?? role.getName(),
+          description === undefined ? role.getDescription() : description,
+        );
+      }
+
+      // Re-evaluate delegation against the complete final Permission set.
+      const actorEffectivePermissionCodes =
+        await this.authorization.getEffectiveDelegationPermissionCodes(
+          {
+            userId: actorUserId,
+            organizationId,
+            assignmentScope: role.getAssignmentScope(),
+          },
+          context.authorizationSnapshotReader,
+        );
+
+      const delegationDecision = this.delegationPolicy.canComposeRole({
+        role,
+        organizationId,
+        operation: 'UPDATE',
+        actorEffectivePermissionCodes,
       });
 
-    if (
-      !managementContext.permissionCodes.includes(
-        PERMISSION_CODE.ORGANIZATION_ROLES_UPDATE,
-      )
-    ) {
-      throw new AccessControlForbiddenError(
-        DELEGATION_DECISION_REASON.MANAGEMENT_PERMISSION_MISSING,
-      );
-    }
+      if (!delegationDecision.allowed) {
+        throw new AccessControlForbiddenError(delegationDecision.reasonCode);
+      }
 
-    // The repository must scope this lookup to the supplied Organization.
-    const role = await this.roles.findById(organizationId, roleId);
+      // The adapter must persist Role + complete RolePermission set atomically.
+      await context.roleRepository.update(role);
 
-    if (!role) {
-      throw new RoleNotFoundError(organizationId, roleId);
-    }
-
-    // Mutate only the loaded aggregate. Nothing is persisted before all
-    // final permissions have passed the delegation policy.
-    if (permissionCodes !== undefined) {
-      role.replacePermissionCodes(permissionCodes);
-    }
-
-    if (name !== undefined || description !== undefined) {
-      role.updateDetails(
-        name ?? role.getName(),
-        description === undefined ? role.getDescription() : description,
-      );
-    }
-
-    const actorEffectivePermissionCodes =
-      await this.authorization.getEffectiveDelegationPermissionCodes({
-        userId: actorUserId,
-        organizationId,
-        assignmentScope: role.getAssignmentScope(),
-      });
-
-    const delegationDecision = this.delegationPolicy.canComposeRole({
-      role,
-      organizationId,
-      operation: 'UPDATE',
-      actorEffectivePermissionCodes,
+      return { roleId: role.getId().getValue() };
     });
-
-    if (!delegationDecision.allowed) {
-      throw new AccessControlForbiddenError(delegationDecision.reasonCode);
-    }
-
-    // The adapter must atomically persist the aggregate and its complete
-    // RolePermission relation set.
-    await this.roles.update(role);
-
-    return { roleId: role.getId().getValue() };
   }
 }

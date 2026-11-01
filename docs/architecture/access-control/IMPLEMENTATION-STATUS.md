@@ -3,12 +3,12 @@
 | Attribute              | Value                                                  |
 | ---------------------- | ------------------------------------------------------ |
 | Project                | `tarkhineh-backend`                                    |
-| Document version       | 1.7                                                    |
+| Document version       | 1.8                                                    |
 | Last updated           | 2026-11-01                                             |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.4                          |
-| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.6                      |
-| Current phase          | PHASE 4 — Domain Model                                 |
-| Current phase status   | **COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)** |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.5                          |
+| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.7                      |
+| Current phase          | PHASE 5 — Application Layer and Use Cases              |
+| Current phase status   | **IN PROGRESS — IMPLEMENTATION VERIFIED; OWNER REVIEW PENDING** |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -25,26 +25,30 @@
 |     2 | Database Schema and Migration Design            | COMPLETED — approved by project owner on 2026-11-01 |
 |     3 | Permission Registry and Seed                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
-|     5 | Application Layer and Use Cases                 | NOT STARTED                                         |
+|     5 | Application Layer and Use Cases                 | IN PROGRESS — implementation verified; review pending |
 |     6 | Infrastructure and Authorization Persistence    | NOT STARTED                                         |
 |     7 | Audit Logging                                   | NOT STARTED                                         |
 |     8 | Cross-Context Integration                       | NOT STARTED                                         |
 |     9 | HTTP Layer                                      | NOT STARTED                                         |
 |    10 | Security, Performance, and Production Readiness | NOT STARTED                                         |
 
-### Current implementation result
+### Latest implementation checkpoint
 
-PHASE 3 has introduced a source-controlled Permission Registry, explicit permission sets for the two System Roles, a transactional synchronizer, and focused Unit and PostgreSQL Integration tests.
+PHASE 5 — Application Layer and Use Cases is the current phase. All seven mutation handlers use the Unit of Work Application contract. The latest observed checkpoint is 272 passing Access Control tests across 15 files, a successful TypeScript no-emit check, zero Access Control Oxlint warnings/errors, and a clean diff check. Formal PHASE 5 review and approval remain pending. See section 7 for deliverables and limitations.
 
-The current Registry contains **23 permissions**: all 18 previous codes are preserved and five approved codes have been added. The new Seed manages only `ORGANIZATION_OWNER` and `BRANCH_MANAGER`; it does not manage Organization-owned custom roles, role assignments, or permission overrides.
+### PHASE 3 Registry implementation result
 
-PHASE 3 was formally approved by the project owner on 2026-11-01. The production CLI Seed has **not** been run against `tarkhineh_db` or `tarkhineh_test` as part of this phase.
+PHASE 3 introduced a source-controlled Permission Registry, explicit permission sets for the two System Roles, a transactional synchronizer, and focused Unit and PostgreSQL Integration tests.
+
+The Registry contains **23 permissions**: all 18 previous codes are preserved and five approved codes have been added. The Seed manages only `ORGANIZATION_OWNER` and `BRANCH_MANAGER`; it does not manage Organization-owned custom roles, role assignments, or permission overrides.
+
+PHASE 3 was formally approved by the project owner on 2026-11-01. The production CLI Seed was not run against `tarkhineh_db` or `tarkhineh_test` as part of that phase.
 
 ---
 
 ## 2. PHASE 0 — Repository Audit and Baseline
 
-**Status: COMPLETED**  
+**Status: COMPLETED**
 **Completion date: 2026-11-01**
 
 ### 2.1 Repository inventory
@@ -226,7 +230,7 @@ Key approved rules:
 
 ## 4. PHASE 2 — Database Schema and Migration Design
 
-**Status: COMPLETED — APPROVED BY PROJECT OWNER**  
+**Status: COMPLETED — APPROVED BY PROJECT OWNER**
 **Implementation and approval date: 2026-11-01**
 
 ### 4.1 Approved schema implemented
@@ -666,7 +670,7 @@ The full project test suite and production build were run before the formatting-
 - No database reset or persistent database write.
 - No production Seed execution.
 - No Application use case, persistence adapter, audit implementation, HTTP endpoint, or NestJS wiring.
-- PHASE 5 and later responsibilities remain unimplemented.
+- At the PHASE 4 checkpoint, PHASE 5 and later responsibilities had not yet been implemented.
 
 ### 6.5 PHASE 4 acceptance
 
@@ -680,17 +684,128 @@ The full project test suite and production build were run before the formatting-
 - [x] Domain lint and Prettier checks passed.
 - [x] Project-owner review and formal approval (2026-11-01).
 
-**PHASE 4 was formally approved by the project owner on 2026-11-01. PHASE 5 is the next phase.**
+**PHASE 4 was formally approved by the project owner on 2026-11-01. PHASE 5 implementation is in progress; formal review and approval are pending.**
 
 ---
 
-## 7. Open items and deferred work
+## 7. PHASE 5 — Application Layer and Use Cases
+
+**Status: IN PROGRESS — IMPLEMENTATION AND UNIT VERIFICATION RECORDED; PROJECT-OWNER REVIEW PENDING**
+**Checkpoint date: 2026-11-01**
+
+### 7.1 Implemented deliverables
+
+The Application Layer contains the seven mutation commands:
+
+1. `CreateRole`
+2. `UpdateRole`
+3. `ArchiveRole`
+4. `AssignRole`
+5. `RevokeRole`
+6. `SetPermissionOverride`
+7. `RemovePermissionOverride`
+
+It also contains the permission-related queries:
+
+- `CheckPermission`
+- `GetEffectivePermissions`
+- `ListAvailablePermissions`
+
+Application services, repository/read ports, error types, and handler tests are implemented. Authorization decisions and delegation rules remain in the Access Control Domain and are invoked by Application handlers.
+
+### 7.2 Unit of Work contract
+
+Added:
+
+`src/contexts/access-control/application/ports/access-control-unit-of-work.port.ts`
+
+The contract defines:
+
+- `AccessControlUnitOfWork.execute()` as the owner of the transaction lifecycle.
+- `AccessControlUnitOfWorkContext` as the source of transaction-bound Application ports.
+- Shared transaction binding for `AuthorizationSnapshotReader`, `RoleRepository`, `RoleAssignmentRepository`, and `PermissionOverrideRepository`.
+- Commit on successful callback completion and rollback when the callback throws.
+- No independently managed or nested transactions in adapters supplied through the context.
+- No external side effects inside a callback.
+- A requirement for the Infrastructure implementation to protect sensitive check-then-write operations using an appropriate concurrency strategy.
+
+All seven mutation handlers now inject `ACCESS_CONTROL_UNIT_OF_WORK`. Their authorization reads, target/repository reads, and persistence operations are performed through the context supplied to `execute()`.
+
+`AuthorizationApplicationService` accepts an explicitly supplied snapshot reader, allowing mutation handlers to use the transaction-bound reader while existing query handlers retain the default reader.
+
+The five relevant port files were clarified so the Unit of Work owns transaction lifecycle and supplied adapters must use its transaction-bound client:
+
+- `access-control-unit-of-work.port.ts`
+- `authorization-snapshot-reader.port.ts`
+- `role.repository.ts`
+- `role-assignment.repository.ts`
+- `permission-override.repository.ts`
+
+A source search across the seven command-handler files returned no matches for the legacy direct injection tokens `ROLE_REPOSITORY`, `ROLE_ASSIGNMENT_REPOSITORY`, `PERMISSION_OVERRIDE_REPOSITORY`, or `AUTHORIZATION_SNAPSHOT_READER`.
+
+### 7.3 Verification results
+
+Observed local terminal results on 2026-11-01:
+
+| Command | Observed result |
+| --- | --- |
+| `npx vitest run src/contexts/access-control` | 15 files passed; 272 tests passed; 0 failed |
+| `npx tsc --noEmit` | Completed without reported errors |
+| `npx oxlint --type-aware src/contexts/access-control/` | 68 files; 0 warnings; 0 errors |
+| `git diff --check` | No whitespace errors |
+| Command-handler direct-injection search | No matches in the seven command handlers |
+
+The 272 passing tests include Domain tests, Application service tests, all seven command-handler suites, and the existing query-handler suite.
+
+### 7.4 Changed implementation files
+
+The checkpoint includes:
+
+- Seven command handler implementations and their corresponding test files.
+- `authorization-application.service.ts` and its test file.
+- New `access-control-unit-of-work.port.ts`.
+- Clarified transaction-bound contracts in the authorization snapshot and three repository ports.
+
+No Prisma schema, migration, database record, or persistent database state was changed during this PHASE 5 checkpoint.
+
+### 7.5 Known limitations
+
+The current verification is Application-level verification:
+
+- The Unit of Work tests use mocks to confirm that handler operations execute inside the callback boundary.
+- They do not prove actual database Commit/Rollback behavior.
+- They do not prove that all adapters share a real Prisma transaction client.
+- They do not prove PostgreSQL snapshot consistency, isolation, locking, or resistance to concurrent authorization changes.
+- No concrete Prisma Unit of Work or Access Control repository adapters exist yet.
+- Runtime NestJS dependency-injection/module composition with a concrete Unit of Work remains to be implemented and verified.
+- A full production build and PostgreSQL Access Control Integration suite were not run as part of this checkpoint.
+
+These items must remain explicit PHASE 6 work; no production transaction-safety claim is made from mocked tests.
+
+### 7.6 PHASE 5 review checklist
+
+- [x] Seven mutation handlers use the Unit of Work contract.
+- [x] Authorization reads in mutation handlers use the supplied transaction-bound snapshot reader.
+- [x] Repository reads and mutations in handlers use repositories supplied through the same context.
+- [x] Existing Domain rules and delegation policies remain in use.
+- [x] Focused Access Control Unit suite passes: 272 tests across 15 files.
+- [x] TypeScript no-emit check passes.
+- [x] Access Control Oxlint check passes with zero warnings and errors.
+- [x] Diff whitespace check passes.
+- [ ] Project-owner review and formal PHASE 5 approval.
+- [ ] Concrete transaction behavior, runtime DI composition, and PostgreSQL Integration verification — PHASE 6.
+
+**PHASE 5 is not formally closed. Implementation and the recorded Unit verification are ready for project-owner review.**
+
+---
+
+## 8. Open items and deferred work
 
 The following items belong to later phases or separate operational work. They must not be treated as PHASE 3 failures or as completed work.
 
 1. **User account status — PHASE 8:** Identity Access owns `User.status`. Confirm how account status is enforced in authenticated and non-HTTP application operations without duplicating Identity lifecycle ownership.
 2. **Audit retention and access — PHASE 7:** define retention, access authorization, and operational handling for audit records.
-3. **Concurrency semantics — PHASES 5–6:** define transaction and locking requirements for assignment, delegation validation, and role-permission updates.
+3. **PostgreSQL concurrency semantics — PHASE 6:** choose and implement isolation/locking and safe retry behavior for assignment, delegation validation, Role/Permission updates, and other sensitive check-then-write operations. PHASE 5 now defines the Unit of Work application contract but does not claim a concrete concurrency guarantee.
 4. **Database guard behavior tests — PHASE 6:** add negative-write Integration tests for cross-scope/cross-tenant constraints and immutable Role ownership.
 5. **Backup recovery drill:** restore the recorded database backup into an isolated database before claiming a full recovery test.
 6. **Deferred Outbound Email Integration failure:** investigate `schedules retry and releases the current lease after an enqueue failure` separately. Do not change Access Control code to mask this unrelated failure.
@@ -699,7 +814,7 @@ The following items belong to later phases or separate operational work. They mu
 
 ---
 
-## 8. Session handoff protocol
+## 9. Session handoff protocol
 
 At the end of each meaningful development session:
 
@@ -720,10 +835,13 @@ The repository documents and Git history are the project source of truth. Conver
 
 ---
 
-## 9. Exact next step
+## 10. Exact next step
 
-1. Commit the approved PHASE 4 Domain implementation and its verification documentation.
-2. Begin PHASE 5 — Application Layer and Use Cases.
-3. Keep Infrastructure implementation in PHASE 6; do not introduce Prisma adapters or persistence concerns into the Domain.
+1. Review the PHASE 5 Application handlers, Unit of Work contract, test coverage, and documented limitations.
+2. Obtain project-owner approval before formally closing PHASE 5.
+3. Begin PHASE 6 by implementing the Prisma-backed Unit of Work and transaction-bound adapters for the four ports in `AccessControlUnitOfWorkContext`.
+4. Define and test PostgreSQL isolation/locking, real commit/rollback, snapshot consistency, duplicate-write handling, and concurrent authorization changes.
+5. Complete runtime NestJS provider/module composition with the concrete adapters and verify application startup.
+6. Keep Prisma and infrastructure dependencies outside Domain and Application.
 
 The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.

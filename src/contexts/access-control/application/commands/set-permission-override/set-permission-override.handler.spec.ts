@@ -4,6 +4,13 @@ import {
   PERMISSION_OVERRIDE_EFFECT,
 } from '../../../domain/permission-overrides/permission-override.js';
 import type { PermissionOverrideRepository } from '../../ports/permission-override.repository.js';
+import type { AuthorizationSnapshotReader } from '../../ports/authorization-snapshot-reader.port.js';
+import type {
+  AccessControlUnitOfWork,
+  AccessControlUnitOfWorkContext,
+} from '../../ports/access-control-unit-of-work.port.js';
+import type { RoleAssignmentRepository } from '../../ports/role-assignment.repository.js';
+import type { RoleRepository } from '../../ports/role.repository.js';
 import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import type { Clock } from '../../../../../shared/application/ports/clock.port.js';
 import { AccessControlActorRequiredError } from '../../errors/access-control-actor-required.error.js';
@@ -56,52 +63,116 @@ function createCommand(
 }
 
 function createSut(existing: PermissionOverride | null = null) {
-  const findActiveTarget = vi.fn().mockResolvedValue({
-    organizationMembership: {
-      id: 'membership-1',
-      organizationId: 'org-1',
-    },
-    branch: {
-      id: 'branch-1',
-      organizationId: 'org-1',
-    },
+  let transactionActive = false;
+
+  const transactionReader = {
+    loadSnapshot: vi.fn(),
+    loadDelegationSnapshots: vi.fn(),
+  } as AuthorizationSnapshotReader;
+
+  const findActiveTarget = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+
+    return {
+      organizationMembership: {
+        id: 'membership-1',
+        organizationId: 'org-1',
+      },
+      branch: {
+        id: 'branch-1',
+        organizationId: 'org-1',
+      },
+    };
   });
 
-  const findByUniqueKey = vi.fn().mockResolvedValue(existing);
-  const save = vi.fn().mockResolvedValue(undefined);
-  const update = vi.fn().mockResolvedValue(undefined);
-
-  const getEffectiveAuthorizationContext = vi.fn().mockResolvedValue({
-    snapshot: {},
-    permissionCodes: [
-      'organization.members.permissions.manage',
-      'branch.dashboard.read',
-    ],
+  const findByUniqueKey = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+    return existing;
   });
 
-  const now = vi.fn((): Date => UPDATED_AT);
-  const clock: Clock = { now };
+  const save = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+  });
+
+  const update = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
+  });
 
   const repository = {
     findActiveTarget,
     findByUniqueKey,
     save,
     update,
-    delete: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn(),
   } as PermissionOverrideRepository;
+
+  const context: AccessControlUnitOfWorkContext = {
+    authorizationSnapshotReader: transactionReader,
+    roleRepository: {} as RoleRepository,
+    roleAssignmentRepository: {} as RoleAssignmentRepository,
+    permissionOverrideRepository: repository,
+  };
+
+  const executeOperation = async <T>(
+    operation: (
+      context: AccessControlUnitOfWorkContext,
+    ) => Promise<T>,
+  ): Promise<T> => {
+    transactionActive = true;
+
+    try {
+      return await operation(context);
+    } finally {
+      transactionActive = false;
+    }
+  };
+
+  const execute = vi.fn(executeOperation);
+
+  const unitOfWork = {
+    execute,
+  } as unknown as AccessControlUnitOfWork;
+
+  const getEffectiveAuthorizationContext = vi
+    .fn()
+    .mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+
+      return {
+        snapshot: {},
+        permissionCodes: [
+          'organization.members.permissions.manage',
+          'branch.dashboard.read',
+        ],
+      };
+    });
 
   const authorization = {
     getEffectiveAuthorizationContext,
   } as unknown as AuthorizationApplicationService;
 
+  const now = vi.fn((): Date => {
+    expect(transactionActive).toBe(true);
+    return UPDATED_AT;
+  });
+
+  const clock: Clock = { now };
+
   return {
-    handler: new SetPermissionOverrideHandler(repository, authorization, clock),
+    handler: new SetPermissionOverrideHandler(
+      unitOfWork,
+      authorization,
+      clock,
+    ),
+    execute,
     findActiveTarget,
     findByUniqueKey,
     save,
     update,
     getEffectiveAuthorizationContext,
+    transactionReader,
     now,
+    isTransactionActive: () => transactionActive,
   };
 }
 
@@ -125,11 +196,16 @@ describe('SetPermissionOverrideHandler', () => {
       changed: true,
     });
 
-    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith({
-      userId: 'actor-1',
-      organizationId: 'org-1',
-      branchId: 'branch-1',
-    });
+    expect(sut.execute).toHaveBeenCalledOnce();
+
+    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith(
+      {
+        userId: 'actor-1',
+        organizationId: 'org-1',
+        branchId: 'branch-1',
+      },
+      sut.transactionReader,
+    );
 
     expect(sut.findActiveTarget).toHaveBeenCalledWith({
       organizationId: 'org-1',
@@ -154,6 +230,7 @@ describe('SetPermissionOverrideHandler', () => {
     expect(saved.organizationMembershipId).toBe('membership-1');
     expect(saved.branchId).toBe('branch-1');
     expect(saved.assignedById).toBe('actor-1');
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('creates an ALLOW override when the actor holds the target Branch permission', async () => {
@@ -166,6 +243,7 @@ describe('SetPermissionOverrideHandler', () => {
 
     const saved = sut.save.mock.calls[0]?.[0] as PermissionOverride;
     expect(saved.effect).toBe(PERMISSION_OVERRIDE_EFFECT.ALLOW);
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('rejects ALLOW when the actor does not hold the target permission', async () => {
@@ -181,6 +259,7 @@ describe('SetPermissionOverrideHandler', () => {
     expect(sut.findActiveTarget).not.toHaveBeenCalled();
     expect(sut.findByUniqueKey).not.toHaveBeenCalled();
     expect(sut.save).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('updates an existing DENY override to ALLOW after delegation validation', async () => {
@@ -199,6 +278,7 @@ describe('SetPermissionOverrideHandler', () => {
     expect(existing.updatedAt).toEqual(UPDATED_AT);
     expect(sut.update).toHaveBeenCalledOnce();
     expect(sut.save).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('updates an existing ALLOW override to DENY without requiring delegation', async () => {
@@ -218,6 +298,7 @@ describe('SetPermissionOverrideHandler', () => {
     });
     expect(existing.effect).toBe('DENY');
     expect(sut.update).toHaveBeenCalledOnce();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('treats setting the same effect as an idempotent success', async () => {
@@ -233,19 +314,21 @@ describe('SetPermissionOverrideHandler', () => {
     expect(sut.now).not.toHaveBeenCalled();
     expect(sut.save).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
-  it('rejects an empty actor before authorization or persistence', async () => {
+  it('rejects an empty actor before opening a transaction', async () => {
     await expect(
       sut.handler.execute(createCommand({ actorUserId: '  ' })),
     ).rejects.toBeInstanceOf(AccessControlActorRequiredError);
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
     expect(sut.findActiveTarget).not.toHaveBeenCalled();
     expect(sut.save).not.toHaveBeenCalled();
   });
 
-  it('rejects blank target identifiers before authorization', async () => {
+  it('rejects blank target identifiers before opening a transaction', async () => {
     await expect(
       sut.handler.execute(createCommand({ organizationId: '  ' })),
     ).rejects.toBeInstanceOf(InvalidPermissionOverrideRequestError);
@@ -262,6 +345,7 @@ describe('SetPermissionOverrideHandler', () => {
       sut.handler.execute(createCommand({ permissionCode: '  ' })),
     ).rejects.toBeInstanceOf(InvalidPermissionOverrideRequestError);
 
+    expect(sut.execute).not.toHaveBeenCalled();
     expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
     expect(sut.findActiveTarget).not.toHaveBeenCalled();
   });
@@ -279,6 +363,7 @@ describe('SetPermissionOverrideHandler', () => {
     expect(sut.findActiveTarget).not.toHaveBeenCalled();
     expect(sut.findByUniqueKey).not.toHaveBeenCalled();
     expect(sut.save).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('rejects an Organization-target permission', async () => {
@@ -318,6 +403,7 @@ describe('SetPermissionOverrideHandler', () => {
 
     expect(sut.findByUniqueKey).not.toHaveBeenCalled();
     expect(sut.save).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates authorization snapshot failures without target reads', async () => {
@@ -331,6 +417,7 @@ describe('SetPermissionOverrideHandler', () => {
 
     expect(sut.findActiveTarget).not.toHaveBeenCalled();
     expect(sut.save).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates target lookup failures without persistence', async () => {
@@ -343,6 +430,7 @@ describe('SetPermissionOverrideHandler', () => {
     );
 
     expect(sut.save).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates override lookup failures without persistence', async () => {
@@ -356,6 +444,7 @@ describe('SetPermissionOverrideHandler', () => {
 
     expect(sut.save).not.toHaveBeenCalled();
     expect(sut.update).not.toHaveBeenCalled();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 
   it('propagates override persistence failures', async () => {
@@ -366,5 +455,6 @@ describe('SetPermissionOverrideHandler', () => {
     );
 
     expect(sut.save).toHaveBeenCalledOnce();
+    expect(sut.isTransactionActive()).toBe(false);
   });
 });
