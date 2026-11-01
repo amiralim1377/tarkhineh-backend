@@ -1,0 +1,14 @@
+import { ApplicationError } from '../../../../shared/application/errors/application-error.js';
+import { ERROR_CATEGORY } from '../../../../shared/errors/error-category.js';
+import { ACCESS_CONTROL_APPLICATION_ERROR_CODE } from './access-control-application-error-code.js';
+
+export class RoleNotFoundError extends ApplicationError {
+  override readonly category = ERROR_CATEGORY.NOT_FOUND;
+  override readonly code = ACCESS_CONTROL_APPLICATION_ERROR_CODE.ROLE_NOT_FOUND;
+
+  constructor(organizationId: string, roleId: string) {
+    super(
+      `Role "${roleId}" was not found in Organization "${organizationId}".`,
+    );
+  }
+}

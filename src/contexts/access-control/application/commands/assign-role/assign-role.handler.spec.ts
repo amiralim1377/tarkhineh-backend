@@ -1,0 +1,480 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Role } from '../../../domain/roles/role.js';
+import { InvalidRoleAssignmentError } from '../../../domain/errors/invalid-role-assignment.error.js';
+import { RoleAssignment } from '../../../domain/role-assignments/role-assignment.js';
+import type { RoleRepository } from '../../ports/role.repository.js';
+import type { RoleAssignmentRepository } from '../../ports/role-assignment.repository.js';
+import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
+import type { Clock } from '../../../../../shared/application/ports/clock.port.js';
+import { AccessControlActorRequiredError } from '../../errors/access-control-actor-required.error.js';
+import { AccessControlForbiddenError } from '../../errors/access-control-forbidden.error.js';
+import { RoleAssignmentAlreadyExistsError } from '../../errors/role-assignment-already-exists.error.js';
+import { RoleAssignmentTargetNotFoundError } from '../../errors/role-assignment-target-not-found.error.js';
+import { RoleNotFoundError } from '../../errors/role-not-found.error.js';
+import { AssignRoleCommand } from './assign-role.command.js';
+import { AssignRoleHandler } from './assign-role.handler.js';
+
+const FIXED_TIME = new Date('2026-11-01T12:00:00.000Z');
+
+function createOrganizationRole(
+  overrides: {
+    organizationId?: string;
+    permissionCodes?: readonly string[];
+    isAssignable?: boolean;
+  } = {},
+): Role {
+  return Role.create({
+    id: 'role-1',
+    code: 'SALES_MANAGER',
+    name: 'Sales Manager',
+    definitionScope: 'ORGANIZATION',
+    assignmentScope: 'ORGANIZATION',
+    organizationId: overrides.organizationId ?? 'org-1',
+    isAssignable: overrides.isAssignable ?? true,
+    permissionCodes: overrides.permissionCodes ?? ['organization.read'],
+  });
+}
+
+function createBranchRole(
+  overrides: {
+    organizationId?: string | null;
+    permissionCodes?: readonly string[];
+  } = {},
+): Role {
+  return Role.create({
+    id: 'branch-role-1',
+    code: 'BRANCH_MANAGER_CUSTOM',
+    name: 'Branch Manager Custom',
+    definitionScope:
+      overrides.organizationId === null ? 'SYSTEM' : 'ORGANIZATION',
+    assignmentScope: 'BRANCH',
+    organizationId:
+      overrides.organizationId === null
+        ? null
+        : (overrides.organizationId ?? 'org-1'),
+    isAssignable: true,
+    permissionCodes: overrides.permissionCodes ?? ['branch.dashboard.read'],
+  });
+}
+
+function createCommand(
+  overrides: {
+    actorUserId?: string;
+    organizationId?: string;
+    roleId?: string;
+    target?: 'ORGANIZATION' | 'BRANCH' | 'NONE';
+    organizationMembershipId?: string;
+    branchMembershipId?: string;
+    branchId?: string;
+  } = {},
+): AssignRoleCommand {
+  const target = overrides.target ?? 'ORGANIZATION';
+
+  const targetInput =
+    target === 'ORGANIZATION'
+      ? {
+          organizationMembershipId:
+            overrides.organizationMembershipId ?? 'membership-1',
+        }
+      : target === 'BRANCH'
+        ? {
+            branchMembershipId:
+              overrides.branchMembershipId ?? 'branch-membership-1',
+            branchId: overrides.branchId ?? 'branch-1',
+          }
+        : {};
+
+  return new AssignRoleCommand(overrides.actorUserId ?? 'actor-1', {
+    organizationId: overrides.organizationId ?? 'org-1',
+    roleId: overrides.roleId ?? 'role-1',
+    ...targetInput,
+  });
+}
+
+function createSut(role: Role | null = createOrganizationRole()) {
+  const findAssignableById = vi.fn().mockResolvedValue(role);
+  const findById = vi.fn().mockResolvedValue(null);
+  const existsByCode = vi.fn().mockResolvedValue(false);
+  const saveRole = vi.fn().mockResolvedValue(undefined);
+  const updateRole = vi.fn().mockResolvedValue(undefined);
+
+  const findActiveOrganizationMembership = vi.fn().mockResolvedValue({
+    id: 'membership-1',
+    organizationId: 'org-1',
+  });
+
+  const findActiveBranchMembership = vi.fn().mockResolvedValue({
+    id: 'branch-membership-1',
+    organizationId: 'org-1',
+    branchId: 'branch-1',
+  });
+
+  const existsActiveForTarget = vi.fn().mockResolvedValue(false);
+  const findByIdForRevocation = vi.fn().mockResolvedValue(null);
+  const saveAssignment = vi.fn().mockResolvedValue(undefined);
+  const updateAssignment = vi.fn().mockResolvedValue(undefined);
+
+  const getEffectiveDelegationPermissionCodes = vi
+    .fn()
+    .mockResolvedValue([
+      'organization.roles.assign',
+      'organization.read',
+      'branch.dashboard.read',
+    ]);
+
+  const getEffectiveAuthorizationContext = vi.fn().mockResolvedValue({
+    snapshot: {},
+    permissionCodes: [
+      'organization.read',
+      'branch.roles.assign',
+      'branch.dashboard.read',
+    ],
+  });
+
+  const roles = {
+    existsByCode,
+    findAssignableById,
+    findById,
+    save: saveRole,
+    update: updateRole,
+  } as RoleRepository;
+
+  const assignments = {
+    findActiveOrganizationMembership,
+    findActiveBranchMembership,
+    existsActiveForTarget,
+    findByIdForRevocation,
+    save: saveAssignment,
+    update: updateAssignment,
+  } as RoleAssignmentRepository;
+
+  const authorization = {
+    getEffectiveDelegationPermissionCodes,
+    getEffectiveAuthorizationContext,
+  } as unknown as AuthorizationApplicationService;
+
+  const now = vi.fn((): Date => FIXED_TIME);
+  const clock: Clock = { now };
+
+  return {
+    handler: new AssignRoleHandler(roles, assignments, authorization, clock),
+    findAssignableById,
+    findActiveOrganizationMembership,
+    findActiveBranchMembership,
+    existsActiveForTarget,
+    saveAssignment,
+    getEffectiveDelegationPermissionCodes,
+    getEffectiveAuthorizationContext,
+    now,
+  };
+}
+
+describe('AssignRoleHandler', () => {
+  let sut: ReturnType<typeof createSut>;
+
+  beforeEach(() => {
+    sut = createSut();
+  });
+
+  it('assigns an Organization Role after management and delegation checks', async () => {
+    const result = await sut.handler.execute(createCommand());
+
+    expect(result.assignmentId).toEqual(expect.any(String));
+
+    expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledWith({
+      userId: 'actor-1',
+      organizationId: 'org-1',
+      assignmentScope: 'ORGANIZATION',
+    });
+
+    expect(sut.findAssignableById).toHaveBeenCalledWith('org-1', 'role-1');
+    expect(sut.findActiveOrganizationMembership).toHaveBeenCalledWith(
+      'org-1',
+      'membership-1',
+    );
+
+    expect(sut.existsActiveForTarget).toHaveBeenCalledWith({
+      roleId: 'role-1',
+      organizationMembershipId: 'membership-1',
+    });
+
+    expect(sut.now).toHaveBeenCalledOnce();
+    expect(sut.saveAssignment).toHaveBeenCalledOnce();
+
+    const assignment = sut.saveAssignment.mock.calls[0]?.[0] as RoleAssignment;
+    expect(assignment).toBeInstanceOf(RoleAssignment);
+    expect(assignment.roleId).toBe('role-1');
+    expect(assignment.organizationMembershipId).toBe('membership-1');
+    expect(assignment.branchMembershipId).toBeNull();
+    expect(assignment.organizationId).toBe('org-1');
+    expect(assignment.assignedById).toBe('actor-1');
+    expect(assignment.createdAt).toEqual(FIXED_TIME);
+    expect(assignment.isRevoked()).toBe(false);
+  });
+
+  it('assigns a Branch Role using the exact target Branch authorization context', async () => {
+    sut = createSut(createBranchRole());
+
+    const result = await sut.handler.execute(
+      createCommand({ target: 'BRANCH' }),
+    );
+
+    expect(result.assignmentId).toEqual(expect.any(String));
+
+    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith({
+      userId: 'actor-1',
+      organizationId: 'org-1',
+      branchId: 'branch-1',
+    });
+
+    expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
+
+    expect(sut.findActiveBranchMembership).toHaveBeenCalledWith(
+      'org-1',
+      'branch-1',
+      'branch-membership-1',
+    );
+
+    expect(sut.existsActiveForTarget).toHaveBeenCalledWith({
+      roleId: 'branch-role-1',
+      branchMembershipId: 'branch-membership-1',
+    });
+
+    const assignment = sut.saveAssignment.mock.calls[0]?.[0] as RoleAssignment;
+    expect(assignment.organizationMembershipId).toBeNull();
+    expect(assignment.branchMembershipId).toBe('branch-membership-1');
+  });
+
+  it('allows an assignable System Branch Role within an Organization', async () => {
+    sut = createSut(createBranchRole({ organizationId: null }));
+
+    await expect(
+      sut.handler.execute(createCommand({ target: 'BRANCH' })),
+    ).resolves.toMatchObject({
+      assignmentId: expect.any(String),
+    });
+
+    expect(sut.saveAssignment).toHaveBeenCalledOnce();
+  });
+
+  it('rejects an empty actor before authorization or repository access', async () => {
+    await expect(
+      sut.handler.execute(createCommand({ actorUserId: '  ' })),
+    ).rejects.toBeInstanceOf(AccessControlActorRequiredError);
+
+    expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
+    expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
+    expect(sut.findAssignableById).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('rejects an incomplete or ambiguous membership target before authorization', async () => {
+    await expect(
+      sut.handler.execute(createCommand({ target: 'NONE' })),
+    ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
+
+    await expect(
+      sut.handler.execute(
+        new AssignRoleCommand('actor-1', {
+          organizationId: 'org-1',
+          roleId: 'role-1',
+          branchMembershipId: 'branch-membership-1',
+        }),
+      ),
+    ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
+
+    await expect(
+      sut.handler.execute(
+        new AssignRoleCommand('actor-1', {
+          organizationId: 'org-1',
+          roleId: 'role-1',
+          organizationMembershipId: 'membership-1',
+          branchMembershipId: 'branch-membership-1',
+          branchId: 'branch-1',
+        }),
+      ),
+    ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
+
+    expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
+    expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
+    expect(sut.findAssignableById).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing Organization or Role identifiers before authorization', async () => {
+    await expect(
+      sut.handler.execute(createCommand({ organizationId: '  ' })),
+    ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
+
+    await expect(
+      sut.handler.execute(createCommand({ roleId: '  ' })),
+    ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
+
+    expect(sut.findAssignableById).not.toHaveBeenCalled();
+  });
+
+  it('requires Organization role-assignment authority before Role lookup', async () => {
+    sut.getEffectiveDelegationPermissionCodes.mockResolvedValueOnce([
+      'organization.read',
+    ]);
+
+    await expect(sut.handler.execute(createCommand())).rejects.toBeInstanceOf(
+      AccessControlForbiddenError,
+    );
+
+    expect(sut.findAssignableById).not.toHaveBeenCalled();
+    expect(sut.findActiveOrganizationMembership).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('requires Branch role-assignment authority in the exact Branch context', async () => {
+    sut.getEffectiveAuthorizationContext.mockResolvedValueOnce({
+      snapshot: {},
+      permissionCodes: ['branch.dashboard.read'],
+    });
+
+    await expect(
+      sut.handler.execute(createCommand({ target: 'BRANCH' })),
+    ).rejects.toBeInstanceOf(AccessControlForbiddenError);
+
+    expect(sut.findAssignableById).not.toHaveBeenCalled();
+    expect(sut.findActiveBranchMembership).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('returns not found when the Role is not available for assignment', async () => {
+    sut.findAssignableById.mockResolvedValueOnce(null);
+
+    await expect(sut.handler.execute(createCommand())).rejects.toBeInstanceOf(
+      RoleNotFoundError,
+    );
+
+    expect(sut.findActiveOrganizationMembership).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('rejects a Role whose assignment scope does not match the target', async () => {
+    await expect(
+      sut.handler.execute(createCommand({ target: 'BRANCH' })),
+    ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
+
+    expect(sut.findActiveBranchMembership).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('rejects a Role permission the actor cannot delegate', async () => {
+    sut.getEffectiveDelegationPermissionCodes.mockResolvedValueOnce([
+      'organization.roles.assign',
+    ]);
+
+    await expect(sut.handler.execute(createCommand())).rejects.toBeInstanceOf(
+      AccessControlForbiddenError,
+    );
+
+    expect(sut.findActiveOrganizationMembership).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('rejects an archived Role', async () => {
+    const archivedRole = createOrganizationRole();
+    archivedRole.archive();
+    sut.findAssignableById.mockResolvedValueOnce(archivedRole);
+
+    await expect(sut.handler.execute(createCommand())).rejects.toBeInstanceOf(
+      AccessControlForbiddenError,
+    );
+
+    expect(sut.findActiveOrganizationMembership).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('does not assign ORGANIZATION_OWNER through the generic workflow', async () => {
+    const ownerRole = Role.create({
+      id: 'owner-role',
+      code: 'ORGANIZATION_OWNER',
+      name: 'Organization Owner',
+      definitionScope: 'SYSTEM',
+      assignmentScope: 'ORGANIZATION',
+      organizationId: null,
+      isAssignable: false,
+    });
+
+    sut.findAssignableById.mockResolvedValueOnce(ownerRole);
+
+    await expect(sut.handler.execute(createCommand())).rejects.toBeInstanceOf(
+      AccessControlForbiddenError,
+    );
+
+    expect(sut.findActiveOrganizationMembership).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive or missing Organization membership target', async () => {
+    sut.findActiveOrganizationMembership.mockResolvedValueOnce(null);
+
+    await expect(sut.handler.execute(createCommand())).rejects.toBeInstanceOf(
+      RoleAssignmentTargetNotFoundError,
+    );
+
+    expect(sut.existsActiveForTarget).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive or missing Branch membership target', async () => {
+    sut = createSut(createBranchRole());
+    sut.findActiveBranchMembership.mockResolvedValueOnce(null);
+
+    await expect(
+      sut.handler.execute(createCommand({ target: 'BRANCH' })),
+    ).rejects.toBeInstanceOf(RoleAssignmentTargetNotFoundError);
+
+    expect(sut.existsActiveForTarget).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('rejects a duplicate active assignment', async () => {
+    sut.existsActiveForTarget.mockResolvedValueOnce(true);
+
+    await expect(sut.handler.execute(createCommand())).rejects.toBeInstanceOf(
+      RoleAssignmentAlreadyExistsError,
+    );
+
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('propagates authorization snapshot failures without repository reads', async () => {
+    sut.getEffectiveDelegationPermissionCodes.mockRejectedValueOnce(
+      new Error('Authorization snapshot unavailable'),
+    );
+
+    await expect(sut.handler.execute(createCommand())).rejects.toThrow(
+      'Authorization snapshot unavailable',
+    );
+
+    expect(sut.findAssignableById).not.toHaveBeenCalled();
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('propagates target lookup failures without saving an assignment', async () => {
+    sut.findActiveOrganizationMembership.mockRejectedValueOnce(
+      new Error('Membership lookup failed'),
+    );
+
+    await expect(sut.handler.execute(createCommand())).rejects.toThrow(
+      'Membership lookup failed',
+    );
+
+    expect(sut.saveAssignment).not.toHaveBeenCalled();
+  });
+
+  it('propagates assignment persistence failures', async () => {
+    sut.saveAssignment.mockRejectedValueOnce(
+      new Error('Assignment persistence failed'),
+    );
+
+    await expect(sut.handler.execute(createCommand())).rejects.toThrow(
+      'Assignment persistence failed',
+    );
+
+    expect(sut.saveAssignment).toHaveBeenCalledOnce();
+  });
+});

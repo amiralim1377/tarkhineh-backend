@@ -40,8 +40,8 @@ export class Role extends Entity<UniqueId> {
   private constructor(
     id: UniqueId,
     private readonly code: string,
-    private readonly name: string,
-    private readonly description: string | null,
+    private name: string,
+    private description: string | null,
     private readonly definitionScope: RoleDefinitionScope,
     private readonly assignmentScope: RoleAssignmentScope,
     private readonly organizationId: string | null,
@@ -262,7 +262,25 @@ export class Role extends Entity<UniqueId> {
    * Replaces the complete permission set after validating every code
    * against the registry and the Role's immutable assignment scope.
    */
+  updateDetails(name: string, description?: string | null): void {
+    this.assertActiveForMutation();
+
+    const normalizedName = name.trim();
+
+    if (!normalizedName) {
+      throw new InvalidRoleDataError(
+        ROLE_DATA_ERROR_CODE.NAME_REQUIRED,
+        'Role name cannot be empty.',
+      );
+    }
+
+    this.name = normalizedName;
+    this.description = description?.trim() || null;
+  }
+
   replacePermissionCodes(permissionCodes: readonly string[]): void {
+    this.assertActiveForMutation();
+
     const validatedCodes = Role.validatePermissionCodes(
       this.assignmentScope,
       permissionCodes,
@@ -273,5 +291,14 @@ export class Role extends Entity<UniqueId> {
 
   archive(): void {
     this.status = ROLE_STATUS.ARCHIVED;
+  }
+
+  private assertActiveForMutation(): void {
+    if (this.status !== ROLE_STATUS.ACTIVE) {
+      throw new InvalidRoleDataError(
+        ROLE_DATA_ERROR_CODE.ROLE_ARCHIVED,
+        'An archived Role cannot be modified.',
+      );
+    }
   }
 }

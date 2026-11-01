@@ -254,6 +254,75 @@ describe('Role', () => {
     });
   });
 
+  describe('mutable details', () => {
+    it('updates and normalizes the Role name and description', () => {
+      const role = createOrganizationRole({
+        name: 'Old Name',
+        description: 'Old description',
+      });
+
+      role.updateDetails('  Sales Lead  ', '  Leads the sales team  ');
+
+      expect(role.getName()).toBe('Sales Lead');
+      expect(role.getDescription()).toBe('Leads the sales team');
+    });
+
+    it('allows clearing the description', () => {
+      const role = createOrganizationRole({
+        description: 'Existing description',
+      });
+
+      role.updateDetails('Sales Lead', null);
+
+      expect(role.getName()).toBe('Sales Lead');
+      expect(role.getDescription()).toBeNull();
+    });
+
+    it('rejects an empty name without mutating current details', () => {
+      const role = createOrganizationRole({
+        name: 'Existing Name',
+        description: 'Existing description',
+      });
+
+      expect(() => role.updateDetails('   ', 'Changed')).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.NAME_REQUIRED,
+        }),
+      );
+
+      expect(role.getName()).toBe('Existing Name');
+      expect(role.getDescription()).toBe('Existing description');
+    });
+
+    it('does not allow an archived Role to change details or permissions', () => {
+      const role = createOrganizationRole({
+        name: 'Archived Role',
+        permissionCodes: [PERMISSION_CODE.ORGANIZATION_READ],
+      });
+
+      role.archive();
+
+      expect(() => role.updateDetails('New Name', null)).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.ROLE_ARCHIVED,
+        }),
+      );
+
+      expect(() =>
+        role.replacePermissionCodes([PERMISSION_CODE.BRANCH_DASHBOARD_READ]),
+      ).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.ROLE_ARCHIVED,
+        }),
+      );
+
+      expect(role.getName()).toBe('Archived Role');
+      expect(role.getPermissionCodes()).toEqual([
+        PERMISSION_CODE.ORGANIZATION_READ,
+      ]);
+    });
+  });
+
   describe('lifecycle and generic assignment', () => {
     it('allows active and assignable roles through generic assignment workflows', () => {
       const role = createOrganizationRole();
