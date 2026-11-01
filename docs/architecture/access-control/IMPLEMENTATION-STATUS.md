@@ -5,7 +5,7 @@
 | Project                | `tarkhineh-backend`                            |
 | Document version       | 1.3                                            |
 | Last updated           | 2026-11-01                                     |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.1                  |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.2                  |
 | Decision log           | `ARCHITECTURAL-DECISIONS.md`                   |
 | Current phase          | PHASE 3 — Permission Registry and Seed |
 | Current phase status   | IN PROGRESS — REGISTRY AND SEED DESIGN REVIEW |

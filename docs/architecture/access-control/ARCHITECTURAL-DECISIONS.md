@@ -3,9 +3,9 @@
 | Attribute              | Value                         |
 | ---------------------- | ----------------------------- |
 | Project                | `tarkhineh-backend`           |
-| Document version       | 1.1                           |
+| Document version       | 1.2                           |
 | Last updated           | 2026-11-01                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.1 |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.2 |
 | Status reference       | `IMPLEMENTATION-STATUS.md`    |
 
 This log records decisions and their rationale. An accepted decision must not be silently changed during implementation. If new evidence requires a change, add a new ADR that supersedes the old one and obtain project-owner approval.
@@ -154,7 +154,7 @@ The organization owner has privileged authority, and ownership is also represent
 ### Consequences
 
 - Generic assignment must reject this role even if an ordinary assignment permission exists.
-- The final database representation (`isAssignable` or an equivalent explicit policy) remains to be finalized in PHASE 2.
+- `isAssignable` is the persisted representation. `ORGANIZATION_OWNER` is seeded with `isAssignable = false`, and `Role_reserved_owner_non_assignable_check` prevents it from being made assignable.
 - Owner transfer requires explicit authorization, audit, and transaction design.
 
 ---
@@ -209,7 +209,7 @@ Global context validation occurs before override evaluation; an ALLOW override c
 
 ## ADR-009 — Scope Permission Overrides by OrganizationMembership, Branch, and Permission
 
-**Status:** ACCEPTED — SCHEMA IMPLEMENTATION PENDING  
+**Status:** ACCEPTED — SCHEMA IMPLEMENTED IN PHASE 2  
 **Date:** 2026-11-01
 
 ### Context
@@ -233,7 +233,7 @@ Logical uniqueness is `(organizationMembershipId, branchId, permissionId)`. The 
 - An Organization member without BranchMembership can receive a branch-specific DENY or ALLOW override.
 - Use composite foreign keys/relation design to enforce the shared Organization where feasible.
 - Target-scope validation and delegation remain application responsibilities.
-- Existing `BranchMembership.permissionOverrides` relation must be redesigned in PHASE 2.
+- The `UserPermissionOverride` relation was redesigned in PHASE 2 around OrganizationMembership + Branch + Permission and applied through the approved migration.
 
 ---
 
@@ -256,7 +256,7 @@ The Registry is the source of truth for metadata. The database retains stable Pe
 
 - Permission codes are stable contracts.
 - Renaming or retiring a code requires a deliberate compatibility/migration plan.
-- Database `name` and `description` columns may be removed only after all consumers are audited.
+- PHASE 2 audited repository consumers and removed the Permission `name` and `description` columns through the approved migration; localized metadata remains source-controlled.
 - Seed synchronizes known permissions but must not silently destroy referenced or historical permissions.
 
 ---
@@ -455,16 +455,23 @@ Git is the source of code/document change history. ChatGPT memory and conversati
 
 ---
 
+## Resolved implementation decisions
+
+The following implementation decisions were resolved during PHASE 2 and verified on 2026-11-01:
+
+1. **Reserved Role representation:** persist `Role.isAssignable`. `ORGANIZATION_OWNER` is seeded with `isAssignable = false` and protected by the database constraint `Role_reserved_owner_non_assignable_check`.
+2. **Permission metadata persistence:** the targeted repository consumer audit found no additional consumers beyond the catalog and Seed in `src`, `prisma`, and `test`. Permission `name` and `description` columns were removed; the source-code catalog remains the metadata source.
+3. **Migration strategy:** use a forward migration, not a database reset. Migration `20261101075730_access_control_schema_v2` was successfully applied and verified on both `tarkhineh_test` and `tarkhineh_db`.
+
 ## Open implementation decisions (do not silently assume)
 
-The approved architectural direction is stable, but the following details must be finalized in the relevant implementation phase:
+The approved architectural direction is stable. The following details must be finalized in their relevant implementation phases:
 
-1. Exact persisted representation for reserved/non-assignable roles: `isAssignable` or a small equivalent policy.
-2. Whether Permission database `name`/`description` have any API/admin consumers before removing them.
-3. Explicit permission sets for `ORGANIZATION_OWNER` and `BRANCH_MANAGER`.
-4. At PHASE 8, verify how `User.status` from Identity Access is enforced for non-HTTP and application-level operations without transferring Identity lifecycle ownership.
-5. PHASE 2 migration strategy: forward migration versus development-only reset/recreation. Project owner reports no important development data, but no reset is approved yet.
-6. Audit retention and who may read audit records (PHASE 7).
-7. Exact transaction/locking semantics for delegation checks and sensitive assignment changes (PHASE 5/6).
+1. **Explicit system-role permission sets — PHASE 3:** define the exact permission sets for `ORGANIZATION_OWNER` and `BRANCH_MANAGER`; do not use a dynamic all-permissions grant.
+2. **Delegability policy — PHASE 3:** define `delegable` explicitly for every Permission and ensure the policy is consistent with the ability to assign roles containing those permissions.
+3. **Override management scope — PHASE 3:** confirm the target scope and operation semantics for `organization.members.permissions.manage`.
+4. **Identity status integration — PHASE 8:** verify how `User.status` is enforced for non-HTTP and application-level operations without transferring Identity lifecycle ownership.
+5. **Audit retention/access — PHASE 7:** define operational retention and who may read audit records.
+6. **Concurrency semantics — PHASES 5–6:** define exact transaction and locking behavior for delegation checks and sensitive assignment changes.
 
 When any item is resolved, add the decision and rationale here or in a new ADR, and update `IMPLEMENTATION-STATUS.md`.
