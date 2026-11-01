@@ -802,7 +802,7 @@ These items must remain explicit PHASE 6 work; no production transaction-safety 
 
 ## 8. PHASE 6 — Infrastructure and Authorization Persistence
 
-**Status: CORE IMPLEMENTATION PRESENT — ACCEPTANCE ITEMS OPEN; AWAITING PROJECT-OWNER REVIEW.**
+**Status: PERSISTENCE ACCEPTANCE SCENARIOS VERIFIED — AWAITING PROJECT-OWNER REVIEW.**
 
 PHASE 6 implements the Application ports introduced in PHASE 5 using Prisma 7 and PostgreSQL. Prisma and NestJS dependencies remain in Infrastructure; Domain and Application remain independent of generated Prisma models and transaction APIs.
 
@@ -921,7 +921,7 @@ The two Registry Seed Integration tests bring the focused Access Control Integra
 
 ### 8.8 Query-plan review and remaining limitations
 
-A PostgreSQL 18.6 `EXPLAIN` review was performed for representative Branch, Membership, RoleAssignment, RolePermission, and PermissionOverride access paths. The schema already contains the expected tenant/scope and active-assignment indexes, including Organization/Branch status indexes, Membership lookup indexes, active RoleAssignment uniqueness/index paths, the RolePermission composite primary key, and PermissionOverride tenant/composite-key indexes. Based on the inspected plans and current schema, no additional index or migration is recommended at this checkpoint.
+A PostgreSQL 18.6 `EXPLAIN` review was performed for representative Branch, Membership, RoleAssignment, RolePermission, and PermissionOverride access paths. The inspected schema includes `Branch_organizationId_status_idx`; OrganizationMembership's unique `(organizationId, userId)` key and user/status lookup index; RoleAssignment's membership/revocation and role/revocation indexes plus partial active-assignment unique keys; BranchMembership's unique `(branchId, organizationMembershipId)` key and Branch/status, membership/status, and Organization/status indexes; UserPermissionOverride's `(organizationMembershipId, organizationId)` and `(branchId, organizationId)` indexes plus its unique `(organizationMembershipId, branchId, permissionId)` key; and RolePermission's `(roleId, permissionId)` primary key and Permission lookup index. Based on the inspected plans and current schema, no additional index or migration is recommended at this checkpoint.
 
 The plans were collected against a small test dataset using synthetic/probe identifiers. PostgreSQL selected sequential scans for several low-cardinality or empty-table probes, with observed execution times around 0.017–0.077 ms. Those plans are expected for tiny relations and do **not** establish a missing-index defect or demonstrate production-scale performance. A representative data-volume benchmark with `EXPLAIN (ANALYZE, BUFFERS)` remains a production-readiness activity.
 
