@@ -10,11 +10,6 @@ enum MembershipStatus {
   REMOVED
 }
 
-enum MembershipScope {
-  ORGANIZATION
-  BRANCH
-}
-
 model Organization {
   id          String             @id @default(cuid())
   name        String
@@ -42,10 +37,11 @@ model OrganizationMembership {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user              User               @relation("UserOrganizationMemberships", fields: [userId], references: [id], onDelete: Cascade)
-  branchMemberships BranchMembership[]
-  roleAssignments   RoleAssignment[]   @relation("OrganizationMembershipRoleAssignments")
+  organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                User                     @relation("UserOrganizationMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  branchMemberships   BranchMembership[]
+  roleAssignments     RoleAssignment[]         @relation("OrganizationMembershipRoleAssignments")
+  permissionOverrides UserPermissionOverride[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, userId])
@@ -66,8 +62,7 @@ model BranchMembership {
   branch                 Branch                 @relation(fields: [branchId, organizationId], references: [id, organizationId], onDelete: Cascade)
   organizationMembership OrganizationMembership @relation(fields: [organizationMembershipId, organizationId], references: [id, organizationId], onDelete: Cascade)
 
-  roleAssignments     RoleAssignment[]         @relation("BranchMembershipRoleAssignments")
-  permissionOverrides UserPermissionOverride[]
+  roleAssignments RoleAssignment[] @relation("BranchMembershipRoleAssignments")
 
   @@unique([id, organizationId])
   @@unique([branchId, organizationMembershipId])
