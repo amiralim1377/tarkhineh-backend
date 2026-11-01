@@ -5,12 +5,12 @@
 | Attribute                    | Value                                                                                         |
 | ---------------------------- | --------------------------------------------------------------------------------------------- |
 | Document                     | Master Architecture & Implementation Specification                                            |
-| Version                      | 1.8                                                                                           |
+| Version                      | 1.9                                                                                           |
 | Last updated                 | 2026-11-01                                                                                    |
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                                        |
 | Architecture status          | Approved by project owner                                                                     |
 | Repository audit             | PHASE 0 completed                                                                             |
-| Current implementation phase | PHASE 6 — Infrastructure and Authorization Persistence (acceptance scenarios verified; owner review open) |
+| Current implementation phase | PHASE 6 — Infrastructure and Authorization Persistence (technical review passed; formal sign-off open) |
 | Source of truth               | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -1250,11 +1250,11 @@ PHASE 5 was formally approved by the project owner on 2026-11-01 and is closed. 
 
 ## PHASE 6 — Infrastructure and Authorization Persistence
 
-Status: **PERSISTENCE ACCEPTANCE SCENARIOS VERIFIED — AWAITING PROJECT-OWNER REVIEW.**
+Status: **TECHNICAL REVIEW PASSED — FORMAL PROJECT-OWNER SIGN-OFF OPEN.**
 
 The concrete Prisma-backed AccessControlUnitOfWork, transaction-bound repositories, authorization snapshot readers, NestJS provider bindings, Serializable mutation transactions, RepeatableRead standalone snapshots, bounded P2034 retry, and narrowly classified Permission Override composite-key P2002 retry are implemented. The expanded PostgreSQL Integration suite now covers tenant isolation, database guards, real SetPermissionOverrideHandler concurrency, duplicate RoleAssignment and Role creation races, Role permission-set mutation races, and Multi-Branch snapshot consistency. The focused Access Control verification records 322 Unit tests and 16 Integration tests passing, plus TypeScript, lint, formatting, diff, and production build checks. Exact commands, output, and limitations are recorded in IMPLEMENTATION-STATUS.md, section 8.
 
-This status is not formal phase closure. The persistence acceptance scenarios requested for PHASE 6 have been implemented and verified; the remaining review items are full application dependency-graph verification, the full-project Integration suite, a representative data-volume query benchmark, and explicit project-owner approval.
+This status is not formal phase closure. A GitHub source review on 2026-11-01 found no blocking Phase 6 Infrastructure/Persistence defect. The NestJS provider graph was statically traced and found consistent; however, a full application boot was not executed. The full-project Integration suite was not rerun, and a representative production-volume query benchmark remains deferred. Explicit project-owner sign-off is still required.
 
 Completed implementation and verification:
 
@@ -1267,10 +1267,10 @@ Completed implementation and verification:
 
 Remaining review items:
 
-- Full application boot and complete `AccessControlModule` dependency-graph verification.
+- Full application boot and runtime verification of the complete `AccessControlModule` dependency graph (static provider review passed; runtime boot was not performed).
 - Full-project Integration suite review. A previously isolated, unrelated Outbound Email retry/lease Integration test remains failing and is tracked separately.
 - Repeat query-plan inspection with representative data volume before making production performance claims. Current low-cardinality/synthetic-data plans do not justify adding an index or claiming scale readiness.
-- Project-owner review and formal PHASE 6 approval.
+- Project-owner sign-off and formal PHASE 6 closure.
 
 Do not move Prisma dependencies into Domain or Application. PHASE 6 implements the Application contracts defined in PHASE 5. Do not begin PHASE 7 until the project owner explicitly approves PHASE 6 closure.
 
