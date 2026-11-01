@@ -31,6 +31,7 @@ interface SystemRoleDefinition {
   readonly name: string;
   readonly description: string;
   readonly assignmentScope: 'ORGANIZATION' | 'BRANCH';
+  readonly isAssignable: boolean;
   readonly permissionCodes: readonly PermissionCode[];
 }
 
@@ -40,6 +41,7 @@ const systemRoles = [
     name: 'مالک سازمان',
     description: 'مدیریت کامل سازمان ترخینه و تمام شعب آن.',
     assignmentScope: 'ORGANIZATION',
+    isAssignable: false,
 
     // Organization Owner receives all defined permissions.
     permissionCodes: PERMISSION_DEFINITIONS.map(
@@ -51,6 +53,7 @@ const systemRoles = [
     name: 'مدیر شعبه',
     description: 'مدیریت عملیات و کارکنان شعبه در محدوده اختیارات مجاز.',
     assignmentScope: 'BRANCH',
+    isAssignable: true,
 
     permissionCodes: [
       PERMISSION_CODE.BRANCH_DASHBOARD_READ,
@@ -78,14 +81,9 @@ async function seedPermissions(): Promise<Map<PermissionCode, string>> {
       where: {
         code: permission.code,
       },
-      update: {
-        name: permission.name.fa,
-        description: permission.description.fa,
-      },
+      update: {},
       create: {
         code: permission.code,
-        name: permission.name.fa,
-        description: permission.description.fa,
       },
     });
 
@@ -105,11 +103,17 @@ async function seedSystemRole(definition: SystemRoleDefinition) {
   const existingRole = await prisma.role.findFirst({
     where: {
       code: definition.code,
-      scope: 'SYSTEM',
+      definitionScope: 'SYSTEM',
     },
   });
 
   if (existingRole) {
+    if (existingRole.assignmentScope !== definition.assignmentScope) {
+      throw new Error(
+        `System role "${definition.code}" has an unexpected assignment scope.`,
+      );
+    }
+
     return prisma.role.update({
       where: {
         id: existingRole.id,
@@ -117,7 +121,7 @@ async function seedSystemRole(definition: SystemRoleDefinition) {
       data: {
         name: definition.name,
         description: definition.description,
-        assignmentScope: definition.assignmentScope,
+        isAssignable: definition.isAssignable,
       },
     });
   }
@@ -127,8 +131,9 @@ async function seedSystemRole(definition: SystemRoleDefinition) {
       code: definition.code,
       name: definition.name,
       description: definition.description,
-      scope: 'SYSTEM',
+      definitionScope: 'SYSTEM',
       assignmentScope: definition.assignmentScope,
+      isAssignable: definition.isAssignable,
     },
   });
 }
