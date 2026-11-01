@@ -5,12 +5,12 @@
 | Attribute                    | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
 | Document                     | Master Architecture & Implementation Specification                          |
-| Version                      | 1.5                                                                         |
+| Version                      | 1.6                                                                         |
 | Last updated                 | 2026-11-01                                                                  |
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                      |
 | Architecture status          | Approved by project owner                                                   |
 | Repository audit             | PHASE 0 completed                                                           |
-| Current implementation phase | PHASE 5 — Application Layer and Use Cases (in progress; owner review pending) |
+| Current implementation phase | PHASE 6 — Infrastructure and Authorization Persistence (next; not started) |
 | Source of truth              | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -862,7 +862,7 @@ Only one phase is active at a time. Do not mark a phase complete from code appea
 | 2     | Database Schema and Migration Design            | COMPLETED — APPROVED              |
 | 3     | Permission Registry and Seed                    | COMPLETED — APPROVED              |
 | 4     | Domain Model                                    | COMPLETED — APPROVED (2026-11-01) |
-| 5     | Application Layer and Use Cases                 | IN PROGRESS — implementation verified; review pending |
+| 5     | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
 | 6     | Infrastructure and Authorization Persistence    | NOT STARTED                       |
 | 7     | Audit Logging                                   | NOT STARTED                       |
 | 8     | Cross-Context Integration                       | NOT STARTED                       |
@@ -1205,7 +1205,7 @@ The full project suite and production build were run before the final formatting
 
 ## PHASE 5 — Application Layer and Use Cases
 
-Status: IN PROGRESS — implementation and Unit verification recorded; project-owner review pending.
+Status: COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01).
 
 ### Implemented Application capabilities
 
@@ -1217,6 +1217,7 @@ Status: IN PROGRESS — implementation and Unit verification recorded; project-o
 - All seven mutation handlers execute authorization reads, target reads, and persistence calls through the transaction-bound context supplied to the Unit of Work.
 - AuthorizationApplicationService accepts a transaction-bound AuthorizationSnapshotReader for command operations while retaining its default reader for query operations.
 - Actor identity remains an explicit command input that must be populated by a trusted authentication boundary; HTTP integration is deferred to PHASE 9.
+- `UpdateRoleHandler` validates delegation only when `permissionCodes` is supplied, including an empty array; metadata-only updates do not require re-delegating an unchanged Permission set.
 - Repository port documentation assigns transaction lifecycle ownership to the Unit of Work and prohibits nested or independent transactions in supplied adapters.
 
 ### Application transaction boundary
@@ -1231,7 +1232,7 @@ This is an Application contract, not evidence that a real database transaction o
 
 Observed on 2026-11-01:
 
-- Access Control Unit tests: 15 files passed; 272 tests passed; 0 failed.
+- Access Control Unit tests: 15 files passed; 275 tests passed; 0 failed.
 - `npx tsc --noEmit`: completed without reported errors.
 - `npx oxlint --type-aware src/contexts/access-control/`: 68 files; 0 warnings; 0 errors.
 - `git diff --check`: no whitespace errors.
@@ -1245,7 +1246,7 @@ Limitations at this checkpoint:
 - A full production build and PostgreSQL Access Control Integration suite have not been run as part of this checkpoint.
 - No Prisma schema, migration, or database changes were made.
 
-PHASE 5 remains in progress until Application acceptance review is completed and the project owner approves the phase. Do not claim production transaction safety from the current mocked tests.
+PHASE 5 was formally approved by the project owner on 2026-11-01 and is closed. Its completion covers the Application contract and mocked Unit verification only; real PostgreSQL transaction behavior, concurrency guarantees, concrete adapters, and runtime provider composition remain PHASE 6 work. Do not claim production transaction safety from the current mocked tests.
 
 ## PHASE 6 — Infrastructure and Authorization Persistence
 
@@ -1474,6 +1475,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The current implementation checkpoint is **PHASE 5 — Application Layer and Use Cases**, in progress with implementation and Unit verification recorded; project-owner review is pending. PHASES 0–4 are closed. Complete the PHASE 5 review before proceeding to PHASE 6.
+The current implementation checkpoint is **PHASE 6 — Infrastructure and Authorization Persistence**, the next phase and not yet started. PHASES 0–5 are closed; PHASE 5 was approved by the project owner on 2026-11-01. Proceed sequentially through PHASE 6 (Infrastructure and Authorization Persistence), PHASE 7 (Audit Logging), and PHASE 8 (Cross-Context Integration). Only one phase may be active at a time.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.

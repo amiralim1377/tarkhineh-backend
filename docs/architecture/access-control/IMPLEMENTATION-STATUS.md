@@ -3,12 +3,12 @@
 | Attribute              | Value                                                  |
 | ---------------------- | ------------------------------------------------------ |
 | Project                | `tarkhineh-backend`                                    |
-| Document version       | 1.8                                                    |
+| Document version       | 1.9                                                    |
 | Last updated           | 2026-11-01                                             |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.5                          |
-| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.7                      |
-| Current phase          | PHASE 5 — Application Layer and Use Cases              |
-| Current phase status   | **IN PROGRESS — IMPLEMENTATION VERIFIED; OWNER REVIEW PENDING** |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.6                          |
+| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.8                      |
+| Current phase          | PHASE 6 — Infrastructure and Authorization Persistence              |
+| Current phase status   | **NOT STARTED — PHASE 5 APPROVED; READY TO BEGIN** |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -25,7 +25,7 @@
 |     2 | Database Schema and Migration Design            | COMPLETED — approved by project owner on 2026-11-01 |
 |     3 | Permission Registry and Seed                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
-|     5 | Application Layer and Use Cases                 | IN PROGRESS — implementation verified; review pending |
+|     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
 |     6 | Infrastructure and Authorization Persistence    | NOT STARTED                                         |
 |     7 | Audit Logging                                   | NOT STARTED                                         |
 |     8 | Cross-Context Integration                       | NOT STARTED                                         |
@@ -34,7 +34,7 @@
 
 ### Latest implementation checkpoint
 
-PHASE 5 — Application Layer and Use Cases is the current phase. All seven mutation handlers use the Unit of Work Application contract. The latest observed checkpoint is 272 passing Access Control tests across 15 files, a successful TypeScript no-emit check, zero Access Control Oxlint warnings/errors, and a clean diff check. Formal PHASE 5 review and approval remain pending. See section 7 for deliverables and limitations.
+PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. All seven mutation handlers use the Unit of Work Application contract. The final observed checkpoint is 275 passing Access Control tests across 15 files, a successful TypeScript no-emit check, and zero Access Control Oxlint warnings/errors. PHASE 6 is the next phase and remains not started. See section 7 for PHASE 5 deliverables and limitations.
 
 ### PHASE 3 Registry implementation result
 
@@ -690,7 +690,7 @@ The full project test suite and production build were run before the formatting-
 
 ## 7. PHASE 5 — Application Layer and Use Cases
 
-**Status: IN PROGRESS — IMPLEMENTATION AND UNIT VERIFICATION RECORDED; PROJECT-OWNER REVIEW PENDING**
+**Status: COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)**
 **Checkpoint date: 2026-11-01**
 
 ### 7.1 Implemented deliverables
@@ -749,13 +749,13 @@ Observed local terminal results on 2026-11-01:
 
 | Command | Observed result |
 | --- | --- |
-| `npx vitest run src/contexts/access-control` | 15 files passed; 272 tests passed; 0 failed |
+| `npx vitest run src/contexts/access-control` | 15 files passed; 275 tests passed; 0 failed |
 | `npx tsc --noEmit` | Completed without reported errors |
 | `npx oxlint --type-aware src/contexts/access-control/` | 68 files; 0 warnings; 0 errors |
 | `git diff --check` | No whitespace errors |
 | Command-handler direct-injection search | No matches in the seven command handlers |
 
-The 272 passing tests include Domain tests, Application service tests, all seven command-handler suites, and the existing query-handler suite.
+The 275 passing tests include Domain tests, Application service tests, all seven command-handler suites, and the existing query-handler suite. The final three-test increase covers metadata-only Role updates without delegation checks, Permission-set delegation checks (including clearing the set), and delegation snapshot failure behavior.
 
 ### 7.4 Changed implementation files
 
@@ -763,6 +763,7 @@ The checkpoint includes:
 
 - Seven command handler implementations and their corresponding test files.
 - `authorization-application.service.ts` and its test file.
+- `UpdateRoleHandler` and its test file: delegation is checked only when `permissionCodes` is supplied, including an empty array; metadata-only updates retain management authorization but do not re-delegate unchanged permissions.
 - New `access-control-unit-of-work.port.ts`.
 - Clarified transaction-bound contracts in the authorization snapshot and three repository ports.
 
@@ -788,14 +789,14 @@ These items must remain explicit PHASE 6 work; no production transaction-safety 
 - [x] Authorization reads in mutation handlers use the supplied transaction-bound snapshot reader.
 - [x] Repository reads and mutations in handlers use repositories supplied through the same context.
 - [x] Existing Domain rules and delegation policies remain in use.
-- [x] Focused Access Control Unit suite passes: 272 tests across 15 files.
+- [x] Focused Access Control Unit suite passes: 275 tests across 15 files.
 - [x] TypeScript no-emit check passes.
 - [x] Access Control Oxlint check passes with zero warnings and errors.
 - [x] Diff whitespace check passes.
-- [ ] Project-owner review and formal PHASE 5 approval.
+- [x] Project-owner review and formal PHASE 5 approval (2026-11-01).
 - [ ] Concrete transaction behavior, runtime DI composition, and PostgreSQL Integration verification — PHASE 6.
 
-**PHASE 5 is not formally closed. Implementation and the recorded Unit verification are ready for project-owner review.**
+**PHASE 5 was formally approved by the project owner on 2026-11-01 and is closed. Its known Infrastructure and runtime limitations are explicitly assigned to PHASE 6.**
 
 ---
 
@@ -837,11 +838,13 @@ The repository documents and Git history are the project source of truth. Conver
 
 ## 10. Exact next step
 
-1. Review the PHASE 5 Application handlers, Unit of Work contract, test coverage, and documented limitations.
-2. Obtain project-owner approval before formally closing PHASE 5.
-3. Begin PHASE 6 by implementing the Prisma-backed Unit of Work and transaction-bound adapters for the four ports in `AccessControlUnitOfWorkContext`.
-4. Define and test PostgreSQL isolation/locking, real commit/rollback, snapshot consistency, duplicate-write handling, and concurrent authorization changes.
-5. Complete runtime NestJS provider/module composition with the concrete adapters and verify application startup.
-6. Keep Prisma and infrastructure dependencies outside Domain and Application.
+PHASE 5 is closed. The next three phases are sequenced as PHASE 6 (Infrastructure and Authorization Persistence), PHASE 7 (Audit Logging), and PHASE 8 (Cross-Context Integration). Work on them sequentially; do not activate overlapping phases.
 
-The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
+1. **Begin PHASE 6:** inspect the Prisma schema, existing Prisma service/transaction APIs, migration constraints, and current Access Control ports before writing adapters.
+2. Implement the Prisma-backed `AccessControlUnitOfWork` and transaction-bound `RoleRepository`, `RoleAssignmentRepository`, `PermissionOverrideRepository`, and `AuthorizationSnapshotReader` adapters.
+3. Define the PostgreSQL isolation/locking strategy for check-then-write operations, including safe serialization/deadlock retry semantics.
+4. Add real PostgreSQL Integration coverage for commit, rollback, shared transaction-client binding, consistent authorization snapshots, tenant isolation, concurrent authorization changes, duplicate assignments, Role/Permission mutation races, and database guards.
+5. Complete NestJS provider/module composition; review indexes, query plans, and N+1 behavior; run Integration tests, full Unit tests, TypeScript, production build, and lint.
+6. Keep Prisma and Infrastructure dependencies outside Domain and Application.
+
+After PHASE 6 approval, proceed to PHASE 7 audit persistence/atomic audit recording, then PHASE 8 Identity and Organization cross-context integration. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.

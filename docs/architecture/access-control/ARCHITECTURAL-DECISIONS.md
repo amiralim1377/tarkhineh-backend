@@ -3,9 +3,9 @@
 | Attribute              | Value                         |
 | ---------------------- | ----------------------------- |
 | Project                | `tarkhineh-backend`           |
-| Document version       | 1.7                           |
+| Document version       | 1.8                           |
 | Last updated           | 2026-11-01                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.5 |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.6 |
 | Implementation status  | `IMPLEMENTATION-STATUS.md`    |
 
 This document is the decision log for the Access Control bounded context. Each ADR records the context, the decision, and its consequences. Accepted decisions are binding implementation constraints. They must not be silently changed. If later evidence or a product requirement requires a change, add a new ADR that explicitly supersedes the affected decision and obtain project-owner approval before implementing the change.
@@ -566,7 +566,7 @@ The architecture requires stable source-controlled Permission semantics, explici
 
 ## ADR-020 — Application mutations use a transaction-owning Access Control Unit of Work
 
-**Status:** IMPLEMENTED — AWAITING PROJECT-OWNER APPROVAL
+**Status:** ACCEPTED — IMPLEMENTED (PHASE 5 APPROVED BY PROJECT OWNER 2026-11-01)
 **Decision owner:** Project owner
 **Date:** 2026-11-01
 
@@ -606,6 +606,8 @@ Database uniqueness constraints remain authoritative for duplicate writes. Safe 
 
 - All seven PHASE 5 mutation handlers use the Unit of Work port.
 - `AuthorizationApplicationService` accepts an explicitly supplied snapshot reader so command authorization can use the transaction-bound reader; query handlers may continue using the default reader.
+- `UpdateRoleHandler` performs delegation validation only when `permissionCodes` is supplied, including an empty array. Metadata-only Role updates require management authority but do not re-delegate an unchanged Permission set.
+- The project owner approved PHASE 5 on 2026-11-01; the Application Unit of Work contract is accepted and implemented. Concrete PostgreSQL transaction/concurrency guarantees remain PHASE 6 work.
 - Mock-based Unit tests verify that handler reads and writes occur within the Unit of Work callback. They do not prove real database commit, rollback, transaction-client sharing, isolation, locking, or race-condition protection.
 - Concrete Prisma transaction binding, adapter implementation, and PostgreSQL Integration tests remain PHASE 6 work.
 - Runtime NestJS module/provider composition must be verified when the concrete Unit of Work adapter is available.
