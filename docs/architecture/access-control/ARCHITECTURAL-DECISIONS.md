@@ -3,10 +3,9 @@
 | Attribute              | Value                         |
 | ---------------------- | ----------------------------- |
 | Project                | `tarkhineh-backend`           |
-| Document version       | 1.8                           |
+| Document version       | 1.9                           |
 | Last updated           | 2026-11-01                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.6 |
-| Implementation status  | `IMPLEMENTATION-STATUS.md`    |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.7 |
 
 This document is the decision log for the Access Control bounded context. Each ADR records the context, the decision, and its consequences. Accepted decisions are binding implementation constraints. They must not be silently changed. If later evidence or a product requirement requires a change, add a new ADR that explicitly supersedes the affected decision and obtain project-owner approval before implementing the change.
 
@@ -596,21 +595,49 @@ Introduce the Application port `AccessControlUnitOfWork`.
 
 ### Concurrency and transaction guarantees
 
-This ADR establishes the Application contract; it does not select or claim a specific PostgreSQL isolation level or locking strategy.
+This ADR establishes the Application contract; it does not itself select a PostgreSQL isolation level or locking strategy. PHASE 6 subsequently selected and implemented the concrete Infrastructure strategy recorded in ADR-021. A transaction boundary by itself is not sufficient evidence of race-condition safety; the specific isolation and retry behavior must be verified against PostgreSQL.
 
-PHASE 6 must define and verify the concrete protection against concurrent authorization changes and sensitive check-then-write races. A transaction boundary by itself is not sufficient evidence of race-condition safety.
-
-Database uniqueness constraints remain authoritative for duplicate writes. Safe retry behavior for serialization/deadlock conflicts must be decided and implemented in Infrastructure without repeating external side effects.
+Database uniqueness constraints remain authoritative for duplicate writes. Safe retry behavior is implemented in Infrastructure and reruns the complete transaction callback only for the classified conflict types. The callback remains subject to the no-external-side-effects rule.
 
 ### Consequences
 
 - All seven PHASE 5 mutation handlers use the Unit of Work port.
 - `AuthorizationApplicationService` accepts an explicitly supplied snapshot reader so command authorization can use the transaction-bound reader; query handlers may continue using the default reader.
 - `UpdateRoleHandler` performs delegation validation only when `permissionCodes` is supplied, including an empty array. Metadata-only Role updates require management authority but do not re-delegate an unchanged Permission set.
-- The project owner approved PHASE 5 on 2026-11-01; the Application Unit of Work contract is accepted and implemented. Concrete PostgreSQL transaction/concurrency guarantees remain PHASE 6 work.
-- Mock-based Unit tests verify that handler reads and writes occur within the Unit of Work callback. They do not prove real database commit, rollback, transaction-client sharing, isolation, locking, or race-condition protection.
-- Concrete Prisma transaction binding, adapter implementation, and PostgreSQL Integration tests remain PHASE 6 work.
-- Runtime NestJS module/provider composition must be verified when the concrete Unit of Work adapter is available.
+- The project owner approved PHASE 5 on 2026-11-01; the Application Unit of Work contract is accepted and implemented.
+- Mock-based PHASE 5 Unit tests verify the Application callback boundary only; they do not prove real database commit, rollback, transaction-client sharing, isolation, or race-condition protection.
+- Concrete Prisma transaction binding, transaction-bound adapters, the initial PostgreSQL Integration tests, and NestJS provider bindings were implemented in PHASE 6. The selected transaction and retry strategy is recorded in ADR-021.
+- Broader database-guard, tenant-isolation, concurrent RoleAssignment/Role/Permission mutation, Handler-level Override, multi-Branch snapshot, and query-plan verification items remain open in PHASE 6.
+
+## ADR-021 — Use Serializable Prisma transactions and bounded retry for Access Control mutations
+
+**Status:** IMPLEMENTED — AWAITING PROJECT-OWNER APPROVAL (PHASE 6)
+**Decision owner:** Project owner
+**Date:** 2026-11-01
+
+### Context
+
+PHASE 5 introduced an Application-owned Unit of Work contract so authorization reads, delegation checks, target reads, and persistence writes for a mutation could share one transaction boundary. The Infrastructure implementation needed a concrete PostgreSQL strategy for sensitive check-then-write operations without leaking Prisma dependencies into Application or Domain.
+
+The repository also has a database-enforced unique key for Permission Overrides. Two concurrent requests can both observe that the logical key is absent before either attempts an insert. A transaction and a pre-insert lookup alone do not remove this race.
+
+### Decision implemented in PHASE 6
+
+1. Each Access Control mutation is executed by one Prisma interactive transaction at `Serializable` isolation. The concrete Role, RoleAssignment, PermissionOverride, and transaction-bound AuthorizationSnapshotReader adapters are constructed with the same `Prisma.TransactionClient`.
+2. Standalone authorization snapshot reads use one interactive transaction at `RepeatableRead`, so the Organization and Branch snapshots for that read share one database view.
+3. The Unit of Work retries a Prisma `P2034` serialization/write-conflict error by rerunning the complete callback in a new transaction. The maximum is three attempts, with a short increasing delay between failed attempts.
+4. The Permission Override repository classifies `P2002` as retryable only when its reported target exactly matches the composite key `(organizationMembershipId, branchId, permissionId)`. It raises an Infrastructure-only retry signal; the failed transaction is allowed to roll back, then the complete callback is retried.
+5. On the final attempt, the retry signal is unwrapped and its original Prisma error is sent through the existing error translator. Other unique violations are not retried.
+6. Database unique constraints remain the final authority. The retry allows the second callback to re-read the winning row and apply the existing idempotent behavior; it does not replace or weaken the constraint.
+
+### Consequences
+
+- Mutation authorization reads and writes execute under one Serializable Prisma transaction client.
+- Serialization conflicts and the one explicitly classified Permission Override unique-key race can restart the full operation.
+- The transaction callback must not send email, publish messages, or perform other external side effects because a retry may execute it more than once.
+- A retry always starts a new transaction; the failed PostgreSQL transaction is never reused after a unique violation.
+- Unrelated P2002 errors continue through normal error translation and are not silently treated as idempotent success.
+- This ADR records the implementation strategy, not complete proof of every authorization race. Dedicated duplicate RoleAssignment, Role/Permission mutation, cross-tenant guard, and Handler-level concurrency tests remain PHASE 6 acceptance work. See IMPLEMENTATION-STATUS.md section 8.
 
 ## Implementation notes and outstanding decisions
 
@@ -651,9 +678,11 @@ The following topics remain open and must be resolved in their relevant implemen
 
 1. **Identity status integration — PHASE 8:** determine how `User.status` is enforced for authenticated and non-HTTP operations without transferring Identity lifecycle ownership to Access Control.
 2. **Audit retention and access — PHASE 7:** define retention requirements and which principals may read audit records.
-3. **PostgreSQL concurrency semantics — PHASE 6:** implement and verify isolation/locking and safe retry behavior. ADR-020 records the PHASE 5 Application transaction-boundary contract but does not select a concrete PostgreSQL strategy.
-4. **Database guard behavior tests — PHASE 6:** add integration tests for rejected cross-scope/cross-tenant writes and immutable Role ownership.
-5. **Backup recovery drill:** restore the development database backup into an isolated database before treating the backup process as recovery-tested.
-6. **Deferred unrelated Integration failure:** investigate the Outbound Email retry/lease Integration failure separately. It is not an Access Control defect and must not be masked by changes in this context.
+3. **Expanded PHASE 6 concurrency verification:** the Serializable transaction and bounded retry strategy are implemented in ADR-021; add dedicated Integration tests for duplicate RoleAssignment races, Role/Permission mutation races, and concurrent authorization changes.
+4. **Database guard behavior tests — PHASE 6:** add Integration tests for rejected cross-scope/cross-tenant writes, composite relation guards, and immutable Role ownership.
+5. **Handler-level Override race — PHASE 6:** exercise SetPermissionOverrideHandler.execute() concurrently against PostgreSQL; the current Integration test exercises the repositories and Unit of Work with the handler's check/read/create behavior reproduced in the test.
+6. **Multi-Branch snapshot and query-plan review — PHASE 6:** exercise multiple active/inactive Branches and inspect representative EXPLAIN plans and index usage.
+7. **Backup recovery drill:** restore the development database backup into an isolated database before treating the backup process as recovery-tested.
+8. **Deferred unrelated Integration failure:** investigate the Outbound Email retry/lease Integration failure separately. It is not an Access Control defect and must not be masked by changes in this context.
 
 For the current phase status, exact verification results, and known limitations, see `IMPLEMENTATION-STATUS.md`.

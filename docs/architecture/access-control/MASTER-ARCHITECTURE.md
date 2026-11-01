@@ -2,16 +2,16 @@
 
 ## Tarkhineh Backend
 
-| Attribute                    | Value                                                                       |
-| ---------------------------- | --------------------------------------------------------------------------- |
-| Document                     | Master Architecture & Implementation Specification                          |
-| Version                      | 1.6                                                                         |
-| Last updated                 | 2026-11-01                                                                  |
-| Architecture                 | Clean Architecture + DDD + Scoped RBAC                                      |
-| Architecture status          | Approved by project owner                                                   |
-| Repository audit             | PHASE 0 completed                                                           |
-| Current implementation phase | PHASE 6 — Infrastructure and Authorization Persistence (next; not started) |
-| Source of truth              | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
+| Attribute                    | Value                                                                                         |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| Document                     | Master Architecture & Implementation Specification                                            |
+| Version                      | 1.7                                                                                           |
+| Last updated                 | 2026-11-01                                                                                    |
+| Architecture                 | Clean Architecture + DDD + Scoped RBAC                                                        |
+| Architecture status          | Approved by project owner                                                                     |
+| Repository audit             | PHASE 0 completed                                                                             |
+| Current implementation phase | PHASE 6 — Infrastructure and Authorization Persistence (core implemented; acceptance open)   |
+| Source of truth               | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
 
@@ -863,7 +863,7 @@ Only one phase is active at a time. Do not mark a phase complete from code appea
 | 3     | Permission Registry and Seed                    | COMPLETED — APPROVED              |
 | 4     | Domain Model                                    | COMPLETED — APPROVED (2026-11-01) |
 | 5     | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
-| 6     | Infrastructure and Authorization Persistence    | NOT STARTED                       |
+| 6     | Infrastructure and Authorization Persistence    | CORE IMPLEMENTATION PRESENT — ACCEPTANCE ITEMS OPEN |
 | 7     | Audit Logging                                   | NOT STARTED                       |
 | 8     | Cross-Context Integration                       | NOT STARTED                       |
 | 9     | HTTP Layer                                      | NOT STARTED                       |
@@ -1250,9 +1250,11 @@ PHASE 5 was formally approved by the project owner on 2026-11-01 and is closed. 
 
 ## PHASE 6 — Infrastructure and Authorization Persistence
 
-Status: NOT STARTED.
+Status: **CORE IMPLEMENTATION PRESENT — ACCEPTANCE ITEMS OPEN; AWAITING PROJECT-OWNER REVIEW.**
 
-Implement the concrete Prisma-backed AccessControlUnitOfWork and transaction-bound adapters for all supplied Application ports. All repositories and the authorization snapshot reader used by one operation must share the same Prisma interactive transaction client.
+The concrete Prisma-backed AccessControlUnitOfWork, transaction-bound repositories, authorization snapshot readers, NestJS provider bindings, and the initial PostgreSQL Integration coverage have been implemented. The current implementation uses Serializable transactions for mutation operations, RepeatableRead for standalone snapshot reads, bounded P2034 retry, and a narrowly classified Permission Override composite-key P2002 retry. The complete implementation evidence, observed command results, and still-open acceptance gaps are maintained in IMPLEMENTATION-STATUS.md, section 8.
+
+This status is not formal phase closure. The outstanding cross-tenant/database-guard/concurrency tests and query-plan review remain acceptance items.
 
 Required work:
 

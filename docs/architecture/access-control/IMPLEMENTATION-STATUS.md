@@ -1,14 +1,14 @@
 # Tarkhineh Backend — Access Control Implementation Status
 
-| Attribute              | Value                                                  |
-| ---------------------- | ------------------------------------------------------ |
-| Project                | `tarkhineh-backend`                                    |
-| Document version       | 1.9                                                    |
-| Last updated           | 2026-11-01                                             |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.6                          |
-| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.8                      |
-| Current phase          | PHASE 6 — Infrastructure and Authorization Persistence              |
-| Current phase status   | **NOT STARTED — PHASE 5 APPROVED; READY TO BEGIN** |
+| Attribute              | Value                                                        |
+| ---------------------- | ------------------------------------------------------------ |
+| Project                | `tarkhineh-backend`                                          |
+| Document version       | 2.0                                                          |
+| Last updated           | 2026-11-01                                                   |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.7                                |
+| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.9                            |
+| Current phase          | PHASE 6 — Infrastructure and Authorization Persistence      |
+| Current phase status   | **CORE IMPLEMENTATION PRESENT — ACCEPTANCE ITEMS OPEN** |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -26,7 +26,7 @@
 |     3 | Permission Registry and Seed                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
-|     6 | Infrastructure and Authorization Persistence    | NOT STARTED                                         |
+|     6 | Infrastructure and Authorization Persistence    | CORE IMPLEMENTATION PRESENT — ACCEPTANCE ITEMS OPEN |
 |     7 | Audit Logging                                   | NOT STARTED                                         |
 |     8 | Cross-Context Integration                       | NOT STARTED                                         |
 |     9 | HTTP Layer                                      | NOT STARTED                                         |
@@ -34,7 +34,7 @@
 
 ### Latest implementation checkpoint
 
-PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. All seven mutation handlers use the Unit of Work Application contract. The final observed checkpoint is 275 passing Access Control tests across 15 files, a successful TypeScript no-emit check, and zero Access Control Oxlint warnings/errors. PHASE 6 is the next phase and remains not started. See section 7 for PHASE 5 deliverables and limitations.
+PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence now has its core implementation on branch `access-control`, delivered in commits `f964c42` and `7c60c87`. The concrete Prisma Unit of Work, transaction-bound repositories, authorization snapshot readers, NestJS provider wiring, Serializable mutation transactions, bounded retry handling, and focused PostgreSQL Integration coverage are present. The latest observed focused checkpoint is 322 passing Access Control Unit tests across 21 files, six Access Control Integration tests across two files, a successful TypeScript no-emit check, and zero Access Control Oxlint warnings/errors. PHASE 6 is **not formally closed**: broader tenant-isolation, database-guard, and concurrency acceptance tests plus query-plan review remain open. See section 8 for implementation evidence and limitations.
 
 ### PHASE 3 Registry implementation result
 
@@ -800,22 +800,175 @@ These items must remain explicit PHASE 6 work; no production transaction-safety 
 
 ---
 
-## 8. Open items and deferred work
+## 8. PHASE 6 — Infrastructure and Authorization Persistence
+
+**Status: CORE IMPLEMENTATION PRESENT — ACCEPTANCE ITEMS OPEN; AWAITING PROJECT-OWNER REVIEW.**
+
+PHASE 6 implements the Application ports introduced in PHASE 5 using Prisma 7 and PostgreSQL. Prisma and NestJS dependencies remain in Infrastructure; Domain and Application remain independent of generated Prisma models and transaction APIs.
+
+### 8.1 Implemented infrastructure
+
+The following concrete adapters and supporting components are present:
+
+- `PrismaAccessControlUnitOfWork`: owns the interactive Prisma transaction lifecycle for mutation operations.
+- `PrismaRoleRepository`: persists and queries Roles with Organization scoping and maps persistence records to Domain objects.
+- `PrismaRoleAssignmentRepository`: resolves active Organization/Branch membership targets and persists, reads, revokes, and updates RoleAssignments through the transaction client.
+- `PrismaPermissionOverrideRepository`: persists, reads, updates, and deletes Permission Overrides using OrganizationMembership, Branch, and Permission identity.
+- `PrismaAuthorizationSnapshotReader`: reads transaction-bound authorization snapshots, including Organization context and Branch-scoped state.
+- `PrismaDefaultAuthorizationSnapshotReader`: supplies standalone snapshot reads for Query handlers.
+- `access-control-persistence.mapper.ts`: translates between persisted Prisma records and Access Control Domain models.
+- `RetryableAccessControlTransactionError`: carries the original database error when the complete current transaction must be rolled back and retried.
+
+The adapters are created by the Unit of Work for each operation. They are not registered as independent singleton repositories because their constructors require the operation's `Prisma.TransactionClient`.
+
+### 8.2 Transaction and concurrency strategy
+
+Mutation operations run inside one Prisma interactive transaction with:
+
+- Isolation level: `Serializable`.
+- Maximum transaction attempts: 3.
+- Transaction max wait: 10 seconds.
+- Transaction timeout: 30 seconds.
+- Retry delay: 20 ms multiplied by the failed attempt number.
+
+The Unit of Work constructs the AuthorizationSnapshotReader and all three repositories from the same transaction client supplied by the Prisma callback. A successful callback commits. A thrown callback error rolls the transaction back.
+
+Retry behavior is deliberately narrow:
+
+1. Prisma `P2034` serialization/write-conflict errors are retried by rerunning the complete callback in a new transaction, up to the configured maximum.
+2. The Permission Override repository recognizes `P2002` only when the violated key is the exact composite key `(organizationMembershipId, branchId, permissionId)`. It raises the Infrastructure-only retry signal so the failed PostgreSQL transaction is abandoned and the complete Unit of Work is retried.
+3. On the last attempt, the retry signal is unwrapped and the original Prisma error is passed through the existing error translator.
+4. Unrelated unique violations are not classified as retryable and continue through the normal Prisma error translation path.
+
+The database unique constraint remains authoritative. The application retry does not replace the constraint or permit duplicate rows. The retried handler operation re-reads the key; the existing same-effect behavior returns the previously created Override with `changed: false`.
+
+The Unit of Work callback contract continues to prohibit external side effects. Retrying the callback is safe only while the callback consists of transaction-bound authorization reads and database work.
+
+### 8.3 Authorization snapshot consistency
+
+- Standalone snapshot reads use one Prisma interactive transaction at `RepeatableRead` isolation so the Organization snapshot and its Branch snapshots are read from one database view.
+- Mutation handlers pass the Unit of Work's transaction-bound reader to `AuthorizationApplicationService`; their authorization reads therefore use the same `Serializable` transaction as the mutation.
+- `loadDelegationSnapshots` loads active Branch identifiers and constructs the Organization snapshot plus each active Branch snapshot sequentially within the supplied transaction.
+- The reader deliberately sequences Prisma operations on the same PostgreSQL transaction client rather than issuing parallel relation reads on that client.
+- The focused Integration test demonstrates read-your-writes behavior for Role, RoleAssignment, and Permission Override records inside the same Unit of Work, and checks the standalone snapshot after commit.
+
+The current Integration fixture has one active Branch. A multi-Branch snapshot and large-Organization query-plan benchmark remain unverified.
+
+### 8.4 NestJS composition and error handling
+
+`AccessControlModule` registers the concrete Unit of Work and default snapshot reader, then binds the Application tokens with `useExisting`. The module continues to export `AuthorizationApplicationService`.
+
+A review found that `PrismaDefaultAuthorizationSnapshotReader` was missing `@Injectable()`; the decorator is now present. A dedicated Nest testing-module test resolves the reader with a mocked `PrismaService` and exercises its transaction path. This verifies the reader's constructor injection; it is not a full application boot test of every provider in the complete module graph.
+
+Persistence adapters use the existing `normalizePrismaError` translator. Unknown errors are not intentionally relabelled as domain or application errors. The special retry signal is unwrapped at the Unit of Work boundary before the original error is normalized.
+
+### 8.5 Main files added or changed
+
+Infrastructure:
+
+- `src/contexts/access-control/infrastructure/persistence/access-control-persistence.mapper.ts`
+- `src/contexts/access-control/infrastructure/persistence/prisma-role.repository.ts`
+- `src/contexts/access-control/infrastructure/persistence/prisma-role-assignment.repository.ts`
+- `src/contexts/access-control/infrastructure/persistence/prisma-permission-override.repository.ts`
+- `src/contexts/access-control/infrastructure/persistence/prisma-authorization-snapshot.reader.ts`
+- `src/contexts/access-control/infrastructure/persistence/prisma-access-control.unit-of-work.ts`
+- `src/contexts/access-control/infrastructure/persistence/retryable-access-control-transaction.error.ts`
+- `src/contexts/access-control/access-control.module.ts`
+
+Focused tests:
+
+- `src/contexts/access-control/infrastructure/persistence/prisma-role.repository.spec.ts`
+- `src/contexts/access-control/infrastructure/persistence/prisma-role-assignment.repository.spec.ts`
+- `src/contexts/access-control/infrastructure/persistence/prisma-permission-override.repository.spec.ts`
+- `src/contexts/access-control/infrastructure/persistence/prisma-authorization-snapshot.reader.spec.ts`
+- `src/contexts/access-control/infrastructure/persistence/prisma-access-control.unit-of-work.spec.ts`
+- `src/contexts/access-control/infrastructure/persistence/prisma-default-authorization-snapshot.reader.di.spec.ts`
+- `test/integration/access-control/persistence/access-control-persistence.integration.spec.ts`
+
+### 8.6 Observed verification
+
+The following results were observed after the final code changes and Prettier formatting:
+
+| Command | Observed result |
+| --- | --- |
+| `npx vitest run src/contexts/access-control` | 21 files passed; 322 tests passed |
+| `npx vitest run --config ./vitest.config.integration.ts test/integration/access-control` | 2 files passed; 6 tests passed (4 Persistence, 2 Registry Seed) |
+| `npx tsc --noEmit` | Passed; no TypeScript diagnostics |
+| `npx oxlint src/contexts/access-control test/integration/access-control/persistence` | 82 files; 0 warnings; 0 errors |
+| Prettier check for the eight Phase 6 code files | Passed |
+| `git diff --check` | Passed; no whitespace errors |
+
+`npm run build` also completed successfully during the Phase 6 implementation verification before the final formatting-only pass. It was not rerun in the last post-format validation command.
+
+The targeted Integration suite uses the guarded `tarkhineh_test` database. Its fixture builder rewrites the configured development database URL to `tarkhineh_test` and refuses an unexpected source database name. Temporary User, Organization, membership, Branch, Role, assignment, and Override fixtures are cleaned after each test. Shared Registry Permission rows are upserted and are not deleted by fixture cleanup.
+
+### 8.7 Integration coverage actually present
+
+The four Persistence Integration tests currently cover:
+
+1. Committing an Organization Role and its complete Permission relation set.
+2. Rolling back Role creation when the Unit of Work callback throws.
+3. Persisting and reading RoleAssignments and Permission Overrides in the same transaction; revoking assignments; updating and deleting an Override; and checking committed/standalone snapshot state.
+4. Concurrent creation of the same Permission Override key, asserting one persisted row and two idempotent results with the same Override ID.
+
+The fourth test forces two independent Serializable Unit of Work callbacks to observe a missing key before insertion. It exercises the concrete repositories and Unit of Work against PostgreSQL. **It reproduces the check/read/create behavior; it does not invoke `SetPermissionOverrideHandler.execute()`.** A separate Handler-level concurrency Integration test is still desirable to prove the complete Application-to-Infrastructure path.
+
+The Registry Seed Integration file contributes two tests to the six-test Access Control Integration total; it is not new PHASE 6 persistence coverage.
+
+### 8.8 Acceptance items still open
+
+The current implementation is not evidence that every PHASE 6 acceptance scenario has been covered. The following items remain open:
+
+- **Explicit tenant-isolation Integration tests:** add distinct Organizations and Branches, then prove that repository lookups and snapshot reads cannot cross tenant boundaries. Queries contain tenant scoping, but the current Persistence Integration fixture does not provide a dedicated two-tenant negative test.
+- **Database guard behavior:** add negative-write tests for retained check constraints, composite foreign keys, cross-scope/cross-tenant protection, and immutable Role ownership. These were explicitly deferred from PHASE 2.
+- **Broader concurrency tests:** cover duplicate concurrent RoleAssignments and races involving Role/Permission changes or authorization changes, in addition to the implemented Permission Override creation race.
+- **Handler-level Override race:** invoke `SetPermissionOverrideHandler.execute()` concurrently using the real Unit of Work and PostgreSQL, rather than only reproducing its check/read/create sequence in the Persistence Integration test.
+- **Multi-Branch snapshot coverage:** prove delegation snapshots include all active Branches and exclude inactive or foreign-Organization Branches using a fixture with more than one Branch.
+- **Query-plan and index review:** inspect relevant indexes and representative PostgreSQL query plans (including the active-assignment and snapshot queries). No `EXPLAIN (ANALYZE, BUFFERS)` evidence is recorded in this checkpoint.
+- **Full module/application DI verification:** the default snapshot reader has a focused Nest container test; a full application boot/complete AccessControlModule graph test has not been recorded here.
+- **Full-project Integration suite:** it was not rerun as part of the final PHASE 6 verification. A previously isolated, unrelated Outbound Email retry/lease Integration test remains failing and deferred: `schedules retry and releases the current lease after an enqueue failure`. It must be investigated separately and must not be masked by Access Control changes.
+
+No Prisma schema change or migration was created in PHASE 6. The Integration tests ran against `tarkhineh_test`; no production CLI Seed run or intentional schema change was part of this phase.
+
+### 8.9 PHASE 6 review checklist
+
+- [x] Concrete Prisma Unit of Work implemented.
+- [x] Transaction-bound Role, RoleAssignment, PermissionOverride, and AuthorizationSnapshot adapters implemented.
+- [x] Mutation reads and writes share one Serializable Prisma transaction client.
+- [x] Standalone authorization snapshots use RepeatableRead.
+- [x] Bounded P2034 retry implemented.
+- [x] Targeted Permission Override composite-key P2002 retry implemented; unrelated unique violations are not retried.
+- [x] Nest provider/token wiring added; reader constructor injection tested.
+- [x] Focused Unit and PostgreSQL Integration tests pass.
+- [x] TypeScript, Access Control lint, Prettier, diff check, and production build have passed in the recorded runs.
+- [ ] Dedicated cross-tenant and database-guard negative-write Integration tests.
+- [ ] Broader duplicate-assignment and Role/Permission concurrency Integration tests.
+- [ ] Handler-level Permission Override concurrency Integration test.
+- [ ] Multi-Branch snapshot coverage and PostgreSQL query-plan/index review.
+- [ ] Project-owner review and formal PHASE 6 approval.
+
+**PHASE 6 remains the active phase. Do not mark it closed or begin PHASE 7 until the project owner has reviewed the open acceptance items and explicitly approved closure or accepted their deferral.**
+
+---
+
+## 9. Open items and deferred work
 
 The following items belong to later phases or separate operational work. They must not be treated as PHASE 3 failures or as completed work.
 
 1. **User account status — PHASE 8:** Identity Access owns `User.status`. Confirm how account status is enforced in authenticated and non-HTTP application operations without duplicating Identity lifecycle ownership.
 2. **Audit retention and access — PHASE 7:** define retention, access authorization, and operational handling for audit records.
-3. **PostgreSQL concurrency semantics — PHASE 6:** choose and implement isolation/locking and safe retry behavior for assignment, delegation validation, Role/Permission updates, and other sensitive check-then-write operations. PHASE 5 now defines the Unit of Work application contract but does not claim a concrete concurrency guarantee.
-4. **Database guard behavior tests — PHASE 6:** add negative-write Integration tests for cross-scope/cross-tenant constraints and immutable Role ownership.
-5. **Backup recovery drill:** restore the recorded database backup into an isolated database before claiming a full recovery test.
-6. **Deferred Outbound Email Integration failure:** investigate `schedules retry and releases the current lease after an enqueue failure` separately. Do not change Access Control code to mask this unrelated failure.
-7. **Production Seed execution:** perform only after an explicit operational decision, with the target database confirmed and the resulting data reviewed.
-8. **Mid-operation Seed failure test:** consider a safe, isolated integration strategy to prove rollback after a database statement fails partway through synchronization.
+3. **Expanded concurrency and tenant-isolation verification — PHASE 6:** the core Serializable transaction and targeted Permission Override retry strategy is implemented. Dedicated tests for duplicate RoleAssignment races, concurrent Role/Permission changes, authorization changes, and two-tenant isolation remain open.
+4. **Database guard behavior tests — PHASE 6:** add negative-write Integration tests for cross-scope/cross-tenant constraints, composite relation guards, and immutable Role ownership.
+5. **Snapshot performance review — PHASE 6 / PHASE 10:** add a multi-Branch fixture and review representative query plans and index use; no EXPLAIN evidence is currently recorded.
+6. **Handler-level Override race — PHASE 6:** the existing race Integration test covers repositories and Unit of Work but does not invoke SetPermissionOverrideHandler.execute().
+7. **Backup recovery drill:** restore the recorded database backup into an isolated database before claiming a full recovery test.
+8. **Deferred Outbound Email Integration failure:** investigate `schedules retry and releases the current lease after an enqueue failure` separately. Do not change Access Control code to mask this unrelated failure.
+9. **Production Seed execution:** perform only after an explicit operational decision, with the target database confirmed and the resulting data reviewed.
+10. **Mid-operation Seed failure test:** consider a safe, isolated integration strategy to prove rollback after a database statement fails partway through synchronization.
 
 ---
 
-## 9. Session handoff protocol
+## 10. Session handoff protocol
 
 At the end of each meaningful development session:
 
@@ -836,15 +989,8 @@ The repository documents and Git history are the project source of truth. Conver
 
 ---
 
-## 10. Exact next step
+## 11. Exact next step
 
-PHASE 5 is closed. The next three phases are sequenced as PHASE 6 (Infrastructure and Authorization Persistence), PHASE 7 (Audit Logging), and PHASE 8 (Cross-Context Integration). Work on them sequentially; do not activate overlapping phases.
+PHASE 5 is closed. PHASE 6 core Infrastructure implementation is present, but its acceptance items remain open as documented in section 8. The next step is to review the remaining PHASE 6 test/performance gaps and obtain an explicit project-owner decision on whether they must be completed before closure or may be deferred with documented risk acceptance.
 
-1. **Begin PHASE 6:** inspect the Prisma schema, existing Prisma service/transaction APIs, migration constraints, and current Access Control ports before writing adapters.
-2. Implement the Prisma-backed `AccessControlUnitOfWork` and transaction-bound `RoleRepository`, `RoleAssignmentRepository`, `PermissionOverrideRepository`, and `AuthorizationSnapshotReader` adapters.
-3. Define the PostgreSQL isolation/locking strategy for check-then-write operations, including safe serialization/deadlock retry semantics.
-4. Add real PostgreSQL Integration coverage for commit, rollback, shared transaction-client binding, consistent authorization snapshots, tenant isolation, concurrent authorization changes, duplicate assignments, Role/Permission mutation races, and database guards.
-5. Complete NestJS provider/module composition; review indexes, query plans, and N+1 behavior; run Integration tests, full Unit tests, TypeScript, production build, and lint.
-6. Keep Prisma and Infrastructure dependencies outside Domain and Application.
-
-After PHASE 6 approval, proceed to PHASE 7 audit persistence/atomic audit recording, then PHASE 8 Identity and Organization cross-context integration. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
+Do not begin PHASE 7 (Audit Logging) until PHASE 6 has been formally approved. After PHASE 6 approval, proceed sequentially to PHASE 7 and then PHASE 8. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
