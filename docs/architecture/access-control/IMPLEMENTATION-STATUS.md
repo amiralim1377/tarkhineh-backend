@@ -5,7 +5,7 @@
 | Project                | `tarkhineh-backend`                                          |
 | Document version       | 2.2                                                          |
 | Last updated           | 2026-11-01                                                   |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.8                                |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.9                                |
 | Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.9                            |
 | Current phase          | PHASE 6 — Infrastructure and Authorization Persistence      |
 | Current phase status   | **TECHNICAL REVIEW PASSED — FORMAL OWNER SIGN-OFF OPEN**     |
