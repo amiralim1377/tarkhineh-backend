@@ -5,12 +5,12 @@
 | Attribute                    | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
 | Document                     | Master Architecture & Implementation Specification                          |
-| Version                      | 1.2                                                                         |
+| Version                      | 1.4                                                                         |
 | Last updated                 | 2026-11-01                                                                  |
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                      |
 | Architecture status          | Approved by project owner                                                   |
 | Repository audit             | PHASE 0 completed                                                           |
-| Current implementation phase | PHASE 3 — Permission Registry and Seed (implementation complete; awaiting owner approval) |
+| Current implementation phase | PHASE 4 — Domain Model (completed and approved by project owner)            |
 | Source of truth              | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -855,19 +855,19 @@ All tenant-isolation scenarios must use distinct organizations and branches.
 
 Only one phase is active at a time. Do not mark a phase complete from code appearance alone. Each phase requires deliverables, passing acceptance criteria, observed verification, and project-owner review.
 
-| Phase | Name                                            | Status as of 2026-11-01 |
-| ----- | ----------------------------------------------- | ----------------------- |
-| 0     | Repository Audit and Baseline                   | COMPLETED               |
-| 1     | Requirements and Architecture Design            | COMPLETED — APPROVED    |
-| 2     | Database Schema and Migration Design            | COMPLETED — APPROVED    |
-| 3     | Permission Registry and Seed                    | IN PROGRESS — DESIGN REVIEW |
-| 4     | Domain Model                                    | NOT STARTED             |
-| 5     | Application Layer and Use Cases                 | NOT STARTED             |
-| 6     | Infrastructure and Authorization Persistence    | NOT STARTED             |
-| 7     | Audit Logging                                   | NOT STARTED             |
-| 8     | Cross-Context Integration                       | NOT STARTED             |
-| 9     | HTTP Layer                                      | NOT STARTED             |
-| 10    | Security, Performance, and Production Readiness | NOT STARTED             |
+| Phase | Name                                            | Status as of 2026-11-01           |
+| ----- | ----------------------------------------------- | --------------------------------- |
+| 0     | Repository Audit and Baseline                   | COMPLETED                         |
+| 1     | Requirements and Architecture Design            | COMPLETED — APPROVED              |
+| 2     | Database Schema and Migration Design            | COMPLETED — APPROVED              |
+| 3     | Permission Registry and Seed                    | COMPLETED — APPROVED              |
+| 4     | Domain Model                                    | COMPLETED — APPROVED (2026-11-01) |
+| 5     | Application Layer and Use Cases                 | NOT STARTED                       |
+| 6     | Infrastructure and Authorization Persistence    | NOT STARTED                       |
+| 7     | Audit Logging                                   | NOT STARTED                       |
+| 8     | Cross-Context Integration                       | NOT STARTED                       |
+| 9     | HTTP Layer                                      | NOT STARTED                       |
+| 10    | Security, Performance, and Production Readiness | NOT STARTED                       |
 
 ## PHASE 0 — Repository Audit and Baseline
 
@@ -940,16 +940,16 @@ Acceptance criteria:
 - Prisma validation and client generation succeed.
 - Database constraints and triggers are inspected after migration; behavior-level negative-write integration tests are scheduled for PHASE 6.
 
-
 ## PHASE 3 — Permission Registry and Seed
 
-Status: **IMPLEMENTATION COMPLETE — AWAITING PROJECT-OWNER APPROVAL**.
+Status: **COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)**.
 
 ### Permission Registry
 
 The source-controlled Registry is the single source of truth for Permission metadata.
 
 It contains exactly 23 stable Permission codes:
+
 - All 18 existing codes are preserved.
 - Exactly five codes are added:
   - `organization.roles.read`
@@ -961,6 +961,7 @@ It contains exactly 23 stable Permission codes:
 - No existing code was renamed or removed.
 
 Every Registry entry explicitly defines:
+
 - Stable `code`.
 - English and Persian `name` and `description`.
 - `targetScope`: `ORGANIZATION` or `BRANCH`.
@@ -973,6 +974,7 @@ Scope distribution: 16 ORGANIZATION and 7 BRANCH.
 Defined actions: `READ`, `CREATE`, `UPDATE`, `INVITE`, `SUSPEND`, `REMOVE`, `ASSIGN`, `ARCHIVE`, and `MANAGE`.
 
 `organization.members.permissions.manage` is:
+
 - Target scope: `ORGANIZATION`
 - Resource: `organization.members.permissions`
 - Action: `MANAGE`
@@ -1054,6 +1056,7 @@ Both permission sets are static source-controlled lists. They are never derived 
 - `branch.roles.assign`
 
 Role configuration:
+
 - `ORGANIZATION_OWNER`: `assignmentScope = ORGANIZATION`, `isAssignable = false`.
 - `BRANCH_MANAGER`: `assignmentScope = BRANCH`, `isAssignable = true`.
 
@@ -1081,21 +1084,22 @@ The production CLI Seed was not executed against either development or test data
 
 ### PHASE 3 verification
 
-| Check | Observed result |
-| --- | --- |
-| `npx vitest run` | 63 files passed; 723 tests passed; 0 failed |
-| Registry Unit Tests | 25 passed |
-| System Role permission-set Unit Tests | 4 passed |
-| Seed precondition Unit Tests | 3 passed |
-| Access Control Integration Tests | 1 file passed; 2 tests passed |
-| `npx tsc --noEmit` | Completed without reported errors |
-| `npm run build` | Exit code 0 |
-| `npm run lint` | Exit code 0; 0 errors; 102 warnings |
-| `git diff --check` | No whitespace errors |
+| Check                                 | Observed result                             |
+| ------------------------------------- | ------------------------------------------- |
+| `npx vitest run`                      | 63 files passed; 723 tests passed; 0 failed |
+| Registry Unit Tests                   | 25 passed                                   |
+| System Role permission-set Unit Tests | 4 passed                                    |
+| Seed precondition Unit Tests          | 3 passed                                    |
+| Access Control Integration Tests      | 1 file passed; 2 tests passed               |
+| `npx tsc --noEmit`                    | Completed without reported errors           |
+| `npm run build`                       | Exit code 0                                 |
+| `npm run lint`                        | Exit code 0; 0 errors; 102 warnings         |
+| `git diff --check`                    | No whitespace errors                        |
 
 The focused Access Control Integration tests use the real `tarkhineh_test` database through a guarded URL. Test fixtures and synchronization writes are contained in interactive transactions and deliberately rolled back.
 
 The tests cover:
+
 - Repeated synchronization and idempotency.
 - Exact System Role grants.
 - Preservation of custom roles and their permissions.
@@ -1104,6 +1108,7 @@ The tests cover:
 - Archived System Role rejection before synchronization writes.
 
 Known limitations:
+
 - The Integration tests do not inject a database failure midway through Seed statements. They verify precondition failures and deliberate transaction rollback after successful assertions.
 - The full project Integration Suite was not rerun in this checkpoint.
 - The previously documented unrelated Outbound Email retry/lease Integration failure remains deferred and unresolved.
@@ -1120,13 +1125,83 @@ Known limitations:
 - [x] Custom roles, assignments, overrides, and historical Permission rows are preserved.
 - [x] Unit, focused Integration, TypeScript, Build, Lint, and diff checks completed.
 
-**Implementation is ready for project-owner review. Formal completion and PHASE 4 start require project-owner approval.**
+**PHASE 3 was formally approved by the project owner on 2026-11-01 and is closed.**
 
 ## PHASE 4 — Domain Model
 
-Status: NOT STARTED.
+Status: **COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)**.
 
-Implement the minimal Domain model required for roles, assignments, overrides, registry rules, scope compatibility, lifecycle, decisions, and pure evaluation. Keep Domain framework/infrastructure independent. Add comprehensive unit tests.
+### Delivered Domain capabilities
+
+The Access Control Domain model has been implemented with the following responsibilities:
+
+- **Role:** validates definition scope, assignment scope, ownership, reserved System Role invariants, permission membership, assignability, and ACTIVE/ARCHIVED lifecycle.
+- **RoleAssignment:** validates assignment targets and scope compatibility, distinguishes generic assignment from the dedicated Organization Owner factory, supports historical reconstitution, and evaluates revocation/effectiveness.
+- **PermissionOverride:** models Branch-target ALLOW and DENY exceptions for an OrganizationMembership, validates tenant consistency and known permission scope, and protects timestamp state.
+- **Permission scope rules:** validate Permission codes against the source-controlled Registry and enforce Role assignment-scope compatibility.
+- **Authorization decision:** represents allow/deny outcomes and their reason codes.
+- **Permission evaluator:** evaluates a supplied authorization snapshot, validates global Organization/Membership/Branch context, applies DENY before ALLOW, then evaluates Organization and Branch Role grants. It is stateless and does not perform persistence or I/O.
+- **Delegation policy:** evaluates permission delegability, actor-held permissions, Role composition, Role assignment, and ALLOW/DENY override requirements.
+
+### Architecture boundaries
+
+- Domain implementation is isolated under `src/contexts/access-control/domain/`.
+- No Prisma schema, migration, database operation, or production Seed change was made in PHASE 4.
+- No Application use case, repository port, Prisma adapter, NestJS provider, controller, or HTTP guard was introduced. These remain in their designated later phases.
+- The evaluator receives its authorization state as a snapshot; loading and constructing that snapshot belongs to later Application and Infrastructure work.
+- Identity account-status integration, audit persistence, transaction/locking semantics, and database constraint behavior tests remain deferred to their assigned phases.
+
+### Files created
+
+- `authorization/authorization-decision.ts`
+- `authorization/authorization.types.ts`
+- `authorization/permission-evaluator.ts`
+- `authorization/permission-evaluator.unit.spec.ts`
+- `authorization/permission-delegation.policy.ts`
+- `authorization/permission-delegation.policy.unit.spec.ts`
+- `errors/invalid-role-data.error.ts`
+- `errors/invalid-role-assignment.error.ts`
+- `errors/invalid-permission-override.error.ts`
+- `roles/role.types.ts`
+- `roles/role.ts`
+- `roles/role.unit.spec.ts`
+- `role-assignments/role-assignment.ts`
+- `role-assignments/role-assignment.unit.spec.ts`
+- `permission-overrides/permission-override.ts`
+- `permission-overrides/permission-override.unit.spec.ts`
+- `rules/role-permission-scope.rule.ts`
+
+`permissions/permission-catalog.unit.spec.ts` was also formatted by Prettier. The Permission Registry implementation was not changed in PHASE 4.
+
+### PHASE 4 verification
+
+Observed terminal results on 2026-11-01:
+
+| Check                        | Observed result                                                         |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| Full `npx vitest run`        | 68 files passed; 846 tests passed; 0 failed                             |
+| Access Control Domain tests  | 6 files passed; 148 tests passed; 0 failed                              |
+| `npx tsc --noEmit`           | Completed without reported errors                                       |
+| `npm run build`              | Completed successfully                                                  |
+| Domain `oxlint --type-aware` | 19 files; 0 warnings; 0 errors                                          |
+| Domain Prettier check        | All matched TypeScript files formatted                                  |
+| `git diff --check`           | No output; note that Git does not include untracked files in this check |
+
+The full project suite and production build were run before the final formatting-only pass. After formatting, the focused Domain tests, TypeScript check, Domain lint, and Prettier check were run again successfully.
+
+### PHASE 4 acceptance review
+
+- [x] Role, RoleAssignment, and PermissionOverride Domain models implemented.
+- [x] Permission and scope compatibility rules implemented.
+- [x] Authorization decision and pure snapshot evaluator implemented.
+- [x] Delegation policy implemented.
+- [x] Focused Domain unit tests: 148 passed.
+- [x] Full project unit suite: 846 passed.
+- [x] TypeScript, production build, Domain lint, and formatting checks passed.
+- [x] No database schema or migration changes.
+- [x] Project-owner review and formal PHASE 4 approval (2026-11-01).
+
+**PHASE 4 was formally approved by the project owner on 2026-11-01. PHASE 5 may now begin.**
 
 ## PHASE 5 — Application Layer and Use Cases
 
@@ -1346,6 +1421,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The current implementation checkpoint is **PHASE 3 — Permission Registry and Seed**, implemented and awaiting project-owner approval. After approval, proceed to **PHASE 4 — Domain Model**. Do not start PHASE 5 Application implementation before PHASE 4 is completed and approved.
+The current implementation checkpoint is **PHASE 4 — Domain Model**, completed and approved by the project owner on 2026-11-01. PHASE 3 is also closed. Proceed to PHASE 5 — Application Layer and Use Cases.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.

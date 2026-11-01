@@ -3,9 +3,9 @@
 | Attribute              | Value                         |
 | ---------------------- | ----------------------------- |
 | Project                | `tarkhineh-backend`           |
-| Document version       | 1.4                           |
+| Document version       | 1.6                           |
 | Last updated           | 2026-11-01                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.3 |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.4 |
 | Implementation status  | `IMPLEMENTATION-STATUS.md`    |
 
 This document is the decision log for the Access Control bounded context. Each ADR records the context, the decision, and its consequences. Accepted decisions are binding implementation constraints. They must not be silently changed. If later evidence or a product requirement requires a change, add a new ADR that explicitly supersedes the affected decision and obtain project-owner approval before implementing the change.
@@ -14,7 +14,8 @@ This document is the decision log for the Access Control bounded context. Each A
 
 - **ACCEPTED** — approved architectural decision.
 - **ACCEPTED — SCHEMA IMPLEMENTED** — approved decision implemented in the PHASE 2 database schema and migration.
-- **IMPLEMENTED — AWAITING PROJECT-OWNER APPROVAL** — PHASE 3 implementation and verification are recorded, but formal phase approval has not yet been granted.
+- **IMPLEMENTED — AWAITING PROJECT-OWNER APPROVAL** — a phase's implementation and verification are recorded, but formal phase approval has not yet been granted.
+- **ACCEPTED — IMPLEMENTED** — implementation is verified and the corresponding phase has received project-owner approval.
 
 ---
 
@@ -485,7 +486,7 @@ Git records code and documentation changes. Chat history and assistant memory ar
 
 ## ADR-019 — Explicit Permission Registry metadata and System Role grants
 
-**Status:** IMPLEMENTED — AWAITING PROJECT-OWNER APPROVAL IN PHASE 3
+**Status:** ACCEPTED — IMPLEMENTED (PHASE 3 APPROVED 2026-11-01)
 **Decision owner:** Project owner
 **Date:** 2026-11-01
 
@@ -559,7 +560,7 @@ The architecture requires stable source-controlled Permission semantics, explici
 - Historical Permission rows are retained. Permission retirement requires a separate compatibility and data-retirement plan.
 - The synchronizer intentionally does not open a nested transaction.
 - PHASE 3 implementation results and limitations are recorded in `IMPLEMENTATION-STATUS.md` and the PHASE 3 section of `MASTER-ARCHITECTURE.md`.
-- Formal PHASE 3 closure remains subject to project-owner approval.
+- PHASE 3 was formally approved by the project owner on 2026-11-01.
 
 ---
 
@@ -574,6 +575,27 @@ The following items were implemented and verified during PHASE 2:
 1. `Role.isAssignable` is persisted. `ORGANIZATION_OWNER` is configured with `isAssignable = false` and protected by `Role_reserved_owner_non_assignable_check`.
 2. Permission `name` and `description` columns were removed after a targeted consumer audit. Localized metadata is source-controlled in the Permission Registry rather than persisted in the Permission table.
 3. A forward migration was used instead of a database reset. Migration `20261101075730_access_control_schema_v2` was applied and verified on both `tarkhineh_test` and `tarkhineh_db`.
+
+### PHASE 4 implementation notes
+
+PHASE 4 implemented the Domain model using the previously accepted architecture and decisions. No new architectural decision was introduced and no accepted ADR was superseded.
+
+The implementation includes:
+
+1. Role, RoleAssignment, and PermissionOverride Domain models and invariants.
+2. Permission Registry lookup and Role permission-scope compatibility.
+3. AuthorizationDecision and a pure snapshot-based PermissionEvaluator.
+4. A Domain delegation policy for Role composition, Role assignment, and ALLOW/DENY overrides.
+
+Observed verification on 2026-11-01:
+
+- Access Control Domain: 148 tests passed across 6 files.
+- Full Unit suite: 846 tests passed across 68 files.
+- TypeScript and production build completed successfully.
+- Domain lint reported zero warnings and zero errors.
+- Prettier check passed for the Domain TypeScript files.
+
+No Prisma schema, migration, database, Application, Infrastructure, or HTTP changes were part of PHASE 4. The project owner formally approved PHASE 4 on 2026-11-01.
 
 ### Decisions deferred to later phases
 

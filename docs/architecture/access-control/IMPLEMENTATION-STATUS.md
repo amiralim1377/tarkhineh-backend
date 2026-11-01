@@ -1,14 +1,14 @@
 # Tarkhineh Backend — Access Control Implementation Status
 
-| Attribute              | Value                                                        |
-| ---------------------- | ------------------------------------------------------------ |
-| Project                | `tarkhineh-backend`                                          |
-| Document version       | 1.5                                                          |
-| Last updated           | 2026-11-01                                                   |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.3                                |
-| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.3                            |
-| Current phase          | PHASE 3 — Permission Registry and Seed                       |
-| Current phase status   | **Implementation complete; awaiting project-owner approval** |
+| Attribute              | Value                                                  |
+| ---------------------- | ------------------------------------------------------ |
+| Project                | `tarkhineh-backend`                                    |
+| Document version       | 1.7                                                    |
+| Last updated           | 2026-11-01                                             |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.4                          |
+| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.6                      |
+| Current phase          | PHASE 4 — Domain Model                                 |
+| Current phase status   | **COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)** |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -18,19 +18,19 @@
 
 ### Phase summary
 
-| Phase | Name                                            | Status                                                    |
-| ----: | ----------------------------------------------- | --------------------------------------------------------- |
-|     0 | Repository Audit and Baseline                   | COMPLETED                                                 |
-|     1 | Requirements and Architecture Design            | COMPLETED — approved by project owner                     |
-|     2 | Database Schema and Migration Design            | COMPLETED — approved by project owner on 2026-11-01       |
-|     3 | Permission Registry and Seed                    | IMPLEMENTATION COMPLETE — awaiting project-owner approval |
-|     4 | Domain Model                                    | NOT STARTED                                               |
-|     5 | Application Layer and Use Cases                 | NOT STARTED                                               |
-|     6 | Infrastructure and Authorization Persistence    | NOT STARTED                                               |
-|     7 | Audit Logging                                   | NOT STARTED                                               |
-|     8 | Cross-Context Integration                       | NOT STARTED                                               |
-|     9 | HTTP Layer                                      | NOT STARTED                                               |
-|    10 | Security, Performance, and Production Readiness | NOT STARTED                                               |
+| Phase | Name                                            | Status                                              |
+| ----: | ----------------------------------------------- | --------------------------------------------------- |
+|     0 | Repository Audit and Baseline                   | COMPLETED                                           |
+|     1 | Requirements and Architecture Design            | COMPLETED — approved by project owner               |
+|     2 | Database Schema and Migration Design            | COMPLETED — approved by project owner on 2026-11-01 |
+|     3 | Permission Registry and Seed                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
+|     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
+|     5 | Application Layer and Use Cases                 | NOT STARTED                                         |
+|     6 | Infrastructure and Authorization Persistence    | NOT STARTED                                         |
+|     7 | Audit Logging                                   | NOT STARTED                                         |
+|     8 | Cross-Context Integration                       | NOT STARTED                                         |
+|     9 | HTTP Layer                                      | NOT STARTED                                         |
+|    10 | Security, Performance, and Production Readiness | NOT STARTED                                         |
 
 ### Current implementation result
 
@@ -38,7 +38,7 @@ PHASE 3 has introduced a source-controlled Permission Registry, explicit permiss
 
 The current Registry contains **23 permissions**: all 18 previous codes are preserved and five approved codes have been added. The new Seed manages only `ORGANIZATION_OWNER` and `BRANCH_MANAGER`; it does not manage Organization-owned custom roles, role assignments, or permission overrides.
 
-PHASE 3 is prepared for owner review. The production CLI Seed has **not** been run against `tarkhineh_db` or `tarkhineh_test` as part of this phase.
+PHASE 3 was formally approved by the project owner on 2026-11-01. The production CLI Seed has **not** been run against `tarkhineh_db` or `tarkhineh_test` as part of this phase.
 
 ---
 
@@ -370,7 +370,7 @@ The project owner reviewed and approved the PHASE 2 completion report on 2026-11
 
 ## 5. PHASE 3 — Permission Registry and Seed
 
-**Implementation status: IMPLEMENTATION COMPLETE — AWAITING PROJECT-OWNER APPROVAL**
+**Status: COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)**
 
 ### 5.1 Permission Registry contract
 
@@ -604,7 +604,87 @@ Known limitations:
 
 ---
 
-## 6. Open items and deferred work
+## 6. PHASE 4 — Domain Model
+
+**Status: COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)**
+
+### 6.1 Deliverables
+
+Implemented under `src/contexts/access-control/domain/`:
+
+- Role model and role lifecycle/scope invariants.
+- RoleAssignment creation, dedicated Owner assignment factory, historical reconstitution, revocation, and effectiveness.
+- PermissionOverride with Branch-target ALLOW/DENY effects, tenant validation, and timestamp invariants.
+- Permission Registry lookup and Role-to-Permission scope compatibility rules.
+- AuthorizationDecision and a pure snapshot-based PermissionEvaluator.
+- Permission delegation policy for Role composition, assignment, and permission overrides.
+
+The evaluator does not access Prisma, Redis, HTTP, NestJS, or external services. It evaluates the snapshot supplied by its caller. Snapshot construction and persistence belong to later phases.
+
+### 6.2 Files created
+
+- `authorization/authorization-decision.ts`
+- `authorization/authorization.types.ts`
+- `authorization/permission-evaluator.ts`
+- `authorization/permission-evaluator.unit.spec.ts`
+- `authorization/permission-delegation.policy.ts`
+- `authorization/permission-delegation.policy.unit.spec.ts`
+- `errors/invalid-role-data.error.ts`
+- `errors/invalid-role-assignment.error.ts`
+- `errors/invalid-permission-override.error.ts`
+- `roles/role.types.ts`
+- `roles/role.ts`
+- `roles/role.unit.spec.ts`
+- `role-assignments/role-assignment.ts`
+- `role-assignments/role-assignment.unit.spec.ts`
+- `permission-overrides/permission-override.ts`
+- `permission-overrides/permission-override.unit.spec.ts`
+- `rules/role-permission-scope.rule.ts`
+
+`permissions/permission-catalog.unit.spec.ts` was reformatted by Prettier. The Registry implementation was not otherwise changed during this phase.
+
+### 6.3 Verification results
+
+Observed terminal results on 2026-11-01:
+
+| Command/check                                                       | Observed result                                                         |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `npx vitest run`                                                    | 68 files passed; 846 tests passed; 0 failed                             |
+| `npx vitest run src/contexts/access-control/domain`                 | 6 files passed; 148 tests passed; 0 failed                              |
+| `npx tsc --noEmit`                                                  | Completed without reported errors                                       |
+| `npm run build`                                                     | Completed successfully                                                  |
+| `npx oxlint --type-aware src/contexts/access-control/domain/`       | 19 files; 0 warnings; 0 errors                                          |
+| `npx prettier --check 'src/contexts/access-control/domain/**/*.ts'` | All matched files use Prettier code style                               |
+| `git diff --check`                                                  | No output; note that Git does not include untracked files in this check |
+
+The full project test suite and production build were run before the formatting-only pass. After formatting, the focused Domain tests, TypeScript check, Domain lint, and Prettier check were rerun and passed.
+
+### 6.4 Database and scope boundaries
+
+- No Prisma schema changes.
+- No migration created or applied.
+- No database reset or persistent database write.
+- No production Seed execution.
+- No Application use case, persistence adapter, audit implementation, HTTP endpoint, or NestJS wiring.
+- PHASE 5 and later responsibilities remain unimplemented.
+
+### 6.5 PHASE 4 acceptance
+
+- [x] Domain entities and invariants implemented.
+- [x] Permission scope compatibility implemented.
+- [x] Pure authorization evaluator implemented.
+- [x] Delegation policy implemented.
+- [x] 148 focused Domain tests passed.
+- [x] Full project suite of 846 tests passed.
+- [x] TypeScript and production build passed.
+- [x] Domain lint and Prettier checks passed.
+- [x] Project-owner review and formal approval (2026-11-01).
+
+**PHASE 4 was formally approved by the project owner on 2026-11-01. PHASE 5 is the next phase.**
+
+---
+
+## 7. Open items and deferred work
 
 The following items belong to later phases or separate operational work. They must not be treated as PHASE 3 failures or as completed work.
 
@@ -619,7 +699,7 @@ The following items belong to later phases or separate operational work. They mu
 
 ---
 
-## 7. Session handoff protocol
+## 8. Session handoff protocol
 
 At the end of each meaningful development session:
 
@@ -640,9 +720,10 @@ The repository documents and Git history are the project source of truth. Conver
 
 ---
 
-## 8. Exact next step
+## 9. Exact next step
 
-1. Review and approve the PHASE 3 implementation and verification report in section 5.
-2. Decide separately whether and when to execute the production CLI Seed against a persistent database.
-3. After formal PHASE 3 approval, begin **PHASE 4 — Domain Model** according to the approved architecture.
-4. Do not begin PHASE 5 Application work before PHASE 4 is completed and approved.
+1. Commit the approved PHASE 4 Domain implementation and its verification documentation.
+2. Begin PHASE 5 — Application Layer and Use Cases.
+3. Keep Infrastructure implementation in PHASE 6; do not introduce Prisma adapters or persistence concerns into the Domain.
+
+The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.

@@ -113,9 +113,7 @@ describe('Permission Registry', () => {
     });
 
     it('contains no duplicate permission codes', () => {
-      const codes = PERMISSION_DEFINITIONS.map(
-        (permission) => permission.code,
-      );
+      const codes = PERMISSION_DEFINITIONS.map((permission) => permission.code);
 
       expect(new Set(codes).size).toBe(codes.length);
     });
@@ -190,16 +188,11 @@ describe('Permission Registry', () => {
     });
 
     it('partitions all permissions without overlap', () => {
-      const combined = [
-        ...DELEGABLE_PERMISSIONS,
-        ...NON_DELEGABLE_PERMISSIONS,
-      ];
+      const combined = [...DELEGABLE_PERMISSIONS, ...NON_DELEGABLE_PERMISSIONS];
 
       expect(combined).toHaveLength(23);
       expect(new Set(combined).size).toBe(23);
-      expect(sortCodes(combined)).toEqual(
-        sortCodes(EXPECTED_PERMISSION_CODES),
-      );
+      expect(sortCodes(combined)).toEqual(sortCodes(EXPECTED_PERMISSION_CODES));
     });
 
     it('does not infer delegability from target scope', () => {
@@ -307,8 +300,7 @@ describe('Permission Registry', () => {
   describe('specific delegation decisions', () => {
     it('keeps organization.roles.assign delegable', () => {
       expect(
-        PERMISSION_CATALOG[PERMISSION_CODE.ORGANIZATION_ROLES_ASSIGN]
-          .delegable,
+        PERMISSION_CATALOG[PERMISSION_CODE.ORGANIZATION_ROLES_ASSIGN].delegable,
       ).toBe(true);
     });
 
