@@ -3,12 +3,12 @@
 | Attribute              | Value                                                        |
 | ---------------------- | ------------------------------------------------------------ |
 | Project                | `tarkhineh-backend`                                          |
-| Document version       | 2.1                                                          |
+| Document version       | 2.2                                                          |
 | Last updated           | 2026-11-01                                                   |
 | Architecture reference | `MASTER-ARCHITECTURE.md` v1.8                                |
 | Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.9                            |
 | Current phase          | PHASE 6 — Infrastructure and Authorization Persistence      |
-| Current phase status   | **IMPLEMENTATION VERIFIED — OWNER REVIEW OPEN**             |
+| Current phase status   | **TECHNICAL REVIEW PASSED — FORMAL OWNER SIGN-OFF OPEN**     |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -26,7 +26,7 @@
 |     3 | Permission Registry and Seed                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
-|     6 | Infrastructure and Authorization Persistence    | IMPLEMENTATION VERIFIED — OWNER REVIEW OPEN       |
+|     6 | Infrastructure and Authorization Persistence    | TECHNICAL REVIEW PASSED — FORMAL OWNER SIGN-OFF OPEN |
 |     7 | Audit Logging                                   | NOT STARTED                                         |
 |     8 | Cross-Context Integration                       | NOT STARTED                                         |
 |     9 | HTTP Layer                                      | NOT STARTED                                         |
@@ -34,7 +34,7 @@
 
 ### Latest implementation checkpoint
 
-PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence has been implemented and its expanded PostgreSQL acceptance coverage was committed on branch `access-control` in commit `7e0b267`. The concrete Prisma Unit of Work, transaction-bound repositories, authorization snapshot readers, NestJS provider wiring, Serializable mutation transactions, bounded retry handling, and expanded persistence tests are present. The latest observed focused checkpoint is 322 passing Access Control Unit tests across 21 files and 16 Access Control Integration tests across two files (14 Persistence and two Registry Seed tests): 338 passing tests in total. TypeScript no-emit, Access Control Oxlint (83 files, zero warnings/errors), Prettier, `git diff --check`, and the production build also passed. Tenant-isolation, database-guard, Handler-level concurrency, Role/Permission race, and Multi-Branch snapshot scenarios are covered. Query-plan inspection was performed, but its small/synthetic dataset is not a scale benchmark. PHASE 6 is **not formally closed**: full module-graph/application-boot verification, the full-project Integration suite, and project-owner review remain outstanding. See section 8 for evidence and limitations.
+PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence has been implemented, its expanded PostgreSQL acceptance coverage was committed in `7e0b267`, and a GitHub source review was completed on 2026-11-01. The review found no blocking defect in the inspected transaction boundary, tenant-scoped persistence paths, database guards, authorization snapshot assembly, or NestJS provider wiring. The focused terminal checkpoint records 322 passing Access Control Unit tests and 16 passing Access Control Integration tests (338 total), plus successful TypeScript, Access Control lint, Prettier, diff, and production build checks. Formal PHASE 6 closure is not recorded yet: the full application has not been boot-tested, the full-project Integration suite was not rerun (one previously isolated unrelated Outbound Email failure remains known), no representative data-volume benchmark exists, and explicit project-owner sign-off remains outstanding. The branch is 27 commits ahead of `main`; no Access Control pull request is open. See section 8 for the review record and limitations.
 
 ### PHASE 3 Registry implementation result
 
@@ -956,6 +956,34 @@ No Prisma schema change or migration was created in PHASE 6. The Integration tes
 - [ ] Project-owner review and formal PHASE 6 approval.
 
 **The PHASE 6 persistence acceptance scenarios requested for this work are implemented and verified. PHASE 6 remains active pending the remaining review items and explicit project-owner approval; do not mark it closed or begin PHASE 7 without that approval.**
+
+### 8.10 GitHub technical review — 2026-11-01
+
+**Review outcome: PASS — no blocking Phase 6 Infrastructure/Persistence defect identified in the inspected GitHub source. This is a technical code review, not a claim that unexecuted runtime or full-suite checks passed.**
+
+Review scope:
+
+- Reviewed the concrete Unit of Work, all three transaction-bound repositories, the authorization snapshot reader, persistence mappers, Application ports, AccessControlModule, PrismaModule, SharedModule, AppModule, Prisma schema, and the PHASE 2 Access Control migration.
+- Confirmed the Unit of Work supplies one transaction client to all persistence adapters, uses PostgreSQL `Serializable` isolation for mutations, retries bounded `P2034` conflicts, and only treats the exact Permission Override composite unique-key `P2002` as retryable. Other unique violations and application errors are not intentionally retried.
+- Confirmed standalone authorization reads use one `RepeatableRead` transaction, including the organization and all active-Branch delegation snapshots. The evaluator filters inactive BranchMemberships and inactive/revoked Roles/Assignments according to the Domain rules.
+- Reviewed tenant filters on membership, Role, Assignment, and Permission Override access paths, plus database-level Role ownership/scope guards and composite tenant foreign keys.
+- Statically traced the NestJS provider graph: `ACCESS_CONTROL_UNIT_OF_WORK` and `AUTHORIZATION_SNAPSHOT_READER` resolve to their concrete adapters; `PrismaService` is exported by `PrismaModule`; `CLOCK` is exported by `SharedModule`; and `AppModule` registers global `ConfigModule` before importing `AccessControlModule`.
+- Matched the Persistence Integration file's 14 test cases to the tenant-isolation, PostgreSQL guard, Handler concurrency, duplicate Role/Assignment, permission-set race, and Multi-Branch acceptance scenarios recorded above.
+
+Repository and CI observations:
+
+- At review time, `main` pointed to `b073d3b`, while `access-control` pointed to `fbb1103`; GitHub compare reported `access-control` **27 commits ahead and 0 behind**.
+- No open pull request exists for `access-control`; the Access Control code and its updated documentation are therefore not yet present on `main`.
+- The repository tree contains no `.github/workflows` directory. GitHub reported no commit status checks for the implementation commit `7e0b267` or the latest documentation commit. The passing test/build results above are the user's observed local terminal results, not GitHub Actions results.
+
+Deferred verification and risk boundaries:
+
+- A full Nest application boot / complete module-graph runtime test was not present. The provider graph was statically traced and no missing Phase 6 dependency was identified, but static review is not a substitute for running the application.
+- The full-project Integration suite was not rerun for this review. The previously reported Outbound Email retry/lease failure is outside Access Control and must remain tracked separately rather than treated as a Phase 6 regression.
+- The PostgreSQL `EXPLAIN` review used a small test dataset and synthetic/probe identifiers. It supports the conclusion that current schema indexes are reasonable for the inspected paths; it does not provide production-scale performance evidence. A representative `EXPLAIN (ANALYZE, BUFFERS)` exercise belongs in the later production-readiness work.
+- The focused Access Control test and build results are recorded from actual terminal output supplied during the development session; this GitHub review did not execute code in a runner.
+
+**Recommendation:** Accept the PHASE 6 persistence implementation from a technical-review perspective and carry the full-app boot test, full-project Integration investigation, and production-scale query benchmark as explicit deferred verification. Keep the formal phase status pending until the project owner records sign-off. Do not claim that the feature is merged into `main`; open a PR from `access-control` to `main` as a separate release/integration step.
 
 ## 9. Open items and deferred work
 
