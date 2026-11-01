@@ -41,9 +41,7 @@ function createTestDatabaseUrl(): string {
   }
 
   const url = new URL(configuredUrl);
-  const databaseName = decodeURIComponent(
-    url.pathname.replace(/^\/+/, ''),
-  );
+  const databaseName = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
 
   if (databaseName !== 'tarkhineh_db') {
     throw new Error(
@@ -193,8 +191,7 @@ async function cleanupFixture(
       where: {
         OR: [
           {
-            organizationMembershipId:
-              current.organizationMembershipId,
+            organizationMembershipId: current.organizationMembershipId,
           },
           {
             branchMembershipId: current.branchMembershipId,
@@ -301,10 +298,7 @@ describe('Access Control Persistence Integration', () => {
   it('commits an Organization Role and its complete Permission relation set', async () => {
     const current = fixture!;
 
-    const role = createRole(
-      current,
-      ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
-    );
+    const role = createRole(current, ROLE_ASSIGNMENT_SCOPE.ORGANIZATION);
 
     const roleId = role.getId().getValue();
 
@@ -343,23 +337,18 @@ describe('Access Control Persistence Integration', () => {
     expect(record).not.toBeNull();
     expect(record?.organizationId).toBe(current.organizationId);
     expect(record?.createdById).toBe(current.userId);
-    expect(
-      record?.permissions.map((item) => item.permission.code),
-    ).toEqual([PERMISSION_CODE.ORGANIZATION_READ]);
+    expect(record?.permissions.map((item) => item.permission.code)).toEqual([
+      PERMISSION_CODE.ORGANIZATION_READ,
+    ]);
   });
 
   it('rolls back Role creation when the Unit of Work callback fails', async () => {
     const current = fixture!;
 
-    const role = createRole(
-      current,
-      ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
-    );
+    const role = createRole(current, ROLE_ASSIGNMENT_SCOPE.ORGANIZATION);
 
     const roleId = role.getId().getValue();
-    const applicationError = new Error(
-      'Intentional integration rollback.',
-    );
+    const applicationError = new Error('Intentional integration rollback.');
 
     await expect(
       unitOfWork.execute(async (context) => {
@@ -386,21 +375,12 @@ describe('Access Control Persistence Integration', () => {
       ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
     );
 
-    const branchRole = createRole(
-      current,
-      ROLE_ASSIGNMENT_SCOPE.BRANCH,
-    );
+    const branchRole = createRole(current, ROLE_ASSIGNMENT_SCOPE.BRANCH);
 
     const identifiers = await unitOfWork.execute(async (context) => {
-      await context.roleRepository.save(
-        organizationRole,
-        current.userId,
-      );
+      await context.roleRepository.save(organizationRole, current.userId);
 
-      await context.roleRepository.save(
-        branchRole,
-        current.userId,
-      );
+      await context.roleRepository.save(branchRole, current.userId);
 
       const persistedOrganizationRole =
         await context.roleRepository.findAssignableById(
@@ -455,17 +435,14 @@ describe('Access Control Persistence Integration', () => {
         createdAt: CREATED_AT,
       });
 
-      await context.roleAssignmentRepository.save(
-        organizationAssignment,
-      );
+      await context.roleAssignmentRepository.save(organizationAssignment);
 
       await context.roleAssignmentRepository.save(branchAssignment);
 
       const overrideTarget =
         await context.permissionOverrideRepository.findActiveTarget({
           organizationId: current.organizationId,
-          organizationMembershipId:
-            current.organizationMembershipId,
+          organizationMembershipId: current.organizationMembershipId,
           branchId: current.branchId,
         });
 
@@ -488,12 +465,11 @@ describe('Access Control Persistence Integration', () => {
       await context.permissionOverrideRepository.save(override);
 
       // Read the newly persisted records using the same transaction client.
-      const snapshot =
-        await context.authorizationSnapshotReader.loadSnapshot({
-          userId: current.userId,
-          organizationId: current.organizationId,
-          branchId: current.branchId,
-        });
+      const snapshot = await context.authorizationSnapshotReader.loadSnapshot({
+        userId: current.userId,
+        organizationId: current.organizationId,
+        branchId: current.branchId,
+      });
 
       expect(snapshot.organizationMembership?.id).toBe(
         current.organizationMembershipId,
@@ -516,9 +492,9 @@ describe('Access Control Persistence Integration', () => {
         });
 
       expect(delegationSnapshots.activeBranchSnapshots).toHaveLength(1);
-      expect(
-        delegationSnapshots.activeBranchSnapshots[0]?.branch?.id,
-      ).toBe(current.branchId);
+      expect(delegationSnapshots.activeBranchSnapshots[0]?.branch?.id).toBe(
+        current.branchId,
+      );
 
       // Revoke the Organization assignment using its Organization context.
       const persistedOrganizationAssignment =
@@ -533,9 +509,7 @@ describe('Access Control Persistence Integration', () => {
         throw new Error('Expected Organization assignment to be readable.');
       }
 
-      expect(
-        persistedOrganizationAssignment.revoke(REVOKED_AT),
-      ).toBe(true);
+      expect(persistedOrganizationAssignment.revoke(REVOKED_AT)).toBe(true);
 
       await context.roleAssignmentRepository.update(
         persistedOrganizationAssignment,
@@ -557,16 +531,13 @@ describe('Access Control Persistence Integration', () => {
 
       expect(persistedBranchAssignment.revoke(REVOKED_AT)).toBe(true);
 
-      await context.roleAssignmentRepository.update(
-        persistedBranchAssignment,
-      );
+      await context.roleAssignmentRepository.update(persistedBranchAssignment);
 
       // Change the existing Override instead of inserting a second row.
       const persistedOverride =
         await context.permissionOverrideRepository.findByUniqueKey({
           organizationId: current.organizationId,
-          organizationMembershipId:
-            current.organizationMembershipId,
+          organizationMembershipId: current.organizationMembershipId,
           branchId: current.branchId,
           permissionCode: PERMISSION_CODE.BRANCH_STAFF_READ,
         });
@@ -584,9 +555,7 @@ describe('Access Control Persistence Integration', () => {
         ),
       ).toBe(true);
 
-      await context.permissionOverrideRepository.update(
-        persistedOverride,
-      );
+      await context.permissionOverrideRepository.update(persistedOverride);
 
       return {
         organizationAssignmentId: organizationAssignment.id,
@@ -613,16 +582,13 @@ describe('Access Control Persistence Integration', () => {
     expect(assignments).toHaveLength(2);
     expect(assignments.every((item) => item.revokedAt !== null)).toBe(true);
 
-    const persistedOverride =
-      await prisma.userPermissionOverride.findUnique({
-        where: {
-          id: identifiers.overrideId,
-        },
-      });
+    const persistedOverride = await prisma.userPermissionOverride.findUnique({
+      where: {
+        id: identifiers.overrideId,
+      },
+    });
 
-    expect(persistedOverride?.effect).toBe(
-      PERMISSION_OVERRIDE_EFFECT.ALLOW,
-    );
+    expect(persistedOverride?.effect).toBe(PERMISSION_OVERRIDE_EFFECT.ALLOW);
     expect(persistedOverride?.updatedAt.toISOString()).toBe(
       OVERRIDE_UPDATED_AT.toISOString(),
     );
@@ -645,8 +611,7 @@ describe('Access Control Persistence Integration', () => {
       const override =
         await context.permissionOverrideRepository.findByUniqueKey({
           organizationId: current.organizationId,
-          organizationMembershipId:
-            current.organizationMembershipId,
+          organizationMembershipId: current.organizationMembershipId,
           branchId: current.branchId,
           permissionCode: PERMISSION_CODE.BRANCH_STAFF_READ,
         });
@@ -667,5 +632,108 @@ describe('Access Control Persistence Integration', () => {
         },
       }),
     ).resolves.toBeNull();
+  });
+
+  it('handles concurrent creation of the same Permission Override idempotently', async () => {
+    const current = fixture!;
+
+    // Force both independent Serializable transactions to observe the
+    // missing key before either transaction attempts the insert.
+    let initialReadCount = 0;
+    let releaseInitialReads: () => void = () => {};
+
+    const bothInitialReadsCompleted = new Promise<void>((resolve) => {
+      releaseInitialReads = resolve;
+    });
+
+    const applyOverride = () =>
+      unitOfWork.execute(async (context) => {
+        const target =
+          await context.permissionOverrideRepository.findActiveTarget({
+            organizationId: current.organizationId,
+            organizationMembershipId: current.organizationMembershipId,
+            branchId: current.branchId,
+          });
+
+        if (!target) {
+          throw new Error('Expected an active Permission Override target.');
+        }
+
+        const key = {
+          organizationId: current.organizationId,
+          organizationMembershipId: current.organizationMembershipId,
+          branchId: current.branchId,
+          permissionCode: PERMISSION_CODE.BRANCH_STAFF_READ,
+        };
+
+        const existing =
+          await context.permissionOverrideRepository.findByUniqueKey(key);
+
+        if (existing) {
+          if (existing.effect !== PERMISSION_OVERRIDE_EFFECT.DENY) {
+            throw new Error('Concurrent Override has an unexpected effect.');
+          }
+
+          return {
+            overrideId: existing.id,
+            changed: false,
+          };
+        }
+
+        initialReadCount += 1;
+
+        if (initialReadCount === 2) {
+          releaseInitialReads();
+        }
+
+        await bothInitialReadsCompleted;
+
+        const override = PermissionOverride.create({
+          organizationId: current.organizationId,
+          organizationMembership: target.organizationMembership,
+          branch: target.branch,
+          permissionCode: PERMISSION_CODE.BRANCH_STAFF_READ,
+          assignedById: current.userId,
+          effect: PERMISSION_OVERRIDE_EFFECT.DENY,
+          createdAt: new Date(),
+        });
+
+        await context.permissionOverrideRepository.save(override);
+
+        return {
+          overrideId: override.id,
+          changed: true,
+        };
+      });
+
+    const results = await Promise.all([applyOverride(), applyOverride()]);
+
+    expect(initialReadCount).toBe(2);
+    expect(results.map((result) => result.changed).sort()).toEqual([
+      false,
+      true,
+    ]);
+    expect(results[0]?.overrideId).toBe(results[1]?.overrideId);
+
+    const persistedOverrides = await prisma.userPermissionOverride.findMany({
+      where: {
+        organizationId: current.organizationId,
+        organizationMembershipId: current.organizationMembershipId,
+        branchId: current.branchId,
+        permission: {
+          is: {
+            code: PERMISSION_CODE.BRANCH_STAFF_READ,
+          },
+        },
+      },
+      select: {
+        id: true,
+        effect: true,
+      },
+    });
+
+    expect(persistedOverrides).toHaveLength(1);
+    expect(persistedOverrides[0]?.id).toBe(results[0]?.overrideId);
+    expect(persistedOverrides[0]?.effect).toBe(PERMISSION_OVERRIDE_EFFECT.DENY);
   });
 });

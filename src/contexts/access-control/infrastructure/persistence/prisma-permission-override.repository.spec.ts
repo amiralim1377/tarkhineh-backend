@@ -1,17 +1,14 @@
 import { Prisma } from '../../../../generated/prisma/client.js';
+import { RetryableAccessControlTransactionError } from './retryable-access-control-transaction.error.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PermissionOverride } from '../../domain/permission-overrides/permission-override.js';
-import type {
-  PersistedPermissionOverrideWithRelations,
-} from './access-control-persistence.mapper.js';
+import type { PersistedPermissionOverrideWithRelations } from './access-control-persistence.mapper.js';
 import { PrismaPermissionOverrideRepository } from './prisma-permission-override.repository.js';
 
 const CREATED_AT = new Date('2026-11-01T10:00:00.000Z');
 const UPDATED_AT = new Date('2026-11-01T12:00:00.000Z');
 
-function createOverride(
-  effect: 'ALLOW' | 'DENY' = 'DENY',
-): PermissionOverride {
+function createOverride(effect: 'ALLOW' | 'DENY' = 'DENY'): PermissionOverride {
   return PermissionOverride.create({
     id: 'override-1',
     organizationId: 'org-1',
@@ -53,6 +50,14 @@ function createPersistedOverride(): PersistedPermissionOverrideWithRelations {
       code: 'branch.dashboard.read',
     },
   } as PersistedPermissionOverrideWithRelations;
+}
+
+function createUniqueViolation(target: string[] | string): Error {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: '7.10.1',
+    meta: { target },
+  });
 }
 
 function createSut() {
@@ -351,6 +356,29 @@ describe('PrismaPermissionOverrideRepository', () => {
           },
         },
       });
+    });
+  });
+
+  describe('save unique conflicts', () => {
+    it('signals a transaction retry only for the Override composite unique key', async () => {
+      sut.createOverrideRecord.mockRejectedValue(
+        createUniqueViolation([
+          'organizationMembershipId',
+          'branchId',
+          'permissionId',
+        ]),
+      );
+
+      await expect(
+        sut.repository.save(createOverride()),
+      ).rejects.toBeInstanceOf(RetryableAccessControlTransactionError);
+    });
+
+    it('does not classify unrelated unique violations as retryable', async () => {
+      const error = createUniqueViolation(['id']);
+      sut.createOverrideRecord.mockRejectedValue(error);
+
+      await expect(sut.repository.save(createOverride())).rejects.toBe(error);
     });
   });
 

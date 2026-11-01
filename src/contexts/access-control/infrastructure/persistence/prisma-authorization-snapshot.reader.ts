@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '../../../../generated/prisma/client.js';
 import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
@@ -38,19 +39,18 @@ async function loadSnapshot(
     },
   });
 
-  const organizationMembership =
-    await prisma.organizationMembership.findFirst({
-      where: {
-        organizationId: input.organizationId,
-        userId: input.userId,
-      },
-      select: {
-        id: true,
-        userId: true,
-        organizationId: true,
-        status: true,
-      },
-    });
+  const organizationMembership = await prisma.organizationMembership.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      userId: input.userId,
+    },
+    select: {
+      id: true,
+      userId: true,
+      organizationId: true,
+      status: true,
+    },
+  });
 
   const branch =
     branchId === undefined
@@ -151,7 +151,9 @@ async function loadSnapshot(
           },
         });
 
-  const roleIds = [...new Set(assignmentRecords.map((record) => record.roleId))];
+  const roleIds = [
+    ...new Set(assignmentRecords.map((record) => record.roleId)),
+  ];
 
   const roleRecords =
     roleIds.length === 0
@@ -166,10 +168,7 @@ async function loadSnapshot(
         });
 
   const rolesById = new Map(
-    roleRecords.map((record) => [
-      record.id,
-      mapRoleToDomain(record),
-    ]),
+    roleRecords.map((record) => [record.id, mapRoleToDomain(record)]),
   );
 
   const branchMembershipsById = new Map(
@@ -219,7 +218,7 @@ async function loadSnapshot(
     const branchMembershipReference =
       record.branchMembershipId === null
         ? null
-        : branchMembershipsById.get(record.branchMembershipId) ?? null;
+        : (branchMembershipsById.get(record.branchMembershipId) ?? null);
 
     if (
       record.branchMembershipId !== null &&
@@ -278,9 +277,7 @@ async function loadSnapshot(
  * It never starts, commits or rolls back a transaction. Unit of Work supplies
  * this reader together with all transaction-bound repositories.
  */
-export class PrismaAuthorizationSnapshotReader
-  implements AuthorizationSnapshotReaderPort
-{
+export class PrismaAuthorizationSnapshotReader implements AuthorizationSnapshotReaderPort {
   constructor(private readonly prisma: Prisma.TransactionClient) {}
 
   async loadSnapshot(
@@ -339,9 +336,8 @@ export class PrismaAuthorizationSnapshotReader
  * Each public read uses one RepeatableRead transaction so the complete
  * snapshot, including all Branch snapshots, comes from one consistent view.
  */
-export class PrismaDefaultAuthorizationSnapshotReader
-  implements AuthorizationSnapshotReaderPort
-{
+@Injectable()
+export class PrismaDefaultAuthorizationSnapshotReader implements AuthorizationSnapshotReaderPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async loadSnapshot(
@@ -367,9 +363,9 @@ export class PrismaDefaultAuthorizationSnapshotReader
     try {
       return await this.prisma.$transaction(
         (tx) =>
-          new PrismaAuthorizationSnapshotReader(
-            tx,
-          ).loadDelegationSnapshots(input),
+          new PrismaAuthorizationSnapshotReader(tx).loadDelegationSnapshots(
+            input,
+          ),
         {
           isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
           maxWait: 10_000,

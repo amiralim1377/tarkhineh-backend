@@ -3,6 +3,7 @@ import type { PrismaService } from '../../../../prisma/prisma.service.js';
 import { DependencyUnavailableError } from '../../../../shared/application/errors/dependency-unavailable.error.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaAccessControlUnitOfWork } from './prisma-access-control.unit-of-work.js';
+import { RetryableAccessControlTransactionError } from './retryable-access-control-transaction.error.js';
 
 function createSerializationConflict(): Error {
   return new Prisma.PrismaClientKnownRequestError(
@@ -91,9 +92,8 @@ function createSut() {
   const transactionClient = createTransactionClient();
 
   const transaction = vi.fn(
-    async (
-      operation: (tx: Prisma.TransactionClient) => Promise<unknown>,
-    ) => operation(transactionClient.tx),
+    async (operation: (tx: Prisma.TransactionClient) => Promise<unknown>) =>
+      operation(transactionClient.tx),
   );
 
   const prisma = {
@@ -140,14 +140,11 @@ describe('PrismaAccessControlUnitOfWork', () => {
     expect(result.organization).toBeNull();
 
     expect(sut.transaction).toHaveBeenCalledOnce();
-    expect(sut.transaction).toHaveBeenCalledWith(
-      expect.any(Function),
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        maxWait: 10_000,
-        timeout: 30_000,
-      },
-    );
+    expect(sut.transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      maxWait: 10_000,
+      timeout: 30_000,
+    });
 
     expect(sut.roleFindFirst).toHaveBeenCalledOnce();
     expect(sut.organizationMembershipFindFirst).toHaveBeenCalled();
@@ -186,9 +183,45 @@ describe('PrismaAccessControlUnitOfWork', () => {
 
     const operation = vi.fn(async () => 'result');
 
-    await expect(
-      sut.unitOfWork.execute(operation),
-    ).resolves.toBe('committed');
+    await expect(sut.unitOfWork.execute(operation)).resolves.toBe('committed');
+
+    expect(sut.transaction).toHaveBeenCalledTimes(2);
+    expect(operation).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries the complete Unit of Work after a known Override unique-key race', async () => {
+    const prismaConflict = new Prisma.PrismaClientKnownRequestError(
+      'Unique constraint failed.',
+      {
+        code: 'P2002',
+        clientVersion: '7.10.1',
+        meta: {
+          target: ['organizationMembershipId', 'branchId', 'permissionId'],
+        },
+      },
+    );
+    const retryableConflict = new RetryableAccessControlTransactionError(
+      prismaConflict,
+    );
+
+    let transactionAttempt = 0;
+
+    sut.transaction.mockImplementation(async (operation) => {
+      transactionAttempt += 1;
+      const result = await operation(sut.tx);
+
+      if (transactionAttempt === 1) {
+        throw retryableConflict;
+      }
+
+      return result;
+    });
+
+    const operation = vi.fn(async () => 'idempotent-result');
+
+    await expect(sut.unitOfWork.execute(operation)).resolves.toBe(
+      'idempotent-result',
+    );
 
     expect(sut.transaction).toHaveBeenCalledTimes(2);
     expect(operation).toHaveBeenCalledTimes(2);
@@ -201,9 +234,7 @@ describe('PrismaAccessControlUnitOfWork', () => {
 
     const operation = vi.fn(async () => 'result');
 
-    await expect(
-      sut.unitOfWork.execute(operation),
-    ).rejects.toBe(conflict);
+    await expect(sut.unitOfWork.execute(operation)).rejects.toBe(conflict);
 
     expect(sut.transaction).toHaveBeenCalledTimes(3);
     expect(operation).not.toHaveBeenCalled();
@@ -214,9 +245,9 @@ describe('PrismaAccessControlUnitOfWork', () => {
 
     sut.transaction.mockRejectedValue(persistenceError);
 
-    await expect(
-      sut.unitOfWork.execute(async () => 'result'),
-    ).rejects.toBe(persistenceError);
+    await expect(sut.unitOfWork.execute(async () => 'result')).rejects.toBe(
+      persistenceError,
+    );
 
     expect(sut.transaction).toHaveBeenCalledOnce();
   });
@@ -232,9 +263,9 @@ describe('PrismaAccessControlUnitOfWork', () => {
 
     sut.transaction.mockRejectedValue(conflict);
 
-    await expect(
-      sut.unitOfWork.execute(async () => 'result'),
-    ).rejects.toBe(conflict);
+    await expect(sut.unitOfWork.execute(async () => 'result')).rejects.toBe(
+      conflict,
+    );
 
     expect(sut.transaction).toHaveBeenCalledOnce();
   });

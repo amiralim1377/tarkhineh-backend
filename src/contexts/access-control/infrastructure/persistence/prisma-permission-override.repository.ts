@@ -1,16 +1,12 @@
+import { Prisma } from '../../../../generated/prisma/client.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
+import { RetryableAccessControlTransactionError } from './retryable-access-control-transaction.error.js';
 import type { PermissionOverrideRepository } from '../../application/ports/permission-override.repository.js';
 import type { PermissionOverride } from '../../domain/permission-overrides/permission-override.js';
-import {
-  mapPermissionOverrideRecordToDomain,
-} from './access-control-persistence.mapper.js';
+import { mapPermissionOverrideRecordToDomain } from './access-control-persistence.mapper.js';
 
-export class PrismaPermissionOverrideRepository
-  implements PermissionOverrideRepository
-{
-  constructor(
-    private readonly prisma: import('../../../../generated/prisma/client.js').Prisma.TransactionClient,
-  ) {}
+export class PrismaPermissionOverrideRepository implements PermissionOverrideRepository {
+  constructor(private readonly prisma: Prisma.TransactionClient) {}
 
   async findActiveTarget(input: {
     readonly organizationId: string;
@@ -18,23 +14,22 @@ export class PrismaPermissionOverrideRepository
     readonly branchId: string;
   }) {
     try {
-      const membership =
-        await this.prisma.organizationMembership.findFirst({
-          where: {
-            id: input.organizationMembershipId,
-            organizationId: input.organizationId,
-            status: 'ACTIVE',
-            organization: {
-              is: {
-                status: 'ACTIVE',
-              },
+      const membership = await this.prisma.organizationMembership.findFirst({
+        where: {
+          id: input.organizationMembershipId,
+          organizationId: input.organizationId,
+          status: 'ACTIVE',
+          organization: {
+            is: {
+              status: 'ACTIVE',
             },
           },
-          select: {
-            id: true,
-            organizationId: true,
-          },
-        });
+        },
+        select: {
+          id: true,
+          organizationId: true,
+        },
+      });
 
       if (!membership) {
         return null;
@@ -187,6 +182,12 @@ export class PrismaPermissionOverrideRepository
         },
       });
     } catch (error: unknown) {
+      if (this.isUniqueOverrideKeyViolation(error)) {
+        // The current transaction cannot continue after PostgreSQL's unique
+        // violation. Let the Unit of Work roll it back and retry the callback.
+        throw new RetryableAccessControlTransactionError(error);
+      }
+
       throw normalizePrismaError(error);
     }
   }
@@ -217,5 +218,41 @@ export class PrismaPermissionOverrideRepository
     } catch (error: unknown) {
       throw normalizePrismaError(error);
     }
+  }
+
+  private isUniqueOverrideKeyViolation(error: unknown): boolean {
+    if (
+      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+      error.code !== 'P2002'
+    ) {
+      return false;
+    }
+
+    const target = error.meta?.target;
+    const expectedFields = [
+      'organizationMembershipId',
+      'branchId',
+      'permissionId',
+    ];
+
+    if (Array.isArray(target)) {
+      return (
+        target.length === expectedFields.length &&
+        expectedFields.every((field) => target.includes(field))
+      );
+    }
+
+    if (typeof target === 'string') {
+      const normalized = target.replaceAll('"', '');
+
+      return (
+        normalized ===
+          'UserPermissionOverride_organizationMembershipId_branchId_permissionId_key' ||
+        normalized === expectedFields.join('_') ||
+        normalized === expectedFields.join(',')
+      );
+    }
+
+    return false;
   }
 }
