@@ -6,9 +6,10 @@ import { PrismaBranchRepository } from './infrastructure/persistence/prisma-bran
 import { ORGANIZATION_LOOKUP_PORT } from './application/ports/organization-lookup.port.js';
 import { PrismaOrganizationLookupAdapter } from './infrastructure/persistence/prisma-organization-lookup.adapter.js';
 import { BRANCH_CREATION_AUTHORIZATION_PORT } from './application/ports/branch-creation-authorization.port.js';
+import { PrismaModule } from '../../prisma/prisma.module.js';
 
 @Module({
-  imports: [CqrsModule],
+  imports: [CqrsModule, PrismaModule],
   providers: [
     CreateBranchHandler,
     {
