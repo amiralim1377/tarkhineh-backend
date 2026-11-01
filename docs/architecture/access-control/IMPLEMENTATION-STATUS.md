@@ -3,12 +3,12 @@
 | Attribute              | Value                                                        |
 | ---------------------- | ------------------------------------------------------------ |
 | Project                | `tarkhineh-backend`                                          |
-| Document version       | 2.0                                                          |
+| Document version       | 2.1                                                          |
 | Last updated           | 2026-11-01                                                   |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.7                                |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.8                                |
 | Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.9                            |
 | Current phase          | PHASE 6 — Infrastructure and Authorization Persistence      |
-| Current phase status   | **CORE IMPLEMENTATION PRESENT — ACCEPTANCE ITEMS OPEN** |
+| Current phase status   | **IMPLEMENTATION VERIFIED — OWNER REVIEW OPEN**             |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -26,7 +26,7 @@
 |     3 | Permission Registry and Seed                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
-|     6 | Infrastructure and Authorization Persistence    | CORE IMPLEMENTATION PRESENT — ACCEPTANCE ITEMS OPEN |
+|     6 | Infrastructure and Authorization Persistence    | IMPLEMENTATION VERIFIED — OWNER REVIEW OPEN       |
 |     7 | Audit Logging                                   | NOT STARTED                                         |
 |     8 | Cross-Context Integration                       | NOT STARTED                                         |
 |     9 | HTTP Layer                                      | NOT STARTED                                         |
@@ -34,7 +34,7 @@
 
 ### Latest implementation checkpoint
 
-PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence now has its core implementation on branch `access-control`, delivered in commits `f964c42` and `7c60c87`. The concrete Prisma Unit of Work, transaction-bound repositories, authorization snapshot readers, NestJS provider wiring, Serializable mutation transactions, bounded retry handling, and focused PostgreSQL Integration coverage are present. The latest observed focused checkpoint is 322 passing Access Control Unit tests across 21 files, six Access Control Integration tests across two files, a successful TypeScript no-emit check, and zero Access Control Oxlint warnings/errors. PHASE 6 is **not formally closed**: broader tenant-isolation, database-guard, and concurrency acceptance tests plus query-plan review remain open. See section 8 for implementation evidence and limitations.
+PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence has been implemented and its expanded PostgreSQL acceptance coverage was committed on branch `access-control` in commit `7e0b267`. The concrete Prisma Unit of Work, transaction-bound repositories, authorization snapshot readers, NestJS provider wiring, Serializable mutation transactions, bounded retry handling, and expanded persistence tests are present. The latest observed focused checkpoint is 322 passing Access Control Unit tests across 21 files and 16 Access Control Integration tests across two files (14 Persistence and two Registry Seed tests): 338 passing tests in total. TypeScript no-emit, Access Control Oxlint (83 files, zero warnings/errors), Prettier, `git diff --check`, and the production build also passed. Tenant-isolation, database-guard, Handler-level concurrency, Role/Permission race, and Multi-Branch snapshot scenarios are covered. Query-plan inspection was performed, but its small/synthetic dataset is not a scale benchmark. PHASE 6 is **not formally closed**: full module-graph/application-boot verification, the full-project Integration suite, and project-owner review remain outstanding. See section 8 for evidence and limitations.
 
 ### PHASE 3 Registry implementation result
 
