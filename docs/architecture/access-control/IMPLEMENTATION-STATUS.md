@@ -3,12 +3,12 @@
 | Attribute              | Value                                          |
 | ---------------------- | ---------------------------------------------- |
 | Project                | `tarkhineh-backend`                            |
-| Document version       | 1.2                                            |
+| Document version       | 1.3                                            |
 | Last updated           | 2026-11-01                                     |
 | Architecture reference | `MASTER-ARCHITECTURE.md` v1.1                  |
 | Decision log           | `ARCHITECTURAL-DECISIONS.md`                   |
-| Current phase          | PHASE 2 — Database Schema and Migration Design |
-| Current phase status   | IMPLEMENTATION COMPLETE — OWNER REVIEW PENDING |
+| Current phase          | PHASE 3 — Permission Registry and Seed |
+| Current phase status   | IN PROGRESS — REGISTRY AND SEED DESIGN REVIEW |
 
 > This file records observed repository state and actual command results. A phase is not complete merely because its plan is written. Only mark it complete after its acceptance criteria, verification, and project-owner review are satisfied.
 
@@ -20,14 +20,14 @@
 
 - [x] **PHASE 0 — Repository Audit and Baseline** — COMPLETED.
 - [x] **PHASE 1 — Requirements and Architecture Design** — COMPLETED and approved by project owner.
+- [x] **PHASE 2 — Database Schema and Migration Design** — COMPLETED and approved by project owner on 2026-11-01.
 
 ### Active/next phase
 
-- [ ] **PHASE 2 — Database Schema and Migration Design** — IMPLEMENTATION COMPLETE; awaiting project-owner review of this report.
+- [ ] **PHASE 3 — Permission Registry and Seed** — IN PROGRESS; initial design review.
 
 ### Remaining phases
 
-- [ ] PHASE 3 — Permission Registry and Seed.
 - [ ] PHASE 4 — Domain Model.
 - [ ] PHASE 5 — Application Layer and Use Cases.
 - [ ] PHASE 6 — Infrastructure and Authorization Persistence.
@@ -247,7 +247,7 @@ Key approvals:
 
 ## 4. PHASE 2 — Database Schema and Migration Design
 
-**Status: IMPLEMENTATION COMPLETE — OWNER REVIEW PENDING**
+**Status: COMPLETED — APPROVED BY PROJECT OWNER**
 **Implementation date: 2026-11-01**
 
 ### 4.1 Approved target schema implemented
@@ -262,7 +262,7 @@ Implemented decisions:
 - Removed branch ownership from Role definitions.
 - Added `Role.isAssignable` and `Role.status`.
 - Kept Role definition scope and assignment scope independent.
-- Simplified Permission persistence to its stable code and timestamps; localized metadata remains source-code registry metadata.
+- Simplified Permission persistence to its stable code and timestamps; localized metadata is no longer stored in the database. The existing source catalog remains its current source pending formalization as the Permission Registry in PHASE 3.
 - Preserved RolePermission's composite identity and restrictive Permission deletion behavior.
 - Preserved RoleAssignment membership targeting and its exactly-one-membership invariant.
 - Redesigned UserPermissionOverride around OrganizationMembership + Branch + Permission, with composite tenant-consistency relations.
@@ -417,13 +417,13 @@ The approved Prisma schema and forward migration have been implemented, applied 
 
 The known Outbound Email Integration failure is explicitly deferred. Behavior-level negative tests for database guards and a full backup restore drill remain documented limitations, not claimed successes.
 
-Project-owner review of this completion report is required before changing the phase status to formally COMPLETED and moving the current phase to PHASE 3.
+The project owner reviewed and approved this completion report on 2026-11-01. PHASE 2 is formally closed.
 
 ## 5. Subsequent Phases
 
 | Phase | Name                                         | Status      | Notes                                                                   |
 | ----- | -------------------------------------------- | ----------- | ----------------------------------------------------------------------- |
-| 3     | Permission Registry and Seed                 | NOT STARTED | Next after PHASE 2 sign-off; explicit system-role permission sets; no implicit all-permissions grant |
+| 3     | Permission Registry and Seed                 | IN PROGRESS | Inspect the existing catalog and seed; design explicit system-role permission sets. No code changes until the proposal is approved. |
 | 4     | Domain Model                                 | NOT STARTED | Pure Domain and unit tests                                              |
 | 5     | Application Layer and Use Cases              | NOT STARTED | Role management, assignment, delegation, overrides, permission queries  |
 | 6     | Infrastructure and Authorization Persistence | NOT STARTED | Prisma adapters and read queries                                        |
@@ -475,9 +475,7 @@ Then request a status summary and the next step. The repository documents are th
 
 ## 8. Exact Next Step
 
-Obtain project-owner review and approval of the PHASE 2 completion report in Section 4.
-
-After sign-off, start **PHASE 3 — Permission Registry and Seed**.
+Continue **PHASE 3 — Permission Registry and Seed**.
 
 First inspect:
 
@@ -486,4 +484,11 @@ First inspect:
 - `docs/architecture/access-control/MASTER-ARCHITECTURE.md`
 - `docs/architecture/access-control/ARCHITECTURAL-DECISIONS.md`
 
-Then present the proposed Permission Registry contract and explicit system-role permission sets for approval before changing code. Do not start PHASE 4 Domain or PHASE 5 Application work until the required preceding phase approvals are recorded.
+Review the current permission codes, metadata, target scopes, and existing role grants. Then present:
+
+1. A proposed Permission Registry contract and metadata structure.
+2. An explicit permission set for `ORGANIZATION_OWNER`.
+3. An explicit permission set for `BRANCH_MANAGER`.
+4. Seed synchronization and safety rules, including protection of organization-defined custom roles.
+
+Obtain project-owner approval of the proposal before changing implementation code. Do not begin PHASE 4 Domain or PHASE 5 Application work prematurely.
