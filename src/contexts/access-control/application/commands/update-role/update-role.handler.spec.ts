@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Role } from '../../../domain/roles/role.js';
-import { RoleNotFoundError } from '../../errors/role-not-found.error.js';
 import { AccessControlActorRequiredError } from '../../errors/access-control-actor-required.error.js';
 import { AccessControlForbiddenError } from '../../errors/access-control-forbidden.error.js';
 import { InvalidRoleUpdateError } from '../../errors/invalid-role-update.error.js';
+import { RoleNotFoundError } from '../../errors/role-not-found.error.js';
 import type { AuthorizationSnapshotReader } from '../../ports/authorization-snapshot-reader.port.js';
 import type {
   AccessControlUnitOfWork,
@@ -95,9 +95,7 @@ function createSut(role: Role | null = createOrganizationRole()) {
   };
 
   const executeOperation = async <T>(
-    operation: (
-      context: AccessControlUnitOfWorkContext,
-    ) => Promise<T>,
+    operation: (context: AccessControlUnitOfWorkContext) => Promise<T>,
   ): Promise<T> => {
     transactionActive = true;
 
@@ -163,195 +161,306 @@ describe('UpdateRoleHandler', () => {
     sut = createSut();
   });
 
-  it('updates Role details inside one Unit of Work', async () => {
-    const result = await sut.handler.execute(
-      createCommand({ name: '  Sales Director  ' }),
-    );
+  describe('Role details updates', () => {
+    it('updates Role details inside one Unit of Work without checking permission delegation', async () => {
+      const result = await sut.handler.execute(
+        createCommand({ name: '  Sales Director  ' }),
+      );
 
-    expect(result).toEqual({ roleId: 'role-1' });
-    expect(sut.execute).toHaveBeenCalledOnce();
+      expect(result).toEqual({ roleId: 'role-1' });
 
-    expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith(
-      {
-        userId: 'actor-1',
-        organizationId: 'org-1',
-      },
-      sut.transactionReader,
-    );
+      expect(sut.execute).toHaveBeenCalledOnce();
 
-    expect(sut.findById).toHaveBeenCalledWith('org-1', 'role-1');
+      expect(sut.getEffectiveAuthorizationContext).toHaveBeenCalledWith(
+        {
+          userId: 'actor-1',
+          organizationId: 'org-1',
+        },
+        sut.transactionReader,
+      );
 
-    expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledWith(
-      {
-        userId: 'actor-1',
-        organizationId: 'org-1',
-        assignmentScope: 'ORGANIZATION',
-      },
-      sut.transactionReader,
-    );
+      expect(sut.findById).toHaveBeenCalledWith('org-1', 'role-1');
 
-    expect(sut.update).toHaveBeenCalledOnce();
+      // Changing only Role details must not trigger Permission delegation.
+      expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
 
-    const updatedRole = sut.update.mock.calls[0]?.[0] as Role;
-    expect(updatedRole.getName()).toBe('Sales Director');
-    expect(updatedRole.getDescription()).toBe('Existing description');
+      expect(sut.update).toHaveBeenCalledOnce();
 
-    expect(sut.isTransactionActive()).toBe(false);
-  });
+      const updatedRole = sut.update.mock.calls[0]?.[0] as Role;
 
-  it('replaces the complete Permission set and clears the description', async () => {
-    const result = await sut.handler.execute(
-      createCommand({
-        description: null,
-        permissionCodes: ['organization.read', 'branch.dashboard.read'],
-      }),
-    );
+      expect(updatedRole.getName()).toBe('Sales Director');
+      expect(updatedRole.getDescription()).toBe('Existing description');
 
-    expect(result.roleId).toBe('role-1');
-    expect(sut.update).toHaveBeenCalledOnce();
-
-    const updatedRole = sut.update.mock.calls[0]?.[0] as Role;
-    expect(updatedRole.getName()).toBe('Sales Manager');
-    expect(updatedRole.getDescription()).toBeNull();
-    expect(updatedRole.getPermissionCodes()).toEqual([
-      'organization.read',
-      'branch.dashboard.read',
-    ]);
-  });
-
-  it('rejects an empty actor before opening a transaction', async () => {
-    await expect(
-      sut.handler.execute(createCommand({ actorUserId: '  ' })),
-    ).rejects.toBeInstanceOf(AccessControlActorRequiredError);
-
-    expect(sut.execute).not.toHaveBeenCalled();
-    expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
-    expect(sut.findById).not.toHaveBeenCalled();
-    expect(sut.update).not.toHaveBeenCalled();
-  });
-
-  it('rejects missing identifiers and commands without changes', async () => {
-    await expect(
-      sut.handler.execute(createCommand({ organizationId: '  ', name: 'New' })),
-    ).rejects.toBeInstanceOf(InvalidRoleUpdateError);
-
-    await expect(
-      sut.handler.execute(createCommand({ roleId: '  ', name: 'New' })),
-    ).rejects.toBeInstanceOf(InvalidRoleUpdateError);
-
-    await expect(sut.handler.execute(createCommand())).rejects.toBeInstanceOf(
-      InvalidRoleUpdateError,
-    );
-
-    expect(sut.execute).not.toHaveBeenCalled();
-    expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
-    expect(sut.findById).not.toHaveBeenCalled();
-  });
-
-  it('rejects an actor without management authority before looking up the Role', async () => {
-    sut.getEffectiveAuthorizationContext.mockResolvedValueOnce({
-      snapshot: {},
-      permissionCodes: [],
+      expect(sut.isTransactionActive()).toBe(false);
     });
 
-    await expect(
-      sut.handler.execute(createCommand({ name: 'New Name' })),
-    ).rejects.toBeInstanceOf(AccessControlForbiddenError);
+    it('updates Role description without checking permission delegation', async () => {
+      const result = await sut.handler.execute(
+        createCommand({ description: 'Updated description' }),
+      );
 
-    expect(sut.findById).not.toHaveBeenCalled();
-    expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
-    expect(sut.update).not.toHaveBeenCalled();
-    expect(sut.isTransactionActive()).toBe(false);
+      expect(result).toEqual({ roleId: 'role-1' });
+
+      const updatedRole = sut.update.mock.calls[0]?.[0] as Role;
+
+      expect(updatedRole.getName()).toBe('Sales Manager');
+      expect(updatedRole.getDescription()).toBe('Updated description');
+
+      expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
+
+      expect(sut.update).toHaveBeenCalledOnce();
+      expect(sut.isTransactionActive()).toBe(false);
+    });
+
+    it('allows clearing the Role description without checking permission delegation', async () => {
+      const result = await sut.handler.execute(
+        createCommand({ description: null }),
+      );
+
+      expect(result).toEqual({ roleId: 'role-1' });
+
+      const updatedRole = sut.update.mock.calls[0]?.[0] as Role;
+
+      expect(updatedRole.getDescription()).toBeNull();
+
+      expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
+
+      expect(sut.update).toHaveBeenCalledOnce();
+      expect(sut.isTransactionActive()).toBe(false);
+    });
   });
 
-  it('returns not found when the Role does not belong to the supplied Organization', async () => {
-    sut.findById.mockResolvedValueOnce(null);
+  describe('Permission set updates', () => {
+    it('replaces the complete Permission set and clears the description', async () => {
+      const result = await sut.handler.execute(
+        createCommand({
+          description: null,
+          permissionCodes: ['organization.read', 'branch.dashboard.read'],
+        }),
+      );
 
-    await expect(
-      sut.handler.execute(createCommand({ name: 'New Name' })),
-    ).rejects.toBeInstanceOf(RoleNotFoundError);
+      expect(result).toEqual({ roleId: 'role-1' });
 
-    expect(sut.findById).toHaveBeenCalledWith('org-1', 'role-1');
-    expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
-    expect(sut.update).not.toHaveBeenCalled();
-    expect(sut.isTransactionActive()).toBe(false);
+      expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledOnce();
+
+      expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledWith(
+        {
+          userId: 'actor-1',
+          organizationId: 'org-1',
+          assignmentScope: 'ORGANIZATION',
+        },
+        sut.transactionReader,
+      );
+
+      expect(sut.update).toHaveBeenCalledOnce();
+
+      const updatedRole = sut.update.mock.calls[0]?.[0] as Role;
+
+      expect(updatedRole.getName()).toBe('Sales Manager');
+      expect(updatedRole.getDescription()).toBeNull();
+
+      expect(updatedRole.getPermissionCodes()).toEqual([
+        'organization.read',
+        'branch.dashboard.read',
+      ]);
+
+      expect(sut.isTransactionActive()).toBe(false);
+    });
+
+    it('validates delegation when clearing the complete Permission set', async () => {
+      const result = await sut.handler.execute(
+        createCommand({ permissionCodes: [] }),
+      );
+
+      expect(result).toEqual({ roleId: 'role-1' });
+
+      expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledOnce();
+
+      expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledWith(
+        {
+          userId: 'actor-1',
+          organizationId: 'org-1',
+          assignmentScope: 'ORGANIZATION',
+        },
+        sut.transactionReader,
+      );
+
+      const updatedRole = sut.update.mock.calls[0]?.[0] as Role;
+
+      expect(updatedRole.getPermissionCodes()).toEqual([]);
+
+      expect(sut.update).toHaveBeenCalledOnce();
+      expect(sut.isTransactionActive()).toBe(false);
+    });
+
+    it('rejects a non-delegable permission without persisting changes', async () => {
+      await expect(
+        sut.handler.execute(
+          createCommand({ permissionCodes: ['organization.update'] }),
+        ),
+      ).rejects.toBeInstanceOf(AccessControlForbiddenError);
+
+      expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledOnce();
+
+      expect(sut.update).not.toHaveBeenCalled();
+      expect(sut.isTransactionActive()).toBe(false);
+    });
+
+    it('rejects a permission that the actor does not effectively hold', async () => {
+      sut.getEffectiveDelegationPermissionCodes.mockResolvedValueOnce([
+        'organization.roles.update',
+      ]);
+
+      await expect(
+        sut.handler.execute(
+          createCommand({ permissionCodes: ['organization.read'] }),
+        ),
+      ).rejects.toBeInstanceOf(AccessControlForbiddenError);
+
+      expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledOnce();
+
+      expect(sut.update).not.toHaveBeenCalled();
+      expect(sut.isTransactionActive()).toBe(false);
+    });
+
+    it('propagates the delegation snapshot failure without persistence', async () => {
+      sut.getEffectiveDelegationPermissionCodes.mockRejectedValueOnce(
+        new Error('Delegation snapshot unavailable'),
+      );
+
+      await expect(
+        sut.handler.execute(
+          createCommand({
+            permissionCodes: ['organization.read'],
+          }),
+        ),
+      ).rejects.toThrow('Delegation snapshot unavailable');
+
+      expect(sut.findById).toHaveBeenCalledOnce();
+
+      expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledOnce();
+
+      expect(sut.update).not.toHaveBeenCalled();
+      expect(sut.isTransactionActive()).toBe(false);
+    });
   });
 
-  it('rejects modification of an archived Role', async () => {
-    const archivedRole = createOrganizationRole();
-    archivedRole.archive();
-    sut.findById.mockResolvedValueOnce(archivedRole);
+  describe('Input validation', () => {
+    it('rejects an empty actor before opening a transaction', async () => {
+      await expect(
+        sut.handler.execute(createCommand({ actorUserId: '  ' })),
+      ).rejects.toBeInstanceOf(AccessControlActorRequiredError);
 
-    await expect(
-      sut.handler.execute(createCommand({ name: 'New Name' })),
-    ).rejects.toThrow();
+      expect(sut.execute).not.toHaveBeenCalled();
 
-    expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
-    expect(sut.update).not.toHaveBeenCalled();
-    expect(sut.isTransactionActive()).toBe(false);
+      expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
+      expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
+
+      expect(sut.findById).not.toHaveBeenCalled();
+      expect(sut.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects missing identifiers and commands without changes', async () => {
+      await expect(
+        sut.handler.execute(
+          createCommand({ organizationId: '  ', name: 'New' }),
+        ),
+      ).rejects.toBeInstanceOf(InvalidRoleUpdateError);
+
+      await expect(
+        sut.handler.execute(createCommand({ roleId: '  ', name: 'New' })),
+      ).rejects.toBeInstanceOf(InvalidRoleUpdateError);
+
+      await expect(sut.handler.execute(createCommand())).rejects.toBeInstanceOf(
+        InvalidRoleUpdateError,
+      );
+
+      expect(sut.execute).not.toHaveBeenCalled();
+
+      expect(sut.getEffectiveAuthorizationContext).not.toHaveBeenCalled();
+      expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
+
+      expect(sut.findById).not.toHaveBeenCalled();
+      expect(sut.update).not.toHaveBeenCalled();
+    });
   });
 
-  it('rejects a non-delegable permission without persisting changes', async () => {
-    await expect(
-      sut.handler.execute(
-        createCommand({ permissionCodes: ['organization.update'] }),
-      ),
-    ).rejects.toBeInstanceOf(AccessControlForbiddenError);
+  describe('Authorization and persistence', () => {
+    it('rejects an actor without management authority before looking up the Role', async () => {
+      sut.getEffectiveAuthorizationContext.mockResolvedValueOnce({
+        snapshot: {},
+        permissionCodes: [],
+      });
 
-    expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledOnce();
-    expect(sut.update).not.toHaveBeenCalled();
-  });
+      await expect(
+        sut.handler.execute(createCommand({ name: 'New Name' })),
+      ).rejects.toBeInstanceOf(AccessControlForbiddenError);
 
-  it('rejects a permission that the actor does not effectively hold', async () => {
-    sut.getEffectiveDelegationPermissionCodes.mockResolvedValueOnce([
-      'organization.roles.update',
-    ]);
+      expect(sut.findById).not.toHaveBeenCalled();
 
-    await expect(
-      sut.handler.execute(
-        createCommand({ permissionCodes: ['organization.read'] }),
-      ),
-    ).rejects.toBeInstanceOf(AccessControlForbiddenError);
+      expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
 
-    expect(sut.update).not.toHaveBeenCalled();
-  });
+      expect(sut.update).not.toHaveBeenCalled();
+      expect(sut.isTransactionActive()).toBe(false);
+    });
 
-  it('propagates the initial authorization snapshot failure', async () => {
-    sut.getEffectiveAuthorizationContext.mockRejectedValueOnce(
-      new Error('Authorization snapshot unavailable'),
-    );
+    it('returns not found when the Role does not belong to the supplied Organization', async () => {
+      sut.findById.mockResolvedValueOnce(null);
 
-    await expect(
-      sut.handler.execute(createCommand({ name: 'New Name' })),
-    ).rejects.toThrow('Authorization snapshot unavailable');
+      await expect(
+        sut.handler.execute(createCommand({ name: 'New Name' })),
+      ).rejects.toBeInstanceOf(RoleNotFoundError);
 
-    expect(sut.findById).not.toHaveBeenCalled();
-    expect(sut.update).not.toHaveBeenCalled();
-    expect(sut.isTransactionActive()).toBe(false);
-  });
+      expect(sut.findById).toHaveBeenCalledWith('org-1', 'role-1');
 
-  it('propagates the delegation snapshot failure without persistence', async () => {
-    sut.getEffectiveDelegationPermissionCodes.mockRejectedValueOnce(
-      new Error('Delegation snapshot unavailable'),
-    );
+      expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
 
-    await expect(
-      sut.handler.execute(createCommand({ name: 'New Name' })),
-    ).rejects.toThrow('Delegation snapshot unavailable');
+      expect(sut.update).not.toHaveBeenCalled();
+      expect(sut.isTransactionActive()).toBe(false);
+    });
 
-    expect(sut.findById).toHaveBeenCalledOnce();
-    expect(sut.update).not.toHaveBeenCalled();
-    expect(sut.isTransactionActive()).toBe(false);
-  });
+    it('rejects modification of an archived Role', async () => {
+      const archivedRole = createOrganizationRole();
+      archivedRole.archive();
 
-  it('propagates Role persistence failures', async () => {
-    sut.update.mockRejectedValueOnce(new Error('Role update failed'));
+      sut.findById.mockResolvedValueOnce(archivedRole);
 
-    await expect(
-      sut.handler.execute(createCommand({ name: 'New Name' })),
-    ).rejects.toThrow('Role update failed');
+      await expect(
+        sut.handler.execute(createCommand({ name: 'New Name' })),
+      ).rejects.toThrow();
 
-    expect(sut.update).toHaveBeenCalledOnce();
-    expect(sut.isTransactionActive()).toBe(false);
+      expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
+
+      expect(sut.update).not.toHaveBeenCalled();
+      expect(sut.isTransactionActive()).toBe(false);
+    });
+
+    it('propagates the initial authorization snapshot failure', async () => {
+      sut.getEffectiveAuthorizationContext.mockRejectedValueOnce(
+        new Error('Authorization snapshot unavailable'),
+      );
+
+      await expect(
+        sut.handler.execute(createCommand({ name: 'New Name' })),
+      ).rejects.toThrow('Authorization snapshot unavailable');
+
+      expect(sut.findById).not.toHaveBeenCalled();
+      expect(sut.update).not.toHaveBeenCalled();
+      expect(sut.isTransactionActive()).toBe(false);
+    });
+
+    it('propagates Role persistence failures', async () => {
+      sut.update.mockRejectedValueOnce(new Error('Role update failed'));
+
+      await expect(
+        sut.handler.execute(createCommand({ name: 'New Name' })),
+      ).rejects.toThrow('Role update failed');
+
+      expect(sut.update).toHaveBeenCalledOnce();
+
+      expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
+
+      expect(sut.isTransactionActive()).toBe(false);
+    });
   });
 });

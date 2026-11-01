@@ -20,9 +20,10 @@ import {
 } from './update-role.command.js';
 
 @CommandHandler(UpdateRoleCommand)
-export class UpdateRoleHandler
-  implements ICommandHandler<UpdateRoleCommand, UpdateRoleResult>
-{
+export class UpdateRoleHandler implements ICommandHandler<
+  UpdateRoleCommand,
+  UpdateRoleResult
+> {
   private readonly delegationPolicy = new PermissionDelegationPolicy();
 
   constructor(
@@ -86,6 +87,29 @@ export class UpdateRoleHandler
       // Apply requested changes only to the loaded aggregate.
       if (permissionCodes !== undefined) {
         role.replacePermissionCodes(permissionCodes);
+
+        // Delegation must be checked whenever the Permission set is supplied,
+        // including when an empty array is supplied.
+        const actorEffectivePermissionCodes =
+          await this.authorization.getEffectiveDelegationPermissionCodes(
+            {
+              userId: actorUserId,
+              organizationId,
+              assignmentScope: role.getAssignmentScope(),
+            },
+            context.authorizationSnapshotReader,
+          );
+
+        const delegationDecision = this.delegationPolicy.canComposeRole({
+          role,
+          organizationId,
+          operation: 'UPDATE',
+          actorEffectivePermissionCodes,
+        });
+
+        if (!delegationDecision.allowed) {
+          throw new AccessControlForbiddenError(delegationDecision.reasonCode);
+        }
       }
 
       if (name !== undefined || description !== undefined) {
@@ -93,28 +117,6 @@ export class UpdateRoleHandler
           name ?? role.getName(),
           description === undefined ? role.getDescription() : description,
         );
-      }
-
-      // Re-evaluate delegation against the complete final Permission set.
-      const actorEffectivePermissionCodes =
-        await this.authorization.getEffectiveDelegationPermissionCodes(
-          {
-            userId: actorUserId,
-            organizationId,
-            assignmentScope: role.getAssignmentScope(),
-          },
-          context.authorizationSnapshotReader,
-        );
-
-      const delegationDecision = this.delegationPolicy.canComposeRole({
-        role,
-        organizationId,
-        operation: 'UPDATE',
-        actorEffectivePermissionCodes,
-      });
-
-      if (!delegationDecision.allowed) {
-        throw new AccessControlForbiddenError(delegationDecision.reasonCode);
       }
 
       // The adapter must persist Role + complete RolePermission set atomically.
