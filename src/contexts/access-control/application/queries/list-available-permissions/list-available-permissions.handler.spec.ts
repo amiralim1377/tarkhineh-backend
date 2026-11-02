@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   PERMISSION_CODE,
-  PERMISSION_DEFINITIONS,
   PERMISSION_TARGET_SCOPE,
 } from '../../../domain/permissions/permission-catalog.js';
+import { PERMISSION_DEFINITIONS } from '../../../domain/permissions/permission-catalog-derived.js';
 import {
   ROLE_ASSIGNMENT_SCOPE,
   type RoleAssignmentScope,
