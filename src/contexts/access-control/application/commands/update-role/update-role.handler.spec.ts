@@ -27,7 +27,7 @@ function createOrganizationRole(
     code: 'SALES_MANAGER',
     name: 'Sales Manager',
     description: 'Existing description',
-    definitionScope: 'ORGANIZATION',
+    definitionSource: 'ORGANIZATION_DEFINED',
     assignmentScope: 'ORGANIZATION',
     organizationId: overrides.organizationId ?? 'org-1',
     isAssignable: true,
