@@ -3,9 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RoleAssignmentAlreadyExistsError } from '../../application/errors/role-assignment-already-exists.error.js';
 import { Role } from '../../domain/roles/role.js';
 import { RoleAssignment } from '../../domain/role-assignments/role-assignment.js';
-import type {
-  PersistedRoleAssignmentWithRelations,
-} from './access-control-persistence.mapper.js';
+import type { PersistedRoleAssignmentWithRelations } from './access-control-persistence.mapper.js';
 import { PrismaRoleAssignmentRepository } from './prisma-role-assignment.repository.js';
 
 const CREATED_AT = new Date('2026-11-01T10:00:00.000Z');
@@ -16,7 +14,7 @@ function createBranchRole(): Role {
     id: 'role-1',
     code: 'BRANCH_MANAGER_CUSTOM',
     name: 'Branch Manager',
-    definitionScope: 'ORGANIZATION',
+    definitionSource: 'ORGANIZATION_DEFINED',
     assignmentScope: 'BRANCH',
     organizationId: 'org-1',
     isAssignable: true,
@@ -124,14 +122,11 @@ function createSut() {
 }
 
 function createUniqueViolation(target: string[]): Error {
-  return new Prisma.PrismaClientKnownRequestError(
-    'Unique constraint failed',
-    {
-      code: 'P2002',
-      clientVersion: '7.10.1',
-      meta: { target },
-    },
-  );
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: '7.10.1',
+    meta: { target },
+  });
 }
 
 describe('PrismaRoleAssignmentRepository', () => {
@@ -424,10 +419,7 @@ describe('PrismaRoleAssignmentRepository', () => {
 
     it('maps a partial unique assignment conflict to the Application error', async () => {
       sut.createAssignment.mockRejectedValue(
-        createUniqueViolation([
-          'branchMembershipId',
-          'roleId',
-        ]),
+        createUniqueViolation(['branchMembershipId', 'roleId']),
       );
 
       await expect(
@@ -439,9 +431,9 @@ describe('PrismaRoleAssignmentRepository', () => {
       const error = createUniqueViolation(['id']);
       sut.createAssignment.mockRejectedValue(error);
 
-      await expect(
-        sut.repository.save(createBranchAssignment()),
-      ).rejects.toBe(error);
+      await expect(sut.repository.save(createBranchAssignment())).rejects.toBe(
+        error,
+      );
     });
   });
 
