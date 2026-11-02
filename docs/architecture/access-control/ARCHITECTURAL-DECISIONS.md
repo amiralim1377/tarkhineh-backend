@@ -3,9 +3,9 @@
 | Attribute              | Value                         |
 | ---------------------- | ----------------------------- |
 | Project                | `tarkhineh-backend`           |
-| Document version       | 1.11                          |
+| Document version       | 1.12                          |
 | Last updated           | 2026-11-02                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.13 |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.14 |
 
 This document is the decision log for the Access Control bounded context. Each ADR records the context, the decision, and its consequences. Accepted decisions are binding implementation constraints. They must not be silently changed. If later evidence or a product requirement requires a change, add a new ADR that explicitly supersedes the affected decision and obtain project-owner approval before implementing the change.
 
@@ -732,6 +732,41 @@ The PostgreSQL documentation defines the semantics of `CASCADE`, `RESTRICT`, and
 - Integration tests must demonstrate that deleting or changing a referenced operational row cannot remove or rewrite the Audit record, and that a user in one Organization cannot read another Organization's Audit events.
 - The design intentionally trades database-enforced referential integrity to operational rows for historical independence. Application validation and explicit tests are mandatory, not optional.
 - This ADR resolves the historical reference lifecycle decision for Phase 7. Audit-reader authorization, denial-event selection, Role creation event cardinality, and correlation-ID propagation remain separate open decisions.
+
+---
+
+## ADR-024 — Use a dedicated append-only Access Control Audit event table
+
+**Status:** ACCEPTED — DELEGATED TECHNICAL DECISION  
+**Decision owner:** Project owner (technical design delegated to the architecture reviewer)  
+**Date:** 2026-11-02
+
+### Context
+
+ADR-014, ADR-022, and ADR-023 require a durable Access Control security history that is append-only, retained without automatic deletion, and independent of operational-record lifecycles. The Phase 7 roadmap also requires tenant-scoped querying, allow-listed event snapshots, and database-level protection against UPDATE, DELETE, and TRUNCATE. The repository uses Prisma 7 with a multi-file PostgreSQL schema.
+
+### Decision
+
+1. Store Access Control audit events in a dedicated `AccessControlAuditEvent` table, represented by `prisma/models/access-control-audit.prisma`. Keep this model separate from the operational Access Control models and do not add inverse relations to User, Organization, Branch, Membership, Role, RoleAssignment, PermissionOverride, or Permission.
+2. Use the explicit `AccessControlAuditEventType` enum with the 11 event names already approved in section 4.11 of the Master Architecture. The presence of `AUTHORIZATION_DENIED` in the storage vocabulary does not authorize logging every denial; the event-selection policy remains open under Phase 7.5.
+3. Use `AccessControlAuditResourceType` for ROLE, ROLE_ASSIGNMENT, PERMISSION_OVERRIDE, PERMISSION, and AUTHORIZATION. Use nullable `AccessControlAuditSubjectType` for USER, ORGANIZATION_MEMBERSHIP, or BRANCH_MEMBERSHIP. A subject type and subject ID must either both be null or both be present.
+4. Require `organizationId` and `actorUserId`. Keep `branchId`, subject identity, and correlation ID nullable where not applicable. Store every operational reference as a scalar historical identifier without a foreign key, exactly as required by ADR-023. A successful event must include its resource ID. A selected denial may omit resource ID when the attempted target cannot be safely resolved.
+5. Use `occurredAt TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` as the database-generated event timestamp. Use nullable JSONB `beforeState` and `afterState` fields strictly for allow-listed state projections, never arbitrary request bodies or complete Prisma/Domain serialization. `payloadVersion` starts at 1 and versions the JSON projection contract.
+6. Add optional `correlationId VARCHAR(128)` as a non-unique field. A request may produce multiple audit events, so correlation ID must not be unique. The Application command metadata contract and propagation from the existing HTTP request ID remain open and are not implemented by this ADR.
+7. Start with only two indexes supported by mandatory tenant-scoped list access: `(organizationId, occurredAt DESC)` and `(organizationId, branchId, occurredAt DESC)`. Do not add speculative actor, event-type, or resource indexes until the Audit reader policy is approved and real query patterns justify them.
+8. Add database CHECK constraints for non-empty required identifiers, paired subject fields, resource ID requirements, valid payload version, and non-empty correlation IDs.
+9. Add PostgreSQL triggers that reject UPDATE and DELETE on rows and reject TRUNCATE on the table. The trigger is a database guard against ordinary mutation paths, not a cryptographic or administrator-proof immutability guarantee. A database owner/superuser can intentionally disable or remove triggers; the deployed runtime database role and its privileges must be reviewed separately before production readiness.
+10. Do not add TTL, expiry, archival, cleanup, purge, update, or delete paths. This preserves ADR-022 without creating a retention job or an unapproved archive policy.
+11. Add a root `prisma.config.ts` that explicitly points Prisma 7 to the existing multi-file `prisma/` schema, existing `prisma/migrations` directory, existing Seed command, and the application's `DATABASE_URL` environment variable. No secret value is stored in the repository.
+
+### Consequences
+
+- The initial schema and forward-only migration are represented by `prisma/models/access-control-audit.prisma` and `prisma/migrations/20261102110000_access_control_audit_events/migration.sql`.
+- The event table remains independent of operational record deletion and update. Application writers must validate tenant/target ownership before appending; readers must always scope by Organization and Branch where applicable.
+- The JSON projection contract must be constructed explicitly by Application mappers. The unresolved Role-creation event-cardinality decision can be represented in the event payload and does not require duplicating schema columns.
+- Denial events still require a separate best-effort persistence boundary because the denied business Unit of Work rolls back. This ADR does not define the denial-selection policy or reader authorization.
+- The two indexes are an initial minimum, not a production performance claim. Additional indexes require query evidence and review of write amplification.
+- The schema and migration draft are committed but remain unverified until Prisma validation, schema-to-Migration review, isolated PostgreSQL migration application, and Integration tests are observed. Database runtime-role privilege restrictions remain a separate production-readiness verification item.
 
 ---
 

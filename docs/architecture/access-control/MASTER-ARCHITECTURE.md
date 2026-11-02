@@ -5,12 +5,12 @@
 | Attribute                    | Value                                                                                         |
 | ---------------------------- | --------------------------------------------------------------------------------------------- |
 | Document                     | Master Architecture & Implementation Specification                                            |
-| Version                      | 1.13                                                                                          |
+| Version                      | 1.14                                                                                          |
 | Last updated                 | 2026-11-02                                                                                    |
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                                        |
 | Architecture status          | Approved by project owner                                                                     |
 | Repository audit             | PHASE 0 completed                                                                             |
-| Current implementation phase | PHASE 7 — Audit Logging (in progress; Audit schema and Migration design)                       |
+| Current implementation phase | PHASE 7 — Audit Logging (in progress; Prisma model and forward Migration drafted; validation pending)                       |
 | Source of truth               | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -1274,7 +1274,7 @@ Do not move Prisma dependencies into Domain or Application. PHASE 6 implements t
 
 ## PHASE 7 — Audit Logging
 
-Status: **IN PROGRESS — 7.1 AUDIT CONTRACT AND POLICY DESIGN; preparing schema and migration design (2026-11-02).**
+Status: **IN PROGRESS — 7.3 Prisma schema and forward Migration drafted in the repository; local validation and isolated-database application pending (2026-11-02).**
 
 ### Purpose and approved scope
 
@@ -1361,6 +1361,16 @@ The Phase 7 repository inspection established:
 - Retain audit history even when normal User, Organization, Branch, Membership, Role, or Permission lifecycle changes occur. Per ADR-023, actor, tenant, subject, and resource references are historical scalar identifiers without foreign keys. The Application validates write-time ownership; Audit readers always scope by Organization and, where applicable, Branch.
 - Do not add Audit relations or inverse relation fields to Identity or Organization models solely for historical references.
 - The Audit record's required `organizationId` is a tenant scope key, not a foreign key. Selected denial events are persisted in this table only when the actor is authenticated and the Organization context is validated.
+
+
+**Initial Prisma/Migration design (ADR-024; draft committed, not yet validated or applied):**
+
+- Store events in the dedicated `AccessControlAuditEvent` model in `prisma/models/access-control-audit.prisma`; do not add Audit relations or inverse fields to operational models.
+- Use explicit PostgreSQL/Prisma enums for the approved event vocabulary, resource type, and optional subject type. `actorUserId` and `organizationId` are required scalar identifiers; `branchId`, subject identity, resource identity for selected denial events, and `correlationId` are nullable as documented in ADR-024.
+- Use `occurredAt` as the database-generated `TIMESTAMPTZ(3)` event timestamp. Store only allow-listed state projections in `beforeState`/`afterState` JSONB fields; `payloadVersion` versions that projection contract.
+- Start with only the two evidenced list-query indexes: Organization + descending time, and Organization + Branch + descending time. Add actor/resource/event-type indexes only after the Audit reader contract and real query patterns are approved.
+- The forward-only Migration adds database checks for paired subject fields, resource identity, payload version, and non-empty identifiers. PostgreSQL triggers reject UPDATE, DELETE, and TRUNCATE. These triggers do not make the table tamper-proof against a database owner/superuser; runtime-role privilege hardening must be separately verified before production readiness.
+- Prisma 7's repository configuration is now explicit in root `prisma.config.ts`: schema directory, migration path, seed command, and `DATABASE_URL` loading. This does not expose or commit environment secrets.
 
 **Exit criteria:** the Migration is applied to an isolated test database; Persistence, atomic rollback, tenant-scope, and immutability behavior have Integration coverage.
 
@@ -1630,6 +1640,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; Audit schema and Migration design is the next task)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 is governed by this document's section 4.11, this PHASE 7 roadmap, and ADR-014, ADR-022, and ADR-023 in `ARCHITECTURAL-DECISIONS.md`. The three repository documents are the complete source of truth; no separate Phase 7 plan document is maintained. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
+The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; the Prisma model and forward Migration draft are committed, with local validation and isolated-database application pending)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 is governed by this document's section 4.11, this PHASE 7 roadmap, and ADR-014 and ADR-022 through ADR-024 in `ARCHITECTURAL-DECISIONS.md`. The three repository documents are the complete source of truth; no separate Phase 7 plan document is maintained. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.
