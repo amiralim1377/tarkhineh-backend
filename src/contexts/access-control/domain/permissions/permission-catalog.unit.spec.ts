@@ -4,15 +4,18 @@ import {
   PERMISSION_ACTION,
   PERMISSION_CATALOG,
   PERMISSION_CODE,
-  PERMISSION_DEFINITIONS,
   PERMISSION_RESOURCE,
   PERMISSION_TARGET_SCOPE,
+  type PermissionCode,
+} from './permission-catalog.js';
+
+import {
+  PERMISSION_DEFINITIONS,
   DELEGABLE_PERMISSIONS,
   NON_DELEGABLE_PERMISSIONS,
   ORGANIZATION_TARGET_SCOPE_PERMISSIONS,
   BRANCH_TARGET_SCOPE_PERMISSIONS,
-  type PermissionCode,
-} from './permission-catalog.js';
+} from './permission-catalog-derived.js';
 
 const sortCodes = (codes: readonly string[]) => [...codes].sort();
 
