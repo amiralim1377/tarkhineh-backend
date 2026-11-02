@@ -13,7 +13,7 @@ function createRole(): Role {
     code: 'TEST_ORGANIZATION_READER',
     name: 'Test Organization Reader',
     description: null,
-    definitionScope: 'ORGANIZATION',
+    definitionSource: 'ORGANIZATION_DEFINED',
     assignmentScope: 'ORGANIZATION',
     organizationId: 'org-1',
     isAssignable: true,
@@ -297,13 +297,14 @@ describe('AuthorizationApplicationService', () => {
         loadDelegationSnapshots: transactionLoadDelegationSnapshots,
       } as AuthorizationSnapshotReader;
 
-      const permissions = await sut.service.getEffectiveDelegationPermissionCodes(
-        {
-          userId: 'user-1',
-          organizationId: 'org-1',
-        },
-        transactionReader,
-      );
+      const permissions =
+        await sut.service.getEffectiveDelegationPermissionCodes(
+          {
+            userId: 'user-1',
+            organizationId: 'org-1',
+          },
+          transactionReader,
+        );
 
       expect(permissions).toContain('organization.read');
       expect(transactionLoadDelegationSnapshots).toHaveBeenCalledOnce();
