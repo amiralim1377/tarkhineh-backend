@@ -18,7 +18,7 @@ import { PrismaService } from '../../../../src/prisma/prisma.service.js';
 import { PERMISSION_CODE } from '../../../../src/contexts/access-control/domain/permissions/permission-catalog.js';
 import {
   ROLE_ASSIGNMENT_SCOPE,
-  ROLE_DEFINITION_SCOPE,
+  ROLE_DEFINITION_SOURCE,
 } from '../../../../src/contexts/access-control/domain/roles/role.types.js';
 import { Role } from '../../../../src/contexts/access-control/domain/roles/role.js';
 import { RoleAssignment } from '../../../../src/contexts/access-control/domain/role-assignments/role-assignment.js';
@@ -470,7 +470,7 @@ function createRole(
       ? 'Integration Organization Role'
       : 'Integration Branch Role',
     description: 'Created by Access Control persistence integration tests.',
-    definitionScope: ROLE_DEFINITION_SCOPE.ORGANIZATION,
+    definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
     assignmentScope,
     organizationId: current.organizationId,
     isAssignable: true,
@@ -495,7 +495,7 @@ async function createOrganizationActorRole(
     code: `${codePrefix}_${current.suffix.replaceAll('-', '').toUpperCase()}`,
     name: `${codePrefix} Integration Actor Role`,
     description: 'Grants permissions required by an integration scenario.',
-    definitionScope: ROLE_DEFINITION_SCOPE.ORGANIZATION,
+    definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
     assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
     organizationId: current.organizationId,
     isAssignable: true,
@@ -898,7 +898,7 @@ describe('Access Control Persistence Integration', () => {
         code: `IT_SECONDARY_${randomUUID().replaceAll('-', '').toUpperCase()}`,
         name: 'Secondary Tenant Integration Role',
         description: 'Role owned by the secondary integration tenant.',
-        definitionScope: ROLE_DEFINITION_SCOPE.ORGANIZATION,
+        definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
         assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
         organizationId: secondary.organizationId,
         isAssignable: true,
@@ -1616,7 +1616,7 @@ describe('Access Control Persistence Integration', () => {
       code: `IT_OVERRIDE_MANAGER_${current.suffix.replaceAll('-', '').toUpperCase()}`,
       name: 'Integration Override Manager',
       description: 'Grants permission override management for this test.',
-      definitionScope: ROLE_DEFINITION_SCOPE.ORGANIZATION,
+      definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
       assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
       organizationId: current.organizationId,
       isAssignable: true,

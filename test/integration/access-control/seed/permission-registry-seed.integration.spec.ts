@@ -2,21 +2,14 @@ import 'dotenv/config';
 
 import { randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { Prisma } from '../../../../src/generated/prisma/client.js';
 import { PrismaService } from '../../../../src/prisma/prisma.service.js';
 
-import {
-  PERMISSION_CODE,
-  PERMISSION_DEFINITIONS,
-} from '../../../../src/contexts/access-control/domain/permissions/permission-catalog.js';
+import { PERMISSION_CODE } from '../../../../src/contexts/access-control/domain/permissions/permission-catalog.js';
+
+import { PERMISSION_DEFINITIONS } from '../../../../src/contexts/access-control/domain/permissions/permission-catalog-derived.js';
 
 import {
   synchronizeAccessControlRegistry,
@@ -35,9 +28,7 @@ function createTestDatabaseUrl(): string {
   }
 
   const url = new URL(configuredUrl);
-  const databaseName = decodeURIComponent(
-    url.pathname.replace(/^\/+/, ''),
-  );
+  const databaseName = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
 
   if (databaseName !== 'tarkhineh_db') {
     throw new Error(
@@ -340,15 +331,14 @@ describe('Access Control Registry Seed Integration', () => {
         },
       });
 
-      const archivedRolePermissionsBefore =
-        await tx.rolePermission.findMany({
-          where: {
-            roleId: archivedCustomRole.id,
-          },
-          orderBy: {
-            permissionId: 'asc',
-          },
-        });
+      const archivedRolePermissionsBefore = await tx.rolePermission.findMany({
+        where: {
+          roleId: archivedCustomRole.id,
+        },
+        orderBy: {
+          permissionId: 'asc',
+        },
+      });
 
       const customAssignmentBefore = await tx.roleAssignment.findUniqueOrThrow({
         where: {
@@ -383,13 +373,9 @@ describe('Access Control Registry Seed Integration', () => {
 
       expect(
         await getSystemRolePermissionCodes(tx, 'ORGANIZATION_OWNER'),
-      ).toEqual(
-        sortCodes(SYSTEM_ROLE_PERMISSION_SETS.ORGANIZATION_OWNER),
-      );
+      ).toEqual(sortCodes(SYSTEM_ROLE_PERMISSION_SETS.ORGANIZATION_OWNER));
 
-      expect(
-        await getSystemRolePermissionCodes(tx, 'BRANCH_MANAGER'),
-      ).toEqual(
+      expect(await getSystemRolePermissionCodes(tx, 'BRANCH_MANAGER')).toEqual(
         sortCodes(SYSTEM_ROLE_PERMISSION_SETS.BRANCH_MANAGER),
       );
 
@@ -459,13 +445,9 @@ describe('Access Control Registry Seed Integration', () => {
 
       expect(
         await getSystemRolePermissionCodes(tx, 'ORGANIZATION_OWNER'),
-      ).toEqual(
-        sortCodes(SYSTEM_ROLE_PERMISSION_SETS.ORGANIZATION_OWNER),
-      );
+      ).toEqual(sortCodes(SYSTEM_ROLE_PERMISSION_SETS.ORGANIZATION_OWNER));
 
-      expect(
-        await getSystemRolePermissionCodes(tx, 'BRANCH_MANAGER'),
-      ).toEqual(
+      expect(await getSystemRolePermissionCodes(tx, 'BRANCH_MANAGER')).toEqual(
         sortCodes(SYSTEM_ROLE_PERMISSION_SETS.BRANCH_MANAGER),
       );
 
@@ -484,10 +466,7 @@ describe('Access Control Registry Seed Integration', () => {
       });
 
       expect(sortCodes(assignmentIds.map((item) => item.id))).toEqual(
-        sortCodes([
-          customRoleAssignment.id,
-          ownerAssignment.id,
-        ]),
+        sortCodes([customRoleAssignment.id, ownerAssignment.id]),
       );
 
       // The stale Permission row must still exist.
@@ -630,15 +609,12 @@ describe('Access Control Registry Seed Integration', () => {
           roleId: true,
           permissionId: true,
         },
-        orderBy: [
-          { roleId: 'asc' },
-          { permissionId: 'asc' },
-        ],
+        orderBy: [{ roleId: 'asc' }, { permissionId: 'asc' }],
       });
 
-      await expect(
-        synchronizeAccessControlRegistry(tx),
-      ).rejects.toThrow(/ORGANIZATION_OWNER.*archived/i);
+      await expect(synchronizeAccessControlRegistry(tx)).rejects.toThrow(
+        /ORGANIZATION_OWNER.*archived/i,
+      );
 
       // No Registry, System Role or RolePermission writes may have occurred.
 
@@ -689,10 +665,7 @@ describe('Access Control Registry Seed Integration', () => {
             roleId: true,
             permissionId: true,
           },
-          orderBy: [
-            { roleId: 'asc' },
-            { permissionId: 'asc' },
-          ],
+          orderBy: [{ roleId: 'asc' }, { permissionId: 'asc' }],
         }),
       ).toEqual(systemRolePermissionsBefore);
     });

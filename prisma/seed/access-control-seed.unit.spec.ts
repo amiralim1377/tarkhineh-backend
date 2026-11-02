@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-
-import { PERMISSION_DEFINITIONS } from '../../src/contexts/access-control/domain/permissions/permission-catalog.js';
+import { PERMISSION_DEFINITIONS } from '../../src/contexts/access-control/domain/permissions/permission-catalog-derived.js';
 import { SYSTEM_ROLE_PERMISSION_SETS } from './access-control-seed.js';
 
 const EXPECTED_OWNER_PERMISSIONS = [
@@ -77,16 +76,11 @@ describe('Access Control System Role Permission Sets', () => {
 
   it('assigns only BRANCH-scoped permissions to BRANCH_MANAGER', () => {
     const definitionsByCode = new Map(
-      PERMISSION_DEFINITIONS.map((permission) => [
-        permission.code,
-        permission,
-      ]),
+      PERMISSION_DEFINITIONS.map((permission) => [permission.code, permission]),
     );
 
     for (const permissionCode of SYSTEM_ROLE_PERMISSION_SETS.BRANCH_MANAGER) {
-      expect(definitionsByCode.get(permissionCode)?.targetScope).toBe(
-        'BRANCH',
-      );
+      expect(definitionsByCode.get(permissionCode)?.targetScope).toBe('BRANCH');
     }
   });
 });
