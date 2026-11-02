@@ -656,15 +656,15 @@ For the initial Access Control Audit implementation:
 
 1. Store Audit events as ordinary persistent records in the database.
 2. Retain created Audit records indefinitely under the current policy; do not assign an automatic expiry date.
-3. Do not implement TTL, scheduled deletion, retention purge, automatic cleanup, or automatic archival of Audit records.
+3. Do not implement TTL, scheduled deletion, retention purge, or automatic cleanup of Audit records.
 4. Do not expose Audit record update/delete operations through the Access Control Application ports or normal application workflows. This is consistent with ADR-014's append-only requirement.
-5. Any future change that permits deletion, purge, or archival must be proposed as a new explicit project-owner decision and documented before implementation. This ADR does not authorize an operator or application job to remove existing records.
+5. Any future change that permits deletion or purge, or introduces an archival/tiering policy, must be proposed as a new explicit project-owner decision and documented before implementation. This ADR does not authorize an operator or application job to remove existing records.
 6. This decision does not claim that database administrators are technically incapable of altering storage outside the application. Database-level immutability protections and operational controls remain part of Phase 7 implementation and verification.
 
 ### Consequences
 
 - Audit records remain available as historical database records rather than expiring diagnostic logs.
-- No retention duration, TTL column, cleanup scheduler, purge process, or automatic archival mechanism is required by the initial schema.
+- No retention duration, TTL column, cleanup scheduler, or purge process is required by the initial schema. No archival/tiering policy is established by this ADR; it remains outside the current decision.
 - Audit write paths remain append-only. Read access is a separate authorization concern and is not granted by this ADR.
 - The owner may revisit the policy later through a documented decision; until then, no automatic or routine deletion is permitted.
 - This decision resolves the retention item from ADR-014 for the initial implementation. Audit-reader authorization, denial-event selection, reference lifecycle, Role creation event cardinality, and correlation-ID propagation remain separate PHASE 7 design decisions.
