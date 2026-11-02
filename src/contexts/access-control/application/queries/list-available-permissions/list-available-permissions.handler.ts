@@ -1,12 +1,12 @@
 import { QueryHandler, type IQueryHandler } from '@nestjs/cqrs';
 import {
-  PERMISSION_DEFINITIONS,
   PERMISSION_TARGET_SCOPE,
   type PermissionDefinition,
 } from '../../../domain/permissions/permission-catalog.js';
 import { ROLE_ASSIGNMENT_SCOPE } from '../../../domain/roles/role.types.js';
 import { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import { ListAvailablePermissionsQuery } from './list-available-permissions.query.js';
+import { PERMISSION_DEFINITIONS } from '../../../domain/permissions/permission-catalog-derived.js';
 
 /**
  * Lists registry permissions the actor may delegate into a custom Role.

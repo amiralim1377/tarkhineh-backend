@@ -1,6 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  PERMISSION_DEFINITIONS,
   PERMISSION_TARGET_SCOPE,
   type PermissionCode,
 } from '../../domain/permissions/permission-catalog.js';
@@ -19,6 +18,7 @@ import {
   AUTHORIZATION_SNAPSHOT_READER,
   type AuthorizationSnapshotReader,
 } from '../ports/authorization-snapshot-reader.port.js';
+import { PERMISSION_DEFINITIONS } from '../../domain/permissions/permission-catalog-derived.js';
 
 export interface EffectiveAuthorizationContextInput {
   readonly userId: string;
