@@ -6,7 +6,7 @@ import {
 } from '../errors/invalid-role-assignment.error.js';
 import {
   ROLE_ASSIGNMENT_SCOPE,
-  ROLE_DEFINITION_SCOPE,
+  ROLE_DEFINITION_SOURCE,
 } from '../roles/role.types.js';
 import { Role } from '../roles/role.js';
 
@@ -274,7 +274,8 @@ export class RoleAssignment extends Entity<UniqueId> {
     }
 
     if (
-      role.getDefinitionScope() === ROLE_DEFINITION_SCOPE.ORGANIZATION &&
+      role.getDefinitionSource() ===
+        ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED &&
       role.getOrganizationId() !== targetOrganizationId
     ) {
       throw new InvalidRoleAssignmentError(
