@@ -1,29 +1,42 @@
 import { Entity } from '../../../../shared/domain/entities/entity.js';
 import { UniqueId } from '../../../../shared/domain/value-objects/unique-id.vo.js';
+
 import {
   InvalidRoleDataError,
   ROLE_DATA_ERROR_CODE,
 } from '../errors/invalid-role-data.error.js';
+
 import {
   isKnownPermissionCode,
   isPermissionCompatibleWithRoleAssignmentScope,
 } from '../rules/role-permission-scope.rule.js';
+
 import {
   ROLE_ASSIGNMENT_SCOPE,
-  ROLE_DEFINITION_SCOPE,
+  ROLE_DEFINITION_SOURCE,
   ROLE_STATUS,
   type RoleAssignmentScope,
-  type RoleDefinitionScope,
+  type RoleDefinitionSource,
   type RoleStatus,
 } from './role.types.js';
+
+import {
+  getSystemRoleDefinition,
+  isSystemRoleCode,
+} from './system-role-catalog.js';
+
 import type { PermissionCode } from '../permissions/permission-catalog.js';
+
+// ============================================================
+// ROLE PROPS
+// ============================================================
 
 export interface CreateRoleProps {
   readonly id?: string;
   readonly code: string;
   readonly name: string;
   readonly description?: string | null;
-  readonly definitionScope: RoleDefinitionScope;
+  readonly definitionSource: RoleDefinitionSource;
   readonly assignmentScope: RoleAssignmentScope;
   readonly organizationId?: string | null;
   readonly isAssignable: boolean;
@@ -31,8 +44,9 @@ export interface CreateRoleProps {
   readonly permissionCodes?: readonly string[];
 }
 
-const ORGANIZATION_OWNER_CODE = 'ORGANIZATION_OWNER';
-const BRANCH_MANAGER_CODE = 'BRANCH_MANAGER';
+// ============================================================
+// ROLE ENTITY
+// ============================================================
 
 export class Role extends Entity<UniqueId> {
   private permissionCodes: readonly PermissionCode[];
@@ -42,7 +56,7 @@ export class Role extends Entity<UniqueId> {
     private readonly code: string,
     private name: string,
     private description: string | null,
-    private readonly definitionScope: RoleDefinitionScope,
+    private readonly definitionSource: RoleDefinitionSource,
     private readonly assignmentScope: RoleAssignmentScope,
     private readonly organizationId: string | null,
     private readonly assignable: boolean,
@@ -50,14 +64,20 @@ export class Role extends Entity<UniqueId> {
     permissionCodes: readonly PermissionCode[],
   ) {
     super(id);
+
     this.permissionCodes = Object.freeze([...permissionCodes]);
   }
+
+  // ============================================================
+  // CREATION
+  // ============================================================
 
   static create(props: CreateRoleProps): Role {
     const code = props.code.trim();
     const name = props.name.trim();
     const organizationId = props.organizationId?.trim() || null;
     const description = props.description?.trim() || null;
+
     const status = props.status ?? ROLE_STATUS.ACTIVE;
     const permissionCodes = props.permissionCodes ?? [];
 
@@ -75,10 +95,10 @@ export class Role extends Entity<UniqueId> {
       );
     }
 
-    if (!Object.hasOwn(ROLE_DEFINITION_SCOPE, props.definitionScope)) {
+    if (!Object.hasOwn(ROLE_DEFINITION_SOURCE, props.definitionSource)) {
       throw new InvalidRoleDataError(
-        ROLE_DATA_ERROR_CODE.DEFINITION_SCOPE_INVALID,
-        'Role definition scope is invalid.',
+        ROLE_DATA_ERROR_CODE.DEFINITION_SOURCE_INVALID,
+        'Role definition source is invalid.',
       );
     }
 
@@ -97,7 +117,7 @@ export class Role extends Entity<UniqueId> {
     }
 
     if (
-      props.definitionScope === ROLE_DEFINITION_SCOPE.SYSTEM &&
+      props.definitionSource === ROLE_DEFINITION_SOURCE.SYSTEM &&
       organizationId !== null
     ) {
       throw new InvalidRoleDataError(
@@ -107,7 +127,7 @@ export class Role extends Entity<UniqueId> {
     }
 
     if (
-      props.definitionScope === ROLE_DEFINITION_SCOPE.ORGANIZATION &&
+      props.definitionSource === ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED &&
       organizationId === null
     ) {
       throw new InvalidRoleDataError(
@@ -116,9 +136,9 @@ export class Role extends Entity<UniqueId> {
       );
     }
 
-    Role.validateReservedRoleConfiguration({
+    Role.validateSystemRoleConfiguration({
       code,
-      definitionScope: props.definitionScope,
+      definitionSource: props.definitionSource,
       assignmentScope: props.assignmentScope,
       isAssignable: props.isAssignable,
     });
@@ -133,7 +153,7 @@ export class Role extends Entity<UniqueId> {
       code,
       name,
       description,
-      props.definitionScope,
+      props.definitionSource,
       props.assignmentScope,
       organizationId,
       props.isAssignable,
@@ -142,36 +162,51 @@ export class Role extends Entity<UniqueId> {
     );
   }
 
-  private static validateReservedRoleConfiguration(props: {
+  // ============================================================
+  // SYSTEM ROLE VALIDATION
+  // ============================================================
+
+  private static validateSystemRoleConfiguration(props: {
     readonly code: string;
-    readonly definitionScope: RoleDefinitionScope;
+    readonly definitionSource: RoleDefinitionSource;
     readonly assignmentScope: RoleAssignmentScope;
     readonly isAssignable: boolean;
   }): void {
-    if (
-      props.code === ORGANIZATION_OWNER_CODE &&
-      (props.definitionScope !== ROLE_DEFINITION_SCOPE.SYSTEM ||
-        props.assignmentScope !== ROLE_ASSIGNMENT_SCOPE.ORGANIZATION ||
-        props.isAssignable)
-    ) {
-      throw new InvalidRoleDataError(
-        ROLE_DATA_ERROR_CODE.OWNER_ROLE_RESERVED,
-        'ORGANIZATION_OWNER must be a non-assignable System Organization Role.',
-      );
+    if (props.definitionSource === ROLE_DEFINITION_SOURCE.SYSTEM) {
+      if (!isSystemRoleCode(props.code)) {
+        throw new InvalidRoleDataError(
+          ROLE_DATA_ERROR_CODE.SYSTEM_ROLE_NOT_REGISTERED,
+          `System Role "${props.code}" is not registered in the System Role Catalog.`,
+        );
+      }
+
+      const definition = getSystemRoleDefinition(props.code);
+
+      const configurationMatchesCatalog =
+        props.assignmentScope === definition.assignmentScope &&
+        props.isAssignable === definition.isAssignable;
+
+      if (!configurationMatchesCatalog) {
+        throw new InvalidRoleDataError(
+          ROLE_DATA_ERROR_CODE.SYSTEM_ROLE_CONFIGURATION_INVALID,
+          `System Role "${props.code}" does not match its catalog definition.`,
+        );
+      }
+
+      return;
     }
 
-    if (
-      props.code === BRANCH_MANAGER_CODE &&
-      (props.definitionScope !== ROLE_DEFINITION_SCOPE.SYSTEM ||
-        props.assignmentScope !== ROLE_ASSIGNMENT_SCOPE.BRANCH ||
-        !props.isAssignable)
-    ) {
+    if (isSystemRoleCode(props.code)) {
       throw new InvalidRoleDataError(
-        ROLE_DATA_ERROR_CODE.BRANCH_MANAGER_ROLE_RESERVED,
-        'BRANCH_MANAGER must be an assignable System Branch Role.',
+        ROLE_DATA_ERROR_CODE.SYSTEM_ROLE_CODE_RESERVED,
+        `System Role "${props.code}" cannot be defined by an Organization.`,
       );
     }
   }
+
+  // ============================================================
+  // PERMISSION VALIDATION
+  // ============================================================
 
   private static validatePermissionCodes(
     assignmentScope: RoleAssignmentScope,
@@ -206,6 +241,10 @@ export class Role extends Entity<UniqueId> {
     return validatedCodes;
   }
 
+  // ============================================================
+  // GETTERS
+  // ============================================================
+
   getCode(): string {
     return this.code;
   }
@@ -218,8 +257,8 @@ export class Role extends Entity<UniqueId> {
     return this.description;
   }
 
-  getDefinitionScope(): RoleDefinitionScope {
-    return this.definitionScope;
+  getDefinitionSource(): RoleDefinitionSource {
+    return this.definitionSource;
   }
 
   getAssignmentScope(): RoleAssignmentScope {
@@ -242,26 +281,22 @@ export class Role extends Entity<UniqueId> {
     return this.permissionCodes;
   }
 
-  /**
-   * Generic assignment workflows must not assign reserved or archived roles.
-   * Owner creation and transfer belong to their dedicated workflows.
-   */
+  // ============================================================
+  // ASSIGNMENT & AUTHORIZATION
+  // ============================================================
+
   canBeAssignedThroughGenericWorkflow(): boolean {
-    return (
-      this.status === ROLE_STATUS.ACTIVE &&
-      this.assignable &&
-      this.code !== ORGANIZATION_OWNER_CODE
-    );
+    return this.status === ROLE_STATUS.ACTIVE && this.assignable;
   }
 
   isEffectiveForAuthorization(): boolean {
     return this.status === ROLE_STATUS.ACTIVE;
   }
 
-  /**
-   * Replaces the complete permission set after validating every code
-   * against the registry and the Role's immutable assignment scope.
-   */
+  // ============================================================
+  // MUTATIONS
+  // ============================================================
+
   updateDetails(name: string, description?: string | null): void {
     this.assertActiveForMutation();
 
@@ -292,6 +327,10 @@ export class Role extends Entity<UniqueId> {
   archive(): void {
     this.status = ROLE_STATUS.ARCHIVED;
   }
+
+  // ============================================================
+  // PRIVATE HELPERS
+  // ============================================================
 
   private assertActiveForMutation(): void {
     if (this.status !== ROLE_STATUS.ACTIVE) {
