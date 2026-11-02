@@ -3,9 +3,9 @@
 | Attribute              | Value                         |
 | ---------------------- | ----------------------------- |
 | Project                | `tarkhineh-backend`           |
-| Document version       | 1.10                          |
+| Document version       | 1.11                          |
 | Last updated           | 2026-11-02                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.12 |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.13 |
 
 This document is the decision log for the Access Control bounded context. Each ADR records the context, the decision, and its consequences. Accepted decisions are binding implementation constraints. They must not be silently changed. If later evidence or a product requirement requires a change, add a new ADR that explicitly supersedes the affected decision and obtain project-owner approval before implementing the change.
 
@@ -671,6 +671,70 @@ For the initial Access Control Audit implementation:
 
 ---
 
+## ADR-023 — Preserve Audit references as immutable historical identifiers
+
+**Status:** ACCEPTED  
+**Decision owner:** Project owner (delegated technical decision)  
+**Date:** 2026-11-02
+
+### Context
+
+Access Control Audit records must remain available as historical evidence independently of the lifecycle of User, Organization, Branch, Membership, Role, and Permission records owned by the existing bounded contexts or operational tables.
+
+The current Prisma schema uses lifecycle-dependent foreign-key actions in several places:
+
+- `CASCADE` removes dependent records when a parent is deleted.
+- `SET NULL` changes the referencing row when its parent is deleted.
+- `RESTRICT` prevents deletion while dependent rows exist.
+
+Those behaviors are useful for ordinary relational aggregates, but are not appropriate as direct lifecycle coupling for an append-only Audit record. Audit must neither disappear with an operational record nor be silently rewritten by referential actions. It must also avoid taking ownership of the lifecycle of Identity and Organization Management records.
+
+### Decision
+
+For the initial Access Control Audit model, all references to lifecycle-owned operational records are stored as **historical scalar identifiers, not relational foreign keys**.
+
+This applies to:
+
+- `actorUserId`
+- `organizationId`
+- `branchId`
+- Subject/target identifiers such as OrganizationMembership and BranchMembership IDs.
+- Resource identifiers such as Role, RoleAssignment, PermissionOverride, and Permission IDs/codes.
+
+The initial data contract follows these rules:
+
+1. Successful Access Control mutation Audit events must contain a trusted Actor ID and the exact Organization ID taken from the already-authorized operation. Branch ID is present when the operation is Branch-scoped.
+2. `organizationId` is a required tenant partition/scope key for stored Access Control Audit events. It is not a foreign key.
+3. `branchId` and subject identifiers are nullable when they do not apply to the event. They are not foreign keys.
+4. `resourceType` and `resourceId` identify the affected resource. They are historical identifiers, not polymorphic foreign keys.
+5. The initial Phase 7 policy records only the identifiers and allow-listed event snapshots needed to explain the security-relevant change. It does not copy User email, display name, credentials, or unrelated personal attributes into Audit payloads by default.
+6. A selected `AUTHORIZATION_DENIED` event may be persisted only when the actor is authenticated and the Organization context is validated. Denials without a trusted Actor or validated tenant context are not written to this tenant-scoped Audit table; they remain subject to the application's separate operational/security logging policy.
+7. The Application layer validates tenant ownership and target consistency before appending an event. For successful mutation events, the event is constructed from the same transaction-bound, already-validated entities used by the mutation.
+8. Every Audit read is scoped by the requested `organizationId`; Branch-scoped reads also apply the approved Branch scope. Cross-tenant read isolation must be tested.
+9. No direct Prisma relations or inverse collection fields are added to User, Organization, Branch, or Membership models merely for Audit references.
+
+### Rationale
+
+- Historical identifiers remain present if their original operational rows are later removed.
+- No foreign-key action can cascade-delete or mutate an Audit row.
+- Audit does not block normal lifecycle operations in Identity or Organization Management.
+- Audit can preserve a stable reference to a historical target even when the live target no longer exists.
+- Tenant safety is explicit in the Application write/read contracts and PostgreSQL Integration tests rather than being implied by a cross-context relation.
+
+The PostgreSQL documentation defines the semantics of `CASCADE`, `RESTRICT`, and `SET NULL`: these actions respectively delete referencing rows, block deletion, or update referencing columns. The selected scalar-reference design avoids applying those lifecycle actions to immutable historical records. The absence of a foreign key is intentional and must be compensated by the validation and tenant-isolation rules above.
+
+### Consequences
+
+- The Audit Prisma model must not declare relations to User, Organization, Branch, OrganizationMembership, BranchMembership, Role, RoleAssignment, PermissionOverride, or Permission.
+- The schema must use scalar string ID columns and explicit tenant/resource indexes selected from the approved query patterns.
+- Application writers must not accept arbitrary target IDs from untrusted input; they must use IDs from trusted command context and validated transaction-bound reads.
+- Audit readers must always filter by Organization ID and, where applicable, Branch ID. A missing or mismatched tenant scope must never fall back to a global read.
+- Integration tests must demonstrate that deleting or changing a referenced operational row cannot remove or rewrite the Audit record, and that a user in one Organization cannot read another Organization's Audit events.
+- The design intentionally trades database-enforced referential integrity to operational rows for historical independence. Application validation and explicit tests are mandatory, not optional.
+- This ADR resolves the historical reference lifecycle decision for Phase 7. Audit-reader authorization, denial-event selection, Role creation event cardinality, and correlation-ID propagation remain separate open decisions.
+
+---
+
 ## Implementation notes and outstanding decisions
 
 This section summarizes implementation facts without changing the decision status of the ADRs above.
@@ -709,7 +773,7 @@ No Prisma schema, migration, database, Application, Infrastructure, or HTTP chan
 The following topics remain open and must be resolved in their relevant implementation phases:
 
 1. **Identity status integration — PHASE 8:** determine how `User.status` is enforced for authenticated and non-HTTP operations without transferring Identity lifecycle ownership to Access Control.
-2. **Audit-reader authorization and reference lifecycle — PHASE 7:** define which principals may read audit records, the dedicated permission/scope behavior, and how historical actor/Organization/Branch/subject references survive lifecycle changes. Audit retention and no-automatic-deletion policy are resolved by ADR-022.
+2. **Audit-reader authorization — PHASE 7:** define which principals may read Audit records, the dedicated permission/scope behavior, delegability, and visibility of actor/subject identifiers. Retention is resolved by ADR-022; historical reference lifecycle is resolved by ADR-023.
 3. **Selected denial-event policy — PHASE 7:** determine which high-signal authorization denials are persisted and whether recording is best-effort without masking the original denial.
 4. **Role creation event cardinality — PHASE 7:** determine whether initial RolePermission links are represented only in ROLE_CREATED after-state or also as individual ROLE_PERMISSION_ADDED events.
 5. **Correlation-ID propagation — PHASE 7 / PHASE 9:** define the Application Command metadata contract and later HTTP adapter handoff from the existing request ID.
