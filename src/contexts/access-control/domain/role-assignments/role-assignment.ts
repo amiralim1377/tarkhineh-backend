@@ -9,8 +9,7 @@ import {
   ROLE_DEFINITION_SOURCE,
 } from '../roles/role.types.js';
 import { Role } from '../roles/role.js';
-
-const ORGANIZATION_OWNER_CODE = 'ORGANIZATION_OWNER';
+import { SYSTEM_ROLE_CODE } from '../roles/system-role-catalog.js';
 
 export interface RoleAssignmentMembershipReference {
   readonly id: string;
@@ -101,7 +100,7 @@ export class RoleAssignment extends Entity<UniqueId> {
   ): RoleAssignment {
     if (
       !(input.role instanceof Role) ||
-      input.role.getCode() !== ORGANIZATION_OWNER_CODE ||
+      input.role.getCode() !== SYSTEM_ROLE_CODE.ORGANIZATION_OWNER ||
       !input.role.isEffectiveForAuthorization()
     ) {
       throw new InvalidRoleAssignmentError(
