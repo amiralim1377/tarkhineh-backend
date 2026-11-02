@@ -5,12 +5,12 @@
 | Attribute                    | Value                                                                                         |
 | ---------------------------- | --------------------------------------------------------------------------------------------- |
 | Document                     | Master Architecture & Implementation Specification                                            |
-| Version                      | 1.11                                                                                          |
+| Version                      | 1.12                                                                                          |
 | Last updated                 | 2026-11-02                                                                                    |
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                                        |
 | Architecture status          | Approved by project owner                                                                     |
 | Repository audit             | PHASE 0 completed                                                                             |
-| Current implementation phase | PHASE 7 — Audit Logging (in progress; 7.1 audit contract and policy design)                    |
+| Current implementation phase | PHASE 7 — Audit Logging (in progress; preparing Audit schema and migration design)              |
 | Source of truth               | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -1274,9 +1274,159 @@ Do not move Prisma dependencies into Domain or Application. PHASE 6 implements t
 
 ## PHASE 7 — Audit Logging
 
-Status: **IN PROGRESS — 7.1 AUDIT CONTRACT AND POLICY DESIGN (2026-11-02).**
+Status: **IN PROGRESS — 7.1 AUDIT CONTRACT AND POLICY DESIGN; preparing schema and migration design (2026-11-02).**
 
-Implement the audit model, repository, atomic mutation/audit transactions, before/after state where useful, correlation IDs, and tests. Keep audit append-only and free of secrets. The detailed execution sequence and unresolved owner decisions are recorded in `PHASE-7-AUDIT-LOGGING-PLAN.md`. The plan does not supersede ADR-014 or introduce unapproved retention, audit-reader, deletion, or event-selection policies.
+### Purpose and approved scope
+
+Implement dedicated Access Control audit records for sensitive mutations to Role, RolePermission, RoleAssignment, and PermissionOverride. This phase implements ADR-014 and the owner-approved retention decision in ADR-022. Audit records are a security/history record, not ordinary diagnostic logs.
+
+The initial event vocabulary defined by section 4.11 is:
+
+- `ROLE_CREATED`
+- `ROLE_UPDATED`
+- `ROLE_ARCHIVED`
+- `ROLE_PERMISSION_ADDED`
+- `ROLE_PERMISSION_REMOVED`
+- `ROLE_ASSIGNED`
+- `ROLE_REVOKED`
+- `PERMISSION_OVERRIDE_CREATED`
+- `PERMISSION_OVERRIDE_UPDATED`
+- `PERMISSION_OVERRIDE_REMOVED`
+- Selected sensitive `AUTHORIZATION_DENIED` events
+
+Capture as applicable:
+
+- Actor ID.
+- Subject/target User or Membership.
+- Organization ID and Branch ID.
+- Event/action and resource identity.
+- Timestamp.
+- Before/after state where useful.
+- Request/correlation ID.
+
+Non-negotiable rules:
+
+1. Audit records are append-only.
+2. A successful sensitive business mutation and its Audit write commit or roll back together.
+3. Never record passwords, tokens, credentials, secrets, raw request bodies, or unnecessary sensitive fields.
+4. Successful permission checks are not persisted by default.
+5. Under the owner-approved ADR-022 decision, records are stored as ordinary database records and **no automatic deletion, TTL expiry, retention purge, or automatic archival is implemented for the current policy**. A later change requires an explicit owner-approved decision.
+
+### Repository baseline and integration constraints
+
+The Phase 7 repository inspection established:
+
+- No Audit model, repository, or adapter existed before this phase.
+- `AccessControlUnitOfWorkContext` exposes four transaction-bound ports: AuthorizationSnapshotReader, RoleRepository, RoleAssignmentRepository, and PermissionOverrideRepository.
+- `PrismaAccessControlUnitOfWork` constructs the adapters with the same `Prisma.TransactionClient`, executes mutations at PostgreSQL Serializable isolation, and can retry the complete callback up to three attempts for specifically classified conflicts.
+- The successful-mutation Audit writer must therefore be added to the same transaction-bound context. It must not open an independent/nested transaction and must not perform external side effects inside the retryable callback.
+- Seven mutation handlers already use the Unit of Work: CreateRole, UpdateRole, ArchiveRole, AssignRole, RevokeRole, SetPermissionOverride, and RemovePermissionOverride.
+- Existing handlers have idempotent/no-op paths. Repeated Archive or Revoke, setting an unchanged Override effect, and removing a missing Override must not generate a state-change event.
+- UpdateRole can change metadata and replace a complete Permission set. It must compare actual before/after values; supplied input alone does not prove a state change.
+- `src/app.module.ts` currently generates a request ID with `pino-http`, returns it in `X-Request-Id`, and includes it in request logs. Existing Access Control Commands do not carry that ID yet. Application propagation and future Phase 9 HTTP handoff must be designed explicitly.
+- Existing User, Organization, Membership, and Branch lifecycle ownership stays in their existing bounded contexts. Audit must not take over those lifecycles.
+- Actor identity must continue to come from trusted authentication/application context, never from an untrusted HTTP request body.
+
+### 7.1 — Audit event contract and policy design
+
+- Define a typed event catalog and minimum allow-listed payload for every event.
+- Define resource and subject identity conventions for Organization- and Branch-scoped operations.
+- Define narrowly scoped before/after snapshots. Never serialize complete Domain aggregates or arbitrary Command input.
+- Decide whether a Role created with initial Permission links emits only `ROLE_CREATED` containing its initial Permission state, or also emits individual `ROLE_PERMISSION_ADDED` events.
+- Define the Application correlation-ID metadata contract and the later HTTP adapter handoff from the existing request ID.
+- Select high-signal sensitive authorization denials; do not persist every failed permission check.
+- Record the owner-approved retention decision (ADR-022). Resolve remaining open decisions below before implementation depends on them.
+
+**Exit criteria:** event payloads and policy decisions are explicit in these three source-of-truth documents; no accepted ADR is silently changed.
+
+### 7.2 — Domain and Application contracts
+
+- Add a small, explicitly typed Audit event contract appropriate to the Access Control context.
+- Add an Application write port with append-only semantics; it must not expose update/delete operations.
+- Add the transaction-bound Audit writer to `AccessControlUnitOfWorkContext`.
+- Keep every transaction-bound adapter on the exact same database transaction client.
+- Add focused Unit tests for permitted event shapes and no-op behavior.
+
+**Exit criteria:** Domain/Application remain free of Prisma and NestJS dependencies; the Application port expresses append-only writes only.
+
+### 7.3 — Prisma schema, Migration, and database protection
+
+- Design the Audit model and a forward-only Prisma Migration.
+- Implement an explicit Prisma event/payload mapper and transaction-bound writer.
+- Select indexes from the approved tenant-scoped query patterns, not speculative generic indexing.
+- Enforce append-only behavior below the Application layer. Evaluate database triggers and runtime database-role privileges; a write-only Repository alone is not sufficient proof.
+- Do not use cascading deletion that silently removes historical Audit records.
+- Validate tenant ownership for polymorphic targets in Application; a `targetType + targetId` pair by itself cannot prove tenant ownership through a foreign key.
+- Retain audit history even when normal User, Organization, Branch, or Membership lifecycle changes occur. The exact actor/subject reference strategy (historical scalar identifiers vs FK with carefully selected deletion behavior) remains an open schema decision.
+
+**Exit criteria:** the Migration is applied to an isolated test database; Persistence, atomic rollback, tenant-scope, and immutability behavior have Integration coverage.
+
+### 7.4 — Atomic Audit integration for successful mutations
+
+Integrate event creation into the seven existing mutation Handlers. Business persistence and Audit append must share one Unit of Work callback and one transaction.
+
+| Handler operation | Required event behavior |
+| --- | --- |
+| Create Role | Record `ROLE_CREATED` with Role identity and allow-listed resulting state. Initial Permission event cardinality is still to be decided. |
+| Update Role | Record `ROLE_UPDATED` for actual metadata changes and separate Permission added/removed events for actual set differences. No event for no-op. |
+| Archive Role | Record `ROLE_ARCHIVED` only on ACTIVE → ARCHIVED. |
+| Assign Role | Record `ROLE_ASSIGNED` with target Membership and scope. |
+| Revoke Role | Record `ROLE_REVOKED` only for an actual active → revoked transition. |
+| Set Permission Override | Record CREATED or UPDATED with actual previous/new effect. No event for unchanged effect. |
+| Remove Permission Override | Record REMOVED only when an existing Override is deleted. |
+
+**Exit criteria:** tests prove mutation + Audit atomicity, rollback if Audit append fails, correct before/after state, and no duplicate events for idempotent operations.
+
+### 7.5 — Selected authorization-denial events
+
+- Define exact high-signal denial cases and safe reason codes.
+- A denial thrown inside the mutation Unit of Work rolls that transaction back. If a selected denial must be persisted, use a separate persistence boundary for that denial event.
+- A best-effort denial writer must never replace, hide, or mutate the original authorization exception when Audit persistence itself fails.
+- Do not store raw request bodies, secrets, arbitrary exception messages, or unvalidated target identifiers.
+
+**Exit criteria:** tests prove the original authorization exception is preserved when denial-event persistence fails and only explicitly selected denials are stored.
+
+### 7.6 — Audit reader authorization and operational access
+
+- Implement tenant-scoped Audit queries only after the reader permission and scope policy are approved.
+- Check authorization for the exact requested Organization; do not assume a user has one global/default Organization.
+- Decide whether read access is Organization-wide or additionally Branch-scoped.
+- Define reader access to actor and subject identifiers and the treatment of cross-context references.
+- Keep read access separate from the append-only write contract.
+
+**Exit criteria:** cross-tenant read, authorization, pagination/order, and audit-reader access tests pass.
+
+### 7.7 — Hardening and Phase acceptance
+
+- Verify append-only behavior for UPDATE, DELETE, and TRUNCATE paths supported by the database privilege model.
+- Verify all event types and allow-listed payloads.
+- Verify credentials and secrets are absent from stored data.
+- Verify the approved no-auto-delete/no-TTL policy is not contradicted by jobs, triggers, or database settings.
+- Run focused Access Control Unit and PostgreSQL Integration suites, TypeScript, lint, Prettier, diff checks, and production build.
+- Record exact command output, database effects, and known limitations in `IMPLEMENTATION-STATUS.md`.
+- Obtain project-owner review before closing Phase 7.
+
+### Remaining owner decisions before implementation depends on them
+
+The following are **OPEN — OWNER DECISION REQUIRED**. ADR-022 resolves retention only; it does not resolve these items.
+
+1. **Audit-reader authorization:** permission code (including whether `organization.audit.read` is required), which Roles receive it, delegability, Organization/Branch scope, and allowed visibility of actor/subject identifiers.
+2. **Reference lifecycle:** actor, Organization, Branch, and subject references must preserve historical records. Choose historical scalar identifiers or FK behavior such as RESTRICT/SET NULL. CASCADE must not erase audit history.
+3. **Denial event selection:** which high-signal Access Control denials are recorded and whether each is best-effort.
+4. **Role creation event cardinality:** whether initial RolePermission links are represented only in `ROLE_CREATED` after-state or also as individual `ROLE_PERMISSION_ADDED` events.
+5. **Correlation propagation:** exact Application Command metadata contract and later HTTP adapter handoff from `request.id`.
+
+### Explicit non-goals
+
+Unless a separate requirement and accepted ADR justify otherwise, Phase 7 will not introduce:
+
+- Event Sourcing or a generic event bus.
+- A generalized audit/policy framework for every bounded context.
+- Permanent records for every successful authorization check.
+- Generic serialization of complete entities or Command payloads.
+- Redis queues or external side effects for atomic successful-mutation Audit writes.
+- Automatic TTL, deletion, purge, or archival under the current owner-approved retention policy.
+- A new retention duration or audit-reader permission without project-owner approval.
 
 ## PHASE 8 — Cross-Context Integration
 
@@ -1478,6 +1628,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; 7.1 audit contract and policy design)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 execution is governed by `PHASE-7-AUDIT-LOGGING-PLAN.md`, based on section 4.11 and ADR-014; no unresolved policy decision may be silently treated as accepted. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
+The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; Audit schema and Migration design is the next task)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 is governed by this document's section 4.11, this PHASE 7 roadmap, ADR-014, and ADR-022 in `ARCHITECTURAL-DECISIONS.md`. The three repository documents are the complete source of truth; no separate Phase 7 plan document is maintained. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.
