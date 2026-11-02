@@ -13,7 +13,7 @@ function createRole(
     code: 'SALES_MANAGER',
     name: 'Sales Manager',
     description: 'Sales team permissions',
-    definitionScope: 'ORGANIZATION',
+    definitionSource: 'ORGANIZATION_DEFINED',
     assignmentScope: 'ORGANIZATION',
     organizationId: 'org-1',
     isAssignable: true,
@@ -73,14 +73,11 @@ function createSut() {
 }
 
 function createUniqueViolation(target: string[]): Error {
-  return new Prisma.PrismaClientKnownRequestError(
-    'Unique constraint failed',
-    {
-      code: 'P2002',
-      clientVersion: '7.10.1',
-      meta: { target },
-    },
-  );
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: '7.10.1',
+    meta: { target },
+  });
 }
 
 describe('PrismaRoleRepository', () => {
@@ -123,10 +120,7 @@ describe('PrismaRoleRepository', () => {
     it('loads an active System or Organization Role and maps it to Domain', async () => {
       sut.findFirst.mockResolvedValue(createPersistedRole());
 
-      const result = await sut.repository.findAssignableById(
-        'org-1',
-        'role-1',
-      );
+      const result = await sut.repository.findAssignableById('org-1', 'role-1');
 
       expect(sut.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -166,10 +160,7 @@ describe('PrismaRoleRepository', () => {
 
   describe('save', () => {
     it('persists the Role, creator and complete Permission set together', async () => {
-      const role = createRole([
-        'organization.read',
-        'organization.update',
-      ]);
+      const role = createRole(['organization.read', 'organization.update']);
 
       sut.create.mockResolvedValue({ id: 'role-1' });
 
@@ -219,18 +210,15 @@ describe('PrismaRoleRepository', () => {
       const error = createUniqueViolation(['id']);
       sut.create.mockRejectedValue(error);
 
-      await expect(
-        sut.repository.save(createRole(), 'actor-1'),
-      ).rejects.toBe(error);
+      await expect(sut.repository.save(createRole(), 'actor-1')).rejects.toBe(
+        error,
+      );
     });
   });
 
   describe('update', () => {
     it('replaces the complete Permission relation set in the same update', async () => {
-      const role = createRole([
-        'organization.read',
-        'organization.update',
-      ]);
+      const role = createRole(['organization.read', 'organization.update']);
 
       role.updateDetails('Updated Sales Manager', 'Updated description');
 
