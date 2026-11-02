@@ -1375,7 +1375,7 @@ The Phase 7 repository inspection established:
 - The Audit record's required `organizationId` is a tenant scope key, not a foreign key. Selected denial events are persisted in this table only when the actor is authenticated and the Organization context is validated.
 
 
-**Initial Prisma/Migration design (ADR-024; draft committed, not yet validated or applied):**
+**Initial Prisma/Migration design (ADR-024; draft committed; Prisma schema validation passed locally, Migration not yet applied):**
 
 - Store events in the dedicated `AccessControlAuditEvent` model in `prisma/models/access-control-audit.prisma`; do not add Audit relations or inverse fields to operational models.
 - Use explicit PostgreSQL/Prisma enums for the approved event vocabulary, resource type, and optional subject type. `actorUserId` and `organizationId` are required scalar identifiers; `branchId`, subject identity, resource identity for selected denial events, and `correlationId` are nullable as documented in ADR-024.
