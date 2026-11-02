@@ -5,7 +5,7 @@ import {
 } from '../permissions/permission-catalog.js';
 import {
   ROLE_ASSIGNMENT_SCOPE,
-  ROLE_DEFINITION_SCOPE,
+  ROLE_DEFINITION_SOURCE,
 } from '../roles/role.types.js';
 import { Role } from '../roles/role.js';
 import {
@@ -129,7 +129,8 @@ export class PermissionDelegationPolicy {
   canComposeRole(input: ComposeRoleInput): DelegationDecision {
     if (
       !(input.role instanceof Role) ||
-      input.role.getDefinitionScope() !== ROLE_DEFINITION_SCOPE.ORGANIZATION
+      input.role.getDefinitionSource() !==
+        ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED
     ) {
       return denied(DELEGATION_DECISION_REASON.ROLE_NOT_ORGANIZATION_DEFINED);
     }
@@ -173,7 +174,8 @@ export class PermissionDelegationPolicy {
     }
 
     if (
-      role.getDefinitionScope() === ROLE_DEFINITION_SCOPE.ORGANIZATION &&
+      role.getDefinitionSource() ===
+        ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED &&
       role.getOrganizationId() !== input.targetOrganizationId.trim()
     ) {
       return denied(DELEGATION_DECISION_REASON.ROLE_ORGANIZATION_MISMATCH);
