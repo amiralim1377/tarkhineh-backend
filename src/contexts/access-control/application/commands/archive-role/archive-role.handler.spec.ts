@@ -21,7 +21,7 @@ function createOrganizationRole(organizationId = 'org-1'): Role {
     id: 'role-1',
     code: 'SALES_MANAGER',
     name: 'Sales Manager',
-    definitionScope: 'ORGANIZATION',
+    definitionSource: 'ORGANIZATION_DEFINED',
     assignmentScope: 'ORGANIZATION',
     organizationId,
     isAssignable: true,
@@ -75,9 +75,7 @@ function createSut(role: Role | null = createOrganizationRole()) {
   };
 
   const executeOperation = async <T>(
-    operation: (
-      context: AccessControlUnitOfWorkContext,
-    ) => Promise<T>,
+    operation: (context: AccessControlUnitOfWorkContext) => Promise<T>,
   ): Promise<T> => {
     transactionActive = true;
 
@@ -221,7 +219,7 @@ describe('ArchiveRoleHandler', () => {
       id: 'system-role-1',
       code: 'BRANCH_MANAGER',
       name: 'Branch Manager',
-      definitionScope: 'SYSTEM',
+      definitionSource: 'SYSTEM',
       assignmentScope: 'BRANCH',
       organizationId: null,
       isAssignable: true,
