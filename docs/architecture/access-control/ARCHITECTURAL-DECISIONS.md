@@ -3,9 +3,9 @@
 | Attribute              | Value                         |
 | ---------------------- | ----------------------------- |
 | Project                | `tarkhineh-backend`           |
-| Document version       | 1.12                          |
+| Document version       | 1.13                          |
 | Last updated           | 2026-11-02                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.14 |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.15 |
 
 This document is the decision log for the Access Control bounded context. Each ADR records the context, the decision, and its consequences. Accepted decisions are binding implementation constraints. They must not be silently changed. If later evidence or a product requirement requires a change, add a new ADR that explicitly supersedes the affected decision and obtain project-owner approval before implementing the change.
 
@@ -667,7 +667,7 @@ For the initial Access Control Audit implementation:
 - No retention duration, TTL column, cleanup scheduler, or purge process is required by the initial schema. No archival/tiering policy is established by this ADR; it remains outside the current decision.
 - Audit write paths remain append-only. Read access is a separate authorization concern and is not granted by this ADR.
 - The owner may revisit the policy later through a documented decision; until then, no automatic or routine deletion is permitted.
-- This decision resolves the retention item from ADR-014 for the initial implementation. Audit-reader authorization, denial-event selection, reference lifecycle, Role creation event cardinality, and correlation-ID propagation remain separate PHASE 7 design decisions.
+- This decision resolves the retention item from ADR-014 for the initial implementation. Historical reference lifecycle is resolved by ADR-023; Audit-reader authorization, denial-event selection, Role creation event cardinality, and correlation-ID propagation are finalized by ADR-025.
 
 ---
 
@@ -731,7 +731,7 @@ The PostgreSQL documentation defines the semantics of `CASCADE`, `RESTRICT`, and
 - Audit readers must always filter by Organization ID and, where applicable, Branch ID. A missing or mismatched tenant scope must never fall back to a global read.
 - Integration tests must demonstrate that deleting or changing a referenced operational row cannot remove or rewrite the Audit record, and that a user in one Organization cannot read another Organization's Audit events.
 - The design intentionally trades database-enforced referential integrity to operational rows for historical independence. Application validation and explicit tests are mandatory, not optional.
-- This ADR resolves the historical reference lifecycle decision for Phase 7. Audit-reader authorization, denial-event selection, Role creation event cardinality, and correlation-ID propagation remain separate open decisions.
+- This ADR resolves the historical reference lifecycle decision for Phase 7. Audit-reader authorization, denial-event selection, Role creation event cardinality, and correlation-ID propagation are finalized by ADR-025.
 
 ---
 
@@ -748,11 +748,11 @@ ADR-014, ADR-022, and ADR-023 require a durable Access Control security history 
 ### Decision
 
 1. Store Access Control audit events in a dedicated `AccessControlAuditEvent` table, represented by `prisma/models/access-control-audit.prisma`. Keep this model separate from the operational Access Control models and do not add inverse relations to User, Organization, Branch, Membership, Role, RoleAssignment, PermissionOverride, or Permission.
-2. Use the explicit `AccessControlAuditEventType` enum with the 11 event names already approved in section 4.11 of the Master Architecture. The presence of `AUTHORIZATION_DENIED` in the storage vocabulary does not authorize logging every denial; the event-selection policy remains open under Phase 7.5.
+2. Use the explicit `AccessControlAuditEventType` enum with the 11 event names already approved in section 4.11 of the Master Architecture. The presence of `AUTHORIZATION_DENIED` in the storage vocabulary does not authorize logging every denial; its selected event policy is defined by ADR-025.
 3. Use `AccessControlAuditResourceType` for ROLE, ROLE_ASSIGNMENT, PERMISSION_OVERRIDE, PERMISSION, and AUTHORIZATION. Use nullable `AccessControlAuditSubjectType` for USER, ORGANIZATION_MEMBERSHIP, or BRANCH_MEMBERSHIP. A subject type and subject ID must either both be null or both be present.
 4. Require `organizationId` and `actorUserId`. Keep `branchId`, subject identity, and correlation ID nullable where not applicable. Store every operational reference as a scalar historical identifier without a foreign key, exactly as required by ADR-023. A successful event must include its resource ID. A selected denial may omit resource ID when the attempted target cannot be safely resolved.
 5. Use `occurredAt TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` as the database-generated event timestamp. Use nullable JSONB `beforeState` and `afterState` fields strictly for allow-listed state projections, never arbitrary request bodies or complete Prisma/Domain serialization. `payloadVersion` starts at 1 and versions the JSON projection contract.
-6. Add optional `correlationId VARCHAR(128)` as a non-unique field. A request may produce multiple audit events, so correlation ID must not be unique. The Application command metadata contract and propagation from the existing HTTP request ID remain open and are not implemented by this ADR.
+6. Add optional `correlationId VARCHAR(128)` as a non-unique field. A request may produce multiple audit events, so correlation ID must not be unique. ADR-025 defines its propagation through optional Application Command metadata, populated by the HTTP adapter from the trusted request ID.
 7. Start with only two indexes supported by mandatory tenant-scoped list access: `(organizationId, occurredAt DESC)` and `(organizationId, branchId, occurredAt DESC)`. Do not add speculative actor, event-type, or resource indexes until the Audit reader policy is approved and real query patterns justify them.
 8. Add database CHECK constraints for non-empty required identifiers, paired subject fields, resource ID requirements, valid payload version, and non-empty correlation IDs.
 9. Add PostgreSQL triggers that reject UPDATE and DELETE on rows and reject TRUNCATE on the table. The trigger is a database guard against ordinary mutation paths, not a cryptographic or administrator-proof immutability guarantee. A database owner/superuser can intentionally disable or remove triggers; the deployed runtime database role and its privileges must be reviewed separately before production readiness.
@@ -763,10 +763,89 @@ ADR-014, ADR-022, and ADR-023 require a durable Access Control security history 
 
 - The initial schema and forward-only migration are represented by `prisma/models/access-control-audit.prisma` and `prisma/migrations/20261102110000_access_control_audit_events/migration.sql`.
 - The event table remains independent of operational record deletion and update. Application writers must validate tenant/target ownership before appending; readers must always scope by Organization and Branch where applicable.
-- The JSON projection contract must be constructed explicitly by Application mappers. The unresolved Role-creation event-cardinality decision can be represented in the event payload and does not require duplicating schema columns.
-- Denial events still require a separate best-effort persistence boundary because the denied business Unit of Work rolls back. This ADR does not define the denial-selection policy or reader authorization.
+- The JSON projection contract must be constructed explicitly by Application mappers. ADR-025 resolves Role-creation event cardinality: the initial Permission set is captured in `ROLE_CREATED.afterState` without duplicate per-Permission events.
+- Selected denial events require a separate best-effort persistence boundary because the denied business Unit of Work rolls back. ADR-025 defines the event-selection rule and Audit-reader authorization.
 - The two indexes are an initial minimum, not a production performance claim. Additional indexes require query evidence and review of write amplification.
 - The schema and migration draft are committed but remain unverified until Prisma validation, schema-to-Migration review, isolated PostgreSQL migration application, and Integration tests are observed. Database runtime-role privilege restrictions remain a separate production-readiness verification item.
+
+---
+
+## ADR-025 — Finalize PHASE 7.1 Audit event, reader, denial, and correlation policies
+
+**Status:** ACCEPTED  
+**Decision owner:** Project owner  
+**Date:** 2026-11-02
+
+### Context
+
+ADR-022 established that Audit records are retained without automatic deletion. ADR-023 established historical scalar references without foreign keys. ADR-024 selected the initial append-only Prisma event table, payload structure, indexes, and database protection. Four policy decisions remained open before the Application writer, denial writer, and Audit reader could be implemented: Audit-reader authorization, denial-event selection, initial Role Permission event cardinality, and correlation-ID propagation.
+
+### Decision
+
+#### 1. Initial Role creation event cardinality
+
+1. A Role created with initial Permission links emits exactly one `ROLE_CREATED` event for the creation operation.
+2. Its allow-listed `afterState` contains the initial Permission codes included in the newly created Role.
+3. Do not emit individual `ROLE_PERMISSION_ADDED` events for Permission links created as part of the same Role creation.
+4. Later Role updates continue to use `ROLE_UPDATED` for actual metadata changes and individual `ROLE_PERMISSION_ADDED` / `ROLE_PERMISSION_REMOVED` events for actual differences in the Permission set. No event is emitted for a no-op.
+
+#### 2. Audit-reader authorization
+
+Two dedicated, non-delegable Permission codes define the initial readers. They must be added to the source-controlled Permission Registry and explicitly included in the System Role Seed sets during the relevant implementation substeps; this ADR does not claim those code changes already exist.
+
+**Organization Owner**
+
+- Permission: `organization.audit.read`.
+- Target scope: `ORGANIZATION`.
+- Delegability: `false`.
+- Initial recipient: `ORGANIZATION_OWNER` only.
+- Visibility: every Audit event whose `organizationId` equals the exact Organization for which the reader has been authorized, including Organization-level events and events from every Branch in that Organization.
+- The reader may see historical Actor and Subject identifiers needed to explain the event.
+
+**Branch Manager — own actions only**
+
+- Permission: `branch.audit.read.own`.
+- Target scope: `BRANCH`.
+- Delegability: `false`.
+- Initial recipient: `BRANCH_MANAGER`.
+- Visibility: only the authenticated Manager's own successful permission-changing events in the exact authorized Branch and Organization.
+- The Application query must enforce all of the following using trusted authorization context: `organizationId` equals the requested authorized Organization, `branchId` equals the authorized Branch, and `actorUserId` equals the authenticated Actor. The actor-self condition must never be supplied or relaxed by the client.
+- The initial event allow-list for this reader is `ROLE_ASSIGNED`, `ROLE_REVOKED`, `PERMISSION_OVERRIDE_CREATED`, `PERMISSION_OVERRIDE_UPDATED`, and `PERMISSION_OVERRIDE_REMOVED`. Organization-level Role definition events and every other Actor's events are excluded.
+- The `afterState` of `ROLE_ASSIGNED` must preserve the Permission codes contained in the assigned Role at the time of assignment. This prevents a later Role edit from rewriting the historical explanation of what was granted.
+- The Branch Manager cannot read events from another Branch, another Actor, or the Organization-wide Audit stream.
+
+**Common reader constraints**
+
+- Every Audit query is authorized in the Application layer and scoped to an exact Organization. Branch Manager reads additionally require an authorized Branch and the authenticated Actor ID.
+- UI filtering is not an authorization control. A query must remain safe when a caller changes or omits request filters.
+- Expose only historical Actor and Subject identifiers needed to explain the change. Do not expose email addresses, credentials, tokens, raw request bodies, or unrelated personal attributes.
+- The initial permissions are non-delegable and are granted only through the explicitly reviewed System Role permission sets. No generic Audit-reader permission is added to arbitrary custom Roles.
+
+#### 3. Selected authorization-denial events
+
+1. Persist `AUTHORIZATION_DENIED` only for an actual Access Control authorization/delegation denial represented by `AccessControlForbiddenError`.
+2. Do not persist missing-Actor errors, unauthenticated requests without a trusted Actor, invalid input or validation failures, not-found results, conflicts, or other non-authorization failures as `AUTHORIZATION_DENIED`.
+3. A denial event may be written only when the Actor is authenticated and the Organization context has been validated. Include a Branch ID only when the Branch context is also validated. Do not invent or persist untrusted target identifiers.
+4. The denied mutation's Unit of Work has rolled back. Write the selected denial through a separate best-effort persistence boundary.
+5. Failure to write the Audit event must never replace, hide, or mutate the original authorization exception. Persist a stable safe reason code and the minimum validated identifiers; do not persist arbitrary exception messages or request data.
+
+#### 4. Correlation-ID propagation
+
+1. Application Commands may carry optional execution metadata containing `correlationId`. It is metadata, not a business input field and must not be accepted from an untrusted request body.
+2. For HTTP requests, the HTTP adapter copies the trusted `request.id` generated by the existing `pino-http` request lifecycle into this metadata. The same value is passed to the Audit writer for every event produced by that command.
+3. The Application layer remains independent of NestJS and HTTP request objects; it receives only the optional correlation metadata.
+4. Non-HTTP callers, including background jobs, may omit the value. The persisted `correlationId` is then null.
+5. A retry of the same Unit of Work callback retains the same command metadata and correlation ID; it does not generate a new ID for each retry.
+
+### Consequences
+
+- All four PHASE 7.1 owner decisions are resolved. The Master Architecture, Implementation Status, and this decision log must describe these policies consistently.
+- PHASE 7.2/7.4 must implement the append-only Application write contract and successful mutation event payloads in accordance with these decisions.
+- PHASE 7.5 must implement the selected-denial rule through a best-effort writer that preserves the original exception.
+- PHASE 7.6 must implement both reader permissions and enforce the actor-self and tenant/branch predicates in the Application query.
+- The two Permission codes and their explicit System Role grants remain future implementation work. No Permission Registry, Seed, Domain, Application, Infrastructure, HTTP, migration, or database behavior is changed by this ADR itself.
+- The approved reader policy adds a concrete Branch query predicate on Actor ID. The initial two indexes from ADR-024 remain the schema baseline; query-plan evidence during PHASE 7.6 must determine whether an additional actor-oriented index is warranted. Do not add speculative indexes without review.
+- This ADR does not alter the no-auto-deletion policy in ADR-022, the historical scalar-reference policy in ADR-023, or the append-only model and migration design in ADR-024.
 
 ---
 
@@ -808,12 +887,8 @@ No Prisma schema, migration, database, Application, Infrastructure, or HTTP chan
 The following topics remain open and must be resolved in their relevant implementation phases:
 
 1. **Identity status integration — PHASE 8:** determine how `User.status` is enforced for authenticated and non-HTTP operations without transferring Identity lifecycle ownership to Access Control.
-2. **Audit-reader authorization — PHASE 7:** define which principals may read Audit records, the dedicated permission/scope behavior, delegability, and visibility of actor/subject identifiers. Retention is resolved by ADR-022; historical reference lifecycle is resolved by ADR-023.
-3. **Selected denial-event policy — PHASE 7:** determine which high-signal authorization denials are persisted and whether recording is best-effort without masking the original denial.
-4. **Role creation event cardinality — PHASE 7:** determine whether initial RolePermission links are represented only in ROLE_CREATED after-state or also as individual ROLE_PERMISSION_ADDED events.
-5. **Correlation-ID propagation — PHASE 7 / PHASE 9:** define the Application Command metadata contract and later HTTP adapter handoff from the existing request ID.
-6. **Backup recovery drill:** restore the development database backup into an isolated database before treating the backup process as recovery-tested.
-7. **Deferred unrelated Integration failure:** investigate the Outbound Email retry/lease Integration failure separately. It is not an Access Control defect and must not be masked by changes in this context.
-8. **Accepted PHASE 6 deferrals:** full application boot, full-project Integration-suite review, and production-scale query benchmarking remain deferred as documented in IMPLEMENTATION-STATUS.md section 8.10.
+2. **Backup recovery drill:** restore the development database backup into an isolated database before treating the backup process as recovery-tested.
+3. **Deferred unrelated Integration failure:** investigate the Outbound Email retry/lease Integration failure separately. It is not an Access Control defect and must not be masked by changes in this context.
+4. **Accepted PHASE 6 deferrals:** full application boot, full-project Integration-suite review, and production-scale query benchmarking remain deferred as documented in IMPLEMENTATION-STATUS.md section 8.10.
 
 For the current phase status, exact verification results, and known limitations, see `IMPLEMENTATION-STATUS.md`.
