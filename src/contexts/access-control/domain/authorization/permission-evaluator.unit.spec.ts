@@ -9,7 +9,7 @@ import {
 import { PERMISSION_CODE } from '../permissions/permission-catalog.js';
 import {
   ROLE_ASSIGNMENT_SCOPE,
-  ROLE_DEFINITION_SCOPE,
+  ROLE_DEFINITION_SOURCE,
   ROLE_STATUS,
 } from '../roles/role.types.js';
 import { Role } from '../roles/role.js';
@@ -36,7 +36,7 @@ function organizationRole(
     id: 'organization-role-1',
     code: 'TEST_ORGANIZATION_ROLE',
     name: 'Test Organization Role',
-    definitionScope: ROLE_DEFINITION_SCOPE.ORGANIZATION,
+    definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
     assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
     organizationId: ORGANIZATION_ID,
     isAssignable: true,
@@ -53,7 +53,7 @@ function branchRole(
     id: 'branch-role-1',
     code: 'TEST_BRANCH_ROLE',
     name: 'Test Branch Role',
-    definitionScope: ROLE_DEFINITION_SCOPE.ORGANIZATION,
+    definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
     assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
     organizationId: ORGANIZATION_ID,
     isAssignable: true,
@@ -67,7 +67,7 @@ function systemBranchRole(permissionCodes: readonly string[]): Role {
     id: 'system-branch-role',
     code: 'BRANCH_MANAGER',
     name: 'Branch Manager',
-    definitionScope: ROLE_DEFINITION_SCOPE.SYSTEM,
+    definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
     assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
     organizationId: null,
     isAssignable: true,
