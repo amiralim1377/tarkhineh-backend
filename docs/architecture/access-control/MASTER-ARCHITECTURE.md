@@ -5,12 +5,12 @@
 | Attribute                    | Value                                                                                         |
 | ---------------------------- | --------------------------------------------------------------------------------------------- |
 | Document                     | Master Architecture & Implementation Specification                                            |
-| Version                      | 1.14                                                                                          |
+| Version                      | 1.15                                                                                          |
 | Last updated                 | 2026-11-02                                                                                    |
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                                        |
 | Architecture status          | Approved by project owner                                                                     |
 | Repository audit             | PHASE 0 completed                                                                             |
-| Current implementation phase | PHASE 7 — Audit Logging (in progress; Prisma model and forward Migration drafted; validation pending)                       |
+| Current implementation phase | PHASE 7 — Audit Logging (in progress; 7.1 policy design approved; Prisma schema validation passed locally; isolated Migration application pending) |
 | Source of truth               | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -431,20 +431,29 @@ Initial event types include:
 - `PERMISSION_OVERRIDE_CREATED`
 - `PERMISSION_OVERRIDE_UPDATED`
 - `PERMISSION_OVERRIDE_REMOVED`
-- Selected sensitive `AUTHORIZATION_DENIED` events
+- Selected sensitive `AUTHORIZATION_DENIED` events, subject to the selection policy in ADR-025.
 
 Audit data should capture, as applicable:
 
-- Actor ID.
-- Subject/target user or membership.
-- Organization ID.
-- Branch ID.
+- Trusted Actor ID.
+- Subject/target User or Membership historical ID.
+- Organization ID and Branch ID.
 - Event/action and resource identity.
-- Timestamp.
-- Before/after state where useful.
-- Request/correlation ID.
+- Database-generated event timestamp.
+- Allow-listed before/after state projections.
+- Optional correlation ID propagated through Application command metadata.
 
-Audit records are append-only. Sensitive mutations and their audit writes must be atomic. Do not log passwords, tokens, secrets, or other credentials. Do not persist every successful permission check by default; that would create unnecessary volume.
+Audit records are append-only. Successful sensitive mutations and their Audit writes must be atomic. Selected authorization denials use a separate best-effort persistence boundary and must not have their original authorization exception masked by Audit failure. Do not log passwords, tokens, credentials, raw request bodies, arbitrary exception messages, or unnecessary personal data. Do not persist every successful permission check by default.
+
+### Audit reader authorization
+
+- `organization.audit.read` is an ORGANIZATION-target-scope, non-delegable Permission assigned only to `ORGANIZATION_OWNER`. It permits reading all Audit events for the exact authorized Organization, including its Organization-level and all Branch-level events.
+- `branch.audit.read.own` is a BRANCH-target-scope, non-delegable Permission assigned to `BRANCH_MANAGER`. It permits reading only that authenticated manager's own successful permission-changing events in the exact authorized Branch and Organization.
+- Branch-manager reads must enforce `organizationId`, `branchId`, and `actorUserId = authenticated actor` in the Application query. The client cannot supply or weaken the actor filter. The manager does not see other actors' events, other branches, Organization-wide logs, or the Organization's complete Audit history.
+- The Branch-manager view is limited to `ROLE_ASSIGNED`, `ROLE_REVOKED`, and `PERMISSION_OVERRIDE_CREATED`, `PERMISSION_OVERRIDE_UPDATED`, and `PERMISSION_OVERRIDE_REMOVED` events. A `ROLE_ASSIGNED` after-state must preserve the permission codes granted by that Role at assignment time.
+- Readers may see historical Actor and Subject identifiers needed to explain the event, but not email addresses, credentials, tokens, or unrelated personal attributes. All reads are authorized in Application and tenant-scoped; UI-only filtering is not a security boundary.
+
+The initial permission codes are non-delegable. Their additions to the Permission Registry and explicit System Role Seed sets are implementation work, not claims that those code changes already exist.
 
 ---
 
@@ -1274,7 +1283,7 @@ Do not move Prisma dependencies into Domain or Application. PHASE 6 implements t
 
 ## PHASE 7 — Audit Logging
 
-Status: **IN PROGRESS — 7.3 Prisma schema and forward Migration drafted in the repository; local validation and isolated-database application pending (2026-11-02).**
+Status: **IN PROGRESS — PHASE 7.1 policy design approved; Prisma schema validation passed locally; schema-to-Migration review and isolated-database application pending (2026-11-02).**
 
 ### Purpose and approved scope
 
@@ -1333,12 +1342,15 @@ The Phase 7 repository inspection established:
 - Define a typed event catalog and minimum allow-listed payload for every event.
 - Define resource and subject identity conventions for Organization- and Branch-scoped operations.
 - Define narrowly scoped before/after snapshots. Never serialize complete Domain aggregates or arbitrary Command input.
-- Decide whether a Role created with initial Permission links emits only `ROLE_CREATED` containing its initial Permission state, or also emits individual `ROLE_PERMISSION_ADDED` events.
-- Define the Application correlation-ID metadata contract and the later HTTP adapter handoff from the existing request ID.
-- Select high-signal sensitive authorization denials; do not persist every failed permission check.
-- Record the owner-approved retention decision (ADR-022). Resolve remaining open decisions below before implementation depends on them.
+- Record initial Role Permission links only in the `ROLE_CREATED` after-state; do not emit duplicate `ROLE_PERMISSION_ADDED` events for the initial set. Subsequent Role permission-set changes emit separate add/remove events for actual differences.
+- Carry optional `correlationId` in Application Command metadata. The HTTP adapter supplies the trusted `request.id`; non-HTTP callers may omit it.
+- Persist `AUTHORIZATION_DENIED` only for actual authorization/delegation denials represented by `AccessControlForbiddenError`, with a trusted authenticated Actor and validated Organization context. Denial-event persistence is best-effort and must preserve the original denial.
+- Apply the two approved Audit-reader contracts: Organization-wide access for `ORGANIZATION_OWNER`, and actor-self-only Branch event access for `BRANCH_MANAGER`, as defined in section 4.11 and ADR-025.
+- Record the owner-approved retention decision (ADR-022), historical scalar-reference policy (ADR-023), and the remaining event/reader/correlation policies (ADR-025).
 
-**Exit criteria:** event payloads and policy decisions are explicit in these three source-of-truth documents; no accepted ADR is silently changed.
+**Decision status:** all four PHASE 7.1 owner decisions were approved on 2026-11-02 and recorded in ADR-025.
+
+**Exit criteria:** event payloads and policy decisions are explicit in these three source-of-truth documents; no accepted ADR is silently changed. The PHASE 7.1 design checkpoint is satisfied; implementation and verification remain in later Phase 7 substeps.
 
 ### 7.2 — Domain and Application contracts
 
@@ -1370,7 +1382,7 @@ The Phase 7 repository inspection established:
 - Use `occurredAt` as the database-generated `TIMESTAMPTZ(3)` event timestamp. Store only allow-listed state projections in `beforeState`/`afterState` JSONB fields; `payloadVersion` versions that projection contract.
 - Start with only the two evidenced list-query indexes: Organization + descending time, and Organization + Branch + descending time. Add actor/resource/event-type indexes only after the Audit reader contract and real query patterns are approved.
 - The forward-only Migration adds database checks for paired subject fields, resource identity, payload version, and non-empty identifiers. PostgreSQL triggers reject UPDATE, DELETE, and TRUNCATE. These triggers do not make the table tamper-proof against a database owner/superuser; runtime-role privilege hardening must be separately verified before production readiness.
-- Prisma 7's repository configuration is now explicit in root `prisma.config.ts`: schema directory, migration path, seed command, and `DATABASE_URL` loading. This does not expose or commit environment secrets.
+- The repository uses an explicit root-level Prisma 7 configuration for the multi-file schema, migration path, seed command, and `DATABASE_URL` loading. This does not expose or commit environment secrets.
 
 **Exit criteria:** the Migration is applied to an isolated test database; Persistence, atomic rollback, tenant-scope, and immutability behavior have Integration coverage.
 
@@ -1380,7 +1392,7 @@ Integrate event creation into the seven existing mutation Handlers. Business per
 
 | Handler operation | Required event behavior |
 | --- | --- |
-| Create Role | Record `ROLE_CREATED` with Role identity and allow-listed resulting state. Initial Permission event cardinality is still to be decided. |
+| Create Role | Record one `ROLE_CREATED` event with Role identity and allow-listed resulting state, including the initial Permission codes. Do not emit separate `ROLE_PERMISSION_ADDED` events for those initial links. |
 | Update Role | Record `ROLE_UPDATED` for actual metadata changes and separate Permission added/removed events for actual set differences. No event for no-op. |
 | Archive Role | Record `ROLE_ARCHIVED` only on ACTIVE → ARCHIVED. |
 | Assign Role | Record `ROLE_ASSIGNED` with target Membership and scope. |
@@ -1392,22 +1404,25 @@ Integrate event creation into the seven existing mutation Handlers. Business per
 
 ### 7.5 — Selected authorization-denial events
 
-- Define exact high-signal denial cases and safe reason codes.
-- A denial thrown inside the mutation Unit of Work rolls that transaction back. If a selected denial must be persisted, use a separate persistence boundary for that denial event.
-- A best-effort denial writer must never replace, hide, or mutate the original authorization exception when Audit persistence itself fails.
-- Do not store raw request bodies, secrets, arbitrary exception messages, or unvalidated target identifiers.
+- Record only actual authorization/delegation denials represented by `AccessControlForbiddenError` from Access Control use cases.
+- Do not record missing Actor errors, unauthenticated requests, invalid input/validation failures, not-found results, conflicts, or other non-authorization failures as `AUTHORIZATION_DENIED`.
+- A denial event requires a trusted authenticated Actor and a validated Organization context. Include a Branch ID only when the Branch context has also been validated.
+- A denial thrown inside the mutation Unit of Work rolls that transaction back. Persist selected denial events through a separate best-effort persistence boundary.
+- Audit persistence failure must never replace, hide, or mutate the original authorization exception. Store only stable safe reason codes and validated identifiers; never raw request bodies, secrets, arbitrary exception messages, or unvalidated target identifiers.
 
 **Exit criteria:** tests prove the original authorization exception is preserved when denial-event persistence fails and only explicitly selected denials are stored.
 
 ### 7.6 — Audit reader authorization and operational access
 
-- Implement tenant-scoped Audit queries only after the reader permission and scope policy are approved.
-- Check authorization for the exact requested Organization; do not assume a user has one global/default Organization.
-- Decide whether read access is Organization-wide or additionally Branch-scoped.
-- Define reader access to actor and subject identifiers and the treatment of cross-context references.
-- Keep read access separate from the append-only write contract.
+Implement the approved reader policy from section 4.11 and ADR-025:
 
-**Exit criteria:** cross-tenant read, authorization, pagination/order, and audit-reader access tests pass.
+- `ORGANIZATION_OWNER` requires the non-delegable `organization.audit.read` Permission in the exact Organization context and may read all events for that Organization, including every Branch.
+- `BRANCH_MANAGER` requires the non-delegable `branch.audit.read.own` Permission in the exact Branch context and may read only their own Branch permission-changing events. Enforce `actorUserId = authenticated actor` in the Application query, together with the validated `organizationId` and `branchId`.
+- Branch-manager results are restricted to role assignment/revocation and permission-override events. They must never include another Actor's events, another Branch's events, or Organization-wide events.
+- Expose historical Actor and Subject identifiers only as needed to explain the change; do not expose unrelated personal attributes.
+- Keep read access separate from the append-only write contract. Do not treat frontend filters as authorization.
+
+**Exit criteria:** cross-tenant and cross-branch isolation, actor-self filtering, reader authorization, pagination/order, and event visibility tests pass.
 
 ### 7.7 — Hardening and Phase acceptance
 
@@ -1419,14 +1434,16 @@ Integrate event creation into the seven existing mutation Handlers. Business per
 - Record exact command output, database effects, and known limitations in `IMPLEMENTATION-STATUS.md`.
 - Obtain project-owner review before closing Phase 7.
 
-### Remaining owner decisions before implementation depends on them
+### PHASE 7.1 owner-decision status
 
-The following are **OPEN — OWNER DECISION REQUIRED**. ADR-022 resolves retention only; it does not resolve these items.
+All four owner decisions originally identified for PHASE 7.1 were approved on 2026-11-02 and recorded in ADR-025:
 
-1. **Audit-reader authorization:** permission code (including whether `organization.audit.read` is required), which Roles receive it, delegability, Organization/Branch scope, and allowed visibility of actor/subject identifiers.
-2. **Denial event selection:** which high-signal Access Control denials are recorded and whether each is best-effort.
-3. **Role creation event cardinality:** whether initial RolePermission links are represented only in `ROLE_CREATED` after-state or also as individual `ROLE_PERMISSION_ADDED` events.
-4. **Correlation propagation:** exact Application Command metadata contract and later HTTP adapter handoff from `request.id`.
+1. Audit-reader authorization and Organization/Branch visibility.
+2. Selected authorization-denial events and best-effort persistence.
+3. Initial Role Permission event cardinality.
+4. Optional correlation-ID propagation through Application Command metadata.
+
+No PHASE 7.1 owner decision remains open. Any later change to these policies requires a new owner-approved ADR before implementation changes.
 
 ### Explicit non-goals
 
@@ -1640,6 +1657,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; the Prisma model and forward Migration draft are committed, with local validation and isolated-database application pending)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 is governed by this document's section 4.11, this PHASE 7 roadmap, and ADR-014 and ADR-022 through ADR-024 in `ARCHITECTURAL-DECISIONS.md`. The three repository documents are the complete source of truth; no separate Phase 7 plan document is maintained. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
+The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; the Prisma model and forward Migration draft are committed, with local validation and isolated-database application pending)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 is governed by this document's section 4.11, this PHASE 7 roadmap, and ADR-014 and ADR-022 through ADR-025 in `ARCHITECTURAL-DECISIONS.md`. The three repository documents are the complete source of truth; no separate Phase 7 plan document is maintained. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.
