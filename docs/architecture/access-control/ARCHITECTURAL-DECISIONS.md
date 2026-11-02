@@ -766,7 +766,7 @@ ADR-014, ADR-022, and ADR-023 require a durable Access Control security history 
 - The JSON projection contract must be constructed explicitly by Application mappers. ADR-025 resolves Role-creation event cardinality: the initial Permission set is captured in `ROLE_CREATED.afterState` without duplicate per-Permission events.
 - Selected denial events require a separate best-effort persistence boundary because the denied business Unit of Work rolls back. ADR-025 defines the event-selection rule and Audit-reader authorization.
 - The two indexes are an initial minimum, not a production performance claim. Additional indexes require query evidence and review of write amplification.
-- The schema and migration draft are committed but remain unverified until Prisma validation, schema-to-Migration review, isolated PostgreSQL migration application, and Integration tests are observed. Database runtime-role privilege restrictions remain a separate production-readiness verification item.
+- The schema and migration draft are committed. Prisma schema validation passed locally on 2026-11-02; schema-to-Migration review, isolated PostgreSQL migration application, and Integration tests remain pending. Database runtime-role privilege restrictions remain a separate production-readiness verification item.
 
 ---
 
