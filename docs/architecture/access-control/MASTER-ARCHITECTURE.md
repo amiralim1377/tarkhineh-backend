@@ -1310,7 +1310,7 @@ Non-negotiable rules:
 2. A successful sensitive business mutation and its Audit write commit or roll back together.
 3. Never record passwords, tokens, credentials, secrets, raw request bodies, or unnecessary sensitive fields.
 4. Successful permission checks are not persisted by default.
-5. Under the owner-approved ADR-022 decision, records are stored as ordinary database records and **no automatic deletion, TTL expiry, retention purge, or automatic archival is implemented for the current policy**. A later change requires an explicit owner-approved decision.
+5. Under the owner-approved ADR-022 decision, records are stored as ordinary database records and **no automatic deletion, TTL expiry, or retention purge is implemented under the current policy**. A later change requires an explicit owner-approved decision.
 
 ### Repository baseline and integration constraints
 
@@ -1425,7 +1425,7 @@ Unless a separate requirement and accepted ADR justify otherwise, Phase 7 will n
 - Permanent records for every successful authorization check.
 - Generic serialization of complete entities or Command payloads.
 - Redis queues or external side effects for atomic successful-mutation Audit writes.
-- Automatic TTL, deletion, purge, or archival under the current owner-approved retention policy.
+- Automatic TTL, deletion, or purge under the current owner-approved retention policy. No archival/tiering policy has been selected at this stage.
 - A new retention duration or audit-reader permission without project-owner approval.
 
 ## PHASE 8 — Cross-Context Integration
