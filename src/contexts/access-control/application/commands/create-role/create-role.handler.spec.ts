@@ -1,20 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { Role } from '../../../domain/roles/role.js';
+import { ROLE_DEFINITION_SOURCE } from '../../../domain/roles/role.types.js';
+import { InvalidRoleDataError } from '../../../domain/errors/invalid-role-data.error.js';
+
 import type { AuthorizationSnapshotReader } from '../../ports/authorization-snapshot-reader.port.js';
 import type {
   AccessControlUnitOfWork,
   AccessControlUnitOfWorkContext,
 } from '../../ports/access-control-unit-of-work.port.js';
 import type { RoleRepository } from '../../ports/role.repository.js';
-import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import type { RoleAssignmentRepository } from '../../ports/role-assignment.repository.js';
 import type { PermissionOverrideRepository } from '../../ports/permission-override.repository.js';
+import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
+
 import { AccessControlActorRequiredError } from '../../errors/access-control-actor-required.error.js';
 import { AccessControlForbiddenError } from '../../errors/access-control-forbidden.error.js';
 import { RoleCodeAlreadyExistsError } from '../../errors/role-code-already-exists.error.js';
-import { InvalidRoleDataError } from '../../../domain/errors/invalid-role-data.error.js';
+
 import { CreateRoleCommand } from './create-role.command.js';
 import { CreateRoleHandler } from './create-role.handler.js';
+
+// ============================================================
+// TEST COMMAND FACTORY
+// ============================================================
 
 function createCommand(
   overrides: Partial<{
@@ -36,6 +45,10 @@ function createCommand(
   });
 }
 
+// ============================================================
+// SYSTEM UNDER TEST
+// ============================================================
+
 function createSut() {
   let transactionActive = false;
 
@@ -53,9 +66,11 @@ function createSut() {
   });
 
   const findById = vi.fn().mockResolvedValue(null);
+
   const save = vi.fn().mockImplementation(async () => {
     expect(transactionActive).toBe(true);
   });
+
   const update = vi.fn().mockResolvedValue(undefined);
 
   const roles = {
@@ -121,12 +136,20 @@ function createSut() {
   };
 }
 
+// ============================================================
+// TESTS
+// ============================================================
+
 describe('CreateRoleHandler', () => {
   let sut: ReturnType<typeof createSut>;
 
   beforeEach(() => {
     sut = createSut();
   });
+
+  // ----------------------------------------------------------
+  // SUCCESSFUL ROLE CREATION
+  // ----------------------------------------------------------
 
   it('creates an Organization-defined Role inside one Unit of Work', async () => {
     const result = await sut.handler.execute(createCommand());
@@ -151,8 +174,13 @@ describe('CreateRoleHandler', () => {
     expect(sut.save).toHaveBeenCalledWith(expect.any(Role), 'actor-1');
 
     const savedRole = sut.save.mock.calls[0]?.[0] as Role;
+
     expect(savedRole).toBeInstanceOf(Role);
-    expect(savedRole.getDefinitionSource()).toBe('ORGANIZATION');
+
+    expect(savedRole.getDefinitionSource()).toBe(
+      ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
+    );
+
     expect(savedRole.getAssignmentScope()).toBe('ORGANIZATION');
     expect(savedRole.getOrganizationId()).toBe('org-1');
     expect(savedRole.isAssignable()).toBe(true);
@@ -184,9 +212,14 @@ describe('CreateRoleHandler', () => {
     expect(sut.save).toHaveBeenCalledOnce();
 
     const savedRole = sut.save.mock.calls[0]?.[0] as Role;
+
     expect(savedRole.getAssignmentScope()).toBe('BRANCH');
     expect(savedRole.getPermissionCodes()).toEqual(['branch.dashboard.read']);
   });
+
+  // ----------------------------------------------------------
+  // INPUT VALIDATION
+  // ----------------------------------------------------------
 
   it('rejects an empty actor before opening a transaction', async () => {
     await expect(
@@ -198,6 +231,26 @@ describe('CreateRoleHandler', () => {
     expect(sut.existsByCode).not.toHaveBeenCalled();
     expect(sut.save).not.toHaveBeenCalled();
   });
+
+  it('validates the Role permission scope before opening a transaction', async () => {
+    await expect(
+      sut.handler.execute(
+        createCommand({
+          assignmentScope: 'BRANCH',
+          permissionCodes: ['organization.read'],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(InvalidRoleDataError);
+
+    expect(sut.execute).not.toHaveBeenCalled();
+    expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
+    expect(sut.existsByCode).not.toHaveBeenCalled();
+    expect(sut.save).not.toHaveBeenCalled();
+  });
+
+  // ----------------------------------------------------------
+  // AUTHORIZATION
+  // ----------------------------------------------------------
 
   it('rejects when the actor lacks role-create management authority', async () => {
     sut.getEffectiveDelegationPermissionCodes.mockResolvedValue([
@@ -242,6 +295,10 @@ describe('CreateRoleHandler', () => {
     expect(sut.save).not.toHaveBeenCalled();
   });
 
+  // ----------------------------------------------------------
+  // ROLE CODE VALIDATION
+  // ----------------------------------------------------------
+
   it('rejects a duplicate Role code within the same Organization', async () => {
     sut.existsByCode.mockResolvedValue(true);
 
@@ -253,21 +310,9 @@ describe('CreateRoleHandler', () => {
     expect(sut.save).not.toHaveBeenCalled();
   });
 
-  it('validates the Role permission scope before opening a transaction', async () => {
-    await expect(
-      sut.handler.execute(
-        createCommand({
-          assignmentScope: 'BRANCH',
-          permissionCodes: ['organization.read'],
-        }),
-      ),
-    ).rejects.toBeInstanceOf(InvalidRoleDataError);
-
-    expect(sut.execute).not.toHaveBeenCalled();
-    expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
-    expect(sut.existsByCode).not.toHaveBeenCalled();
-    expect(sut.save).not.toHaveBeenCalled();
-  });
+  // ----------------------------------------------------------
+  // ERROR PROPAGATION
+  // ----------------------------------------------------------
 
   it('propagates authorization snapshot failures without attempting persistence', async () => {
     sut.getEffectiveDelegationPermissionCodes.mockRejectedValue(

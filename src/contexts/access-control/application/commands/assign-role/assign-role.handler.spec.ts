@@ -47,17 +47,15 @@ function createBranchRole(
     permissionCodes?: readonly string[];
   } = {},
 ): Role {
+  const isSystemRole = overrides.organizationId === null;
+
   return Role.create({
     id: 'branch-role-1',
-    code: 'BRANCH_MANAGER_CUSTOM',
-    name: 'Branch Manager Custom',
-    definitionSource:
-      overrides.organizationId === null ? 'SYSTEM' : 'ORGANIZATION_DEFINED',
+    code: isSystemRole ? 'BRANCH_MANAGER' : 'BRANCH_MANAGER_CUSTOM',
+    name: isSystemRole ? 'Branch Manager' : 'Branch Manager Custom',
+    definitionSource: isSystemRole ? 'SYSTEM' : 'ORGANIZATION_DEFINED',
     assignmentScope: 'BRANCH',
-    organizationId:
-      overrides.organizationId === null
-        ? null
-        : (overrides.organizationId ?? 'org-1'),
+    organizationId: isSystemRole ? null : (overrides.organizationId ?? 'org-1'),
     isAssignable: true,
     permissionCodes: overrides.permissionCodes ?? ['branch.dashboard.read'],
   });

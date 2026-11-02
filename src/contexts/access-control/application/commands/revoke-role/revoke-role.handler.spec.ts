@@ -305,20 +305,20 @@ describe('RevokeRoleHandler', () => {
   });
 
   it('returns not found when the assignment belongs to another Organization', async () => {
-    const systemRole = Role.create({
-      id: 'system-organization-role',
-      code: 'GLOBAL_ORGANIZATION_READER',
-      name: 'Global Organization Reader',
-      definitionSource: 'SYSTEM',
+    const foreignRole = Role.create({
+      id: 'foreign-role',
+      code: 'SALES_MANAGER',
+      name: 'Sales Manager',
+      definitionSource: 'ORGANIZATION_DEFINED',
       assignmentScope: 'ORGANIZATION',
-      organizationId: null,
+      organizationId: 'org-2',
       isAssignable: true,
       permissionCodes: ['organization.read'],
     });
 
     const foreignAssignment = RoleAssignment.reconstitute({
       id: 'foreign-assignment',
-      role: systemRole,
+      role: foreignRole,
       organizationMembership: {
         id: 'foreign-membership',
         organizationId: 'org-2',
