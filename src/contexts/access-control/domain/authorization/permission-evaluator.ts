@@ -5,7 +5,7 @@ import {
 } from '../permissions/permission-catalog.js';
 import {
   ROLE_ASSIGNMENT_SCOPE,
-  ROLE_DEFINITION_SCOPE,
+  ROLE_DEFINITION_SOURCE,
 } from '../roles/role.types.js';
 import { Role } from '../roles/role.js';
 import { RoleAssignment } from '../role-assignments/role-assignment.js';
@@ -259,7 +259,7 @@ export class PermissionEvaluator {
     role: Role,
     organizationId: string,
   ): boolean {
-    if (role.getDefinitionScope() === ROLE_DEFINITION_SCOPE.SYSTEM) {
+    if (role.getDefinitionSource() === ROLE_DEFINITION_SOURCE.SYSTEM) {
       return role.getOrganizationId() === null;
     }
 
