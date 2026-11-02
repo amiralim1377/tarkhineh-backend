@@ -5,12 +5,12 @@
 | Attribute                    | Value                                                                                         |
 | ---------------------------- | --------------------------------------------------------------------------------------------- |
 | Document                     | Master Architecture & Implementation Specification                                            |
-| Version                      | 1.12                                                                                          |
+| Version                      | 1.13                                                                                          |
 | Last updated                 | 2026-11-02                                                                                    |
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                                        |
 | Architecture status          | Approved by project owner                                                                     |
 | Repository audit             | PHASE 0 completed                                                                             |
-| Current implementation phase | PHASE 7 — Audit Logging (in progress; preparing Audit schema and migration design)              |
+| Current implementation phase | PHASE 7 — Audit Logging (in progress; Audit schema and Migration design)                       |
 | Source of truth               | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -1311,6 +1311,7 @@ Non-negotiable rules:
 3. Never record passwords, tokens, credentials, secrets, raw request bodies, or unnecessary sensitive fields.
 4. Successful permission checks are not persisted by default.
 5. Under the owner-approved ADR-022 decision, records are stored as ordinary database records and **no automatic deletion, TTL expiry, or retention purge is implemented under the current policy**. A later change requires an explicit owner-approved decision.
+6. Under ADR-023, references to operational actors, tenants, memberships, and resources are stored as historical scalar identifiers without foreign keys. Tenant ownership is validated by Application writes and tenant-scoped reads; deletion or mutation of a live operational row must not rewrite or delete Audit history.
 
 ### Repository baseline and integration constraints
 
@@ -1357,7 +1358,9 @@ The Phase 7 repository inspection established:
 - Enforce append-only behavior below the Application layer. Evaluate database triggers and runtime database-role privileges; a write-only Repository alone is not sufficient proof.
 - Do not use cascading deletion that silently removes historical Audit records.
 - Validate tenant ownership for polymorphic targets in Application; a `targetType + targetId` pair by itself cannot prove tenant ownership through a foreign key.
-- Retain audit history even when normal User, Organization, Branch, or Membership lifecycle changes occur. The exact actor/subject reference strategy (historical scalar identifiers vs FK with carefully selected deletion behavior) remains an open schema decision.
+- Retain audit history even when normal User, Organization, Branch, Membership, Role, or Permission lifecycle changes occur. Per ADR-023, actor, tenant, subject, and resource references are historical scalar identifiers without foreign keys. The Application validates write-time ownership; Audit readers always scope by Organization and, where applicable, Branch.
+- Do not add Audit relations or inverse relation fields to Identity or Organization models solely for historical references.
+- The Audit record's required `organizationId` is a tenant scope key, not a foreign key. Selected denial events are persisted in this table only when the actor is authenticated and the Organization context is validated.
 
 **Exit criteria:** the Migration is applied to an isolated test database; Persistence, atomic rollback, tenant-scope, and immutability behavior have Integration coverage.
 
@@ -1411,10 +1414,9 @@ Integrate event creation into the seven existing mutation Handlers. Business per
 The following are **OPEN — OWNER DECISION REQUIRED**. ADR-022 resolves retention only; it does not resolve these items.
 
 1. **Audit-reader authorization:** permission code (including whether `organization.audit.read` is required), which Roles receive it, delegability, Organization/Branch scope, and allowed visibility of actor/subject identifiers.
-2. **Reference lifecycle:** actor, Organization, Branch, and subject references must preserve historical records. Choose historical scalar identifiers or FK behavior such as RESTRICT/SET NULL. CASCADE must not erase audit history.
-3. **Denial event selection:** which high-signal Access Control denials are recorded and whether each is best-effort.
-4. **Role creation event cardinality:** whether initial RolePermission links are represented only in `ROLE_CREATED` after-state or also as individual `ROLE_PERMISSION_ADDED` events.
-5. **Correlation propagation:** exact Application Command metadata contract and later HTTP adapter handoff from `request.id`.
+2. **Denial event selection:** which high-signal Access Control denials are recorded and whether each is best-effort.
+3. **Role creation event cardinality:** whether initial RolePermission links are represented only in `ROLE_CREATED` after-state or also as individual `ROLE_PERMISSION_ADDED` events.
+4. **Correlation propagation:** exact Application Command metadata contract and later HTTP adapter handoff from `request.id`.
 
 ### Explicit non-goals
 
@@ -1628,6 +1630,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; Audit schema and Migration design is the next task)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 is governed by this document's section 4.11, this PHASE 7 roadmap, ADR-014, and ADR-022 in `ARCHITECTURAL-DECISIONS.md`. The three repository documents are the complete source of truth; no separate Phase 7 plan document is maintained. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
+The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; Audit schema and Migration design is the next task)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 is governed by this document's section 4.11, this PHASE 7 roadmap, and ADR-014, ADR-022, and ADR-023 in `ARCHITECTURAL-DECISIONS.md`. The three repository documents are the complete source of truth; no separate Phase 7 plan document is maintained. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.
