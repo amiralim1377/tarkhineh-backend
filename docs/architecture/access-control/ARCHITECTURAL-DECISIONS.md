@@ -3,9 +3,9 @@
 | Attribute              | Value                         |
 | ---------------------- | ----------------------------- |
 | Project                | `tarkhineh-backend`           |
-| Document version       | 1.9                           |
-| Last updated           | 2026-11-01                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.7 |
+| Document version       | 1.10                          |
+| Last updated           | 2026-11-02                    |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.12 |
 
 This document is the decision log for the Access Control bounded context. Each ADR records the context, the decision, and its consequences. Accepted decisions are binding implementation constraints. They must not be silently changed. If later evidence or a product requirement requires a change, add a new ADR that explicitly supersedes the affected decision and obtain project-owner approval before implementing the change.
 
@@ -607,11 +607,11 @@ Database uniqueness constraints remain authoritative for duplicate writes. Safe 
 - The project owner approved PHASE 5 on 2026-11-01; the Application Unit of Work contract is accepted and implemented.
 - Mock-based PHASE 5 Unit tests verify the Application callback boundary only; they do not prove real database commit, rollback, transaction-client sharing, isolation, or race-condition protection.
 - Concrete Prisma transaction binding, transaction-bound adapters, the initial PostgreSQL Integration tests, and NestJS provider bindings were implemented in PHASE 6. The selected transaction and retry strategy is recorded in ADR-021.
-- Broader database-guard, tenant-isolation, concurrent RoleAssignment/Role/Permission mutation, Handler-level Override, multi-Branch snapshot, and query-plan verification items remain open in PHASE 6.
+- The PHASE 6 database-guard, tenant-isolation, concurrent RoleAssignment/Role/Permission mutation, Handler-level Override, and Multi-Branch snapshot acceptance scenarios were subsequently implemented and verified. Query-plan review was completed against a small/synthetic dataset; production-scale benchmarking remains deferred as recorded in IMPLEMENTATION-STATUS.md section 8.
 
 ## ADR-021 — Use Serializable Prisma transactions and bounded retry for Access Control mutations
 
-**Status:** IMPLEMENTED — AWAITING PROJECT-OWNER APPROVAL (PHASE 6)
+**Status:** IMPLEMENTED — ACCEPTED BY PROJECT OWNER (PHASE 6 CLOSED 2026-11-02)
 **Decision owner:** Project owner
 **Date:** 2026-11-01
 
@@ -637,7 +637,39 @@ The repository also has a database-enforced unique key for Permission Overrides.
 - The transaction callback must not send email, publish messages, or perform other external side effects because a retry may execute it more than once.
 - A retry always starts a new transaction; the failed PostgreSQL transaction is never reused after a unique violation.
 - Unrelated P2002 errors continue through normal error translation and are not silently treated as idempotent success.
-- This ADR records the implementation strategy, not complete proof of every authorization race. Dedicated duplicate RoleAssignment, Role/Permission mutation, cross-tenant guard, and Handler-level concurrency tests remain PHASE 6 acceptance work. See IMPLEMENTATION-STATUS.md section 8.
+- The project owner formally approved PHASE 6 on 2026-11-02. The duplicate RoleAssignment, Role/Permission mutation, cross-tenant guard, Handler-level concurrency, and Multi-Branch acceptance scenarios are recorded as implemented and verified in IMPLEMENTATION-STATUS.md section 8.
+- Full application boot, the full-project Integration suite review, and production-scale query benchmarking remain explicitly accepted deferred verification items; Phase 6 approval does not claim those checks were completed.
+
+## ADR-022 — Retain Access Control audit records without automatic deletion
+
+**Status:** ACCEPTED  
+**Decision owner:** Project owner  
+**Date:** 2026-11-02
+
+### Context
+
+ADR-014 requires dedicated append-only Audit records for sensitive Access Control mutations and assigns retention policy to PHASE 7. The project owner has decided that these records must remain available as database history and must not be automatically deleted under the initial implementation policy.
+
+### Decision
+
+For the initial Access Control Audit implementation:
+
+1. Store Audit events as ordinary persistent records in the database.
+2. Retain created Audit records indefinitely under the current policy; do not assign an automatic expiry date.
+3. Do not implement TTL, scheduled deletion, retention purge, automatic cleanup, or automatic archival of Audit records.
+4. Do not expose Audit record update/delete operations through the Access Control Application ports or normal application workflows. This is consistent with ADR-014's append-only requirement.
+5. Any future change that permits deletion, purge, or archival must be proposed as a new explicit project-owner decision and documented before implementation. This ADR does not authorize an operator or application job to remove existing records.
+6. This decision does not claim that database administrators are technically incapable of altering storage outside the application. Database-level immutability protections and operational controls remain part of Phase 7 implementation and verification.
+
+### Consequences
+
+- Audit records remain available as historical database records rather than expiring diagnostic logs.
+- No retention duration, TTL column, cleanup scheduler, purge process, or automatic archival mechanism is required by the initial schema.
+- Audit write paths remain append-only. Read access is a separate authorization concern and is not granted by this ADR.
+- The owner may revisit the policy later through a documented decision; until then, no automatic or routine deletion is permitted.
+- This decision resolves the retention item from ADR-014 for the initial implementation. Audit-reader authorization, denial-event selection, reference lifecycle, Role creation event cardinality, and correlation-ID propagation remain separate PHASE 7 design decisions.
+
+---
 
 ## Implementation notes and outstanding decisions
 
@@ -677,12 +709,12 @@ No Prisma schema, migration, database, Application, Infrastructure, or HTTP chan
 The following topics remain open and must be resolved in their relevant implementation phases:
 
 1. **Identity status integration — PHASE 8:** determine how `User.status` is enforced for authenticated and non-HTTP operations without transferring Identity lifecycle ownership to Access Control.
-2. **Audit retention and access — PHASE 7:** define retention requirements and which principals may read audit records.
-3. **Expanded PHASE 6 concurrency verification:** the Serializable transaction and bounded retry strategy are implemented in ADR-021; add dedicated Integration tests for duplicate RoleAssignment races, Role/Permission mutation races, and concurrent authorization changes.
-4. **Database guard behavior tests — PHASE 6:** add Integration tests for rejected cross-scope/cross-tenant writes, composite relation guards, and immutable Role ownership.
-5. **Handler-level Override race — PHASE 6:** exercise SetPermissionOverrideHandler.execute() concurrently against PostgreSQL; the current Integration test exercises the repositories and Unit of Work with the handler's check/read/create behavior reproduced in the test.
-6. **Multi-Branch snapshot and query-plan review — PHASE 6:** exercise multiple active/inactive Branches and inspect representative EXPLAIN plans and index usage.
-7. **Backup recovery drill:** restore the development database backup into an isolated database before treating the backup process as recovery-tested.
-8. **Deferred unrelated Integration failure:** investigate the Outbound Email retry/lease Integration failure separately. It is not an Access Control defect and must not be masked by changes in this context.
+2. **Audit-reader authorization and reference lifecycle — PHASE 7:** define which principals may read audit records, the dedicated permission/scope behavior, and how historical actor/Organization/Branch/subject references survive lifecycle changes. Audit retention and no-automatic-deletion policy are resolved by ADR-022.
+3. **Selected denial-event policy — PHASE 7:** determine which high-signal authorization denials are persisted and whether recording is best-effort without masking the original denial.
+4. **Role creation event cardinality — PHASE 7:** determine whether initial RolePermission links are represented only in ROLE_CREATED after-state or also as individual ROLE_PERMISSION_ADDED events.
+5. **Correlation-ID propagation — PHASE 7 / PHASE 9:** define the Application Command metadata contract and later HTTP adapter handoff from the existing request ID.
+6. **Backup recovery drill:** restore the development database backup into an isolated database before treating the backup process as recovery-tested.
+7. **Deferred unrelated Integration failure:** investigate the Outbound Email retry/lease Integration failure separately. It is not an Access Control defect and must not be masked by changes in this context.
+8. **Accepted PHASE 6 deferrals:** full application boot, full-project Integration-suite review, and production-scale query benchmarking remain deferred as documented in IMPLEMENTATION-STATUS.md section 8.10.
 
 For the current phase status, exact verification results, and known limitations, see `IMPLEMENTATION-STATUS.md`.
