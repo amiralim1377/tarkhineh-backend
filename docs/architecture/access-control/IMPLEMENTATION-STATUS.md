@@ -3,12 +3,12 @@
 | Attribute              | Value                                                        |
 | ---------------------- | ------------------------------------------------------------ |
 | Project                | `tarkhineh-backend`                                          |
-| Document version       | 2.2                                                          |
-| Last updated           | 2026-11-01                                                   |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.9                                |
+| Document version       | 2.3                                                          |
+| Last updated           | 2026-11-02                                                   |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.10                               |
 | Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.9                            |
-| Current phase          | PHASE 6 — Infrastructure and Authorization Persistence      |
-| Current phase status   | **TECHNICAL REVIEW PASSED — FORMAL OWNER SIGN-OFF OPEN**     |
+| Current phase          | PHASE 7 — Audit Logging                                      |
+| Current phase status   | **READY TO START — PHASE 6 FORMALLY APPROVED AND CLOSED**    |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -26,15 +26,15 @@
 |     3 | Permission Registry and Seed                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
-|     6 | Infrastructure and Authorization Persistence    | TECHNICAL REVIEW PASSED — FORMAL OWNER SIGN-OFF OPEN |
-|     7 | Audit Logging                                   | NOT STARTED                                         |
+|     6 | Infrastructure and Authorization Persistence    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-02; deferred verification accepted) |
+|     7 | Audit Logging                                   | READY TO START                                      |
 |     8 | Cross-Context Integration                       | NOT STARTED                                         |
 |     9 | HTTP Layer                                      | NOT STARTED                                         |
 |    10 | Security, Performance, and Production Readiness | NOT STARTED                                         |
 
 ### Latest implementation checkpoint
 
-PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence has been implemented, its expanded PostgreSQL acceptance coverage was committed in `7e0b267`, and a GitHub source review was completed on 2026-11-01. The review found no blocking defect in the inspected transaction boundary, tenant-scoped persistence paths, database guards, authorization snapshot assembly, or NestJS provider wiring. The focused terminal checkpoint records 322 passing Access Control Unit tests and 16 passing Access Control Integration tests (338 total), plus successful TypeScript, Access Control lint, Prettier, diff, and production build checks. Formal PHASE 6 closure is not recorded yet: the full application has not been boot-tested, the full-project Integration suite was not rerun (one previously isolated unrelated Outbound Email failure remains known), no representative data-volume benchmark exists, and explicit project-owner sign-off remains outstanding. The branch is 27 commits ahead of `main`; no Access Control pull request is open. See section 8 for the review record and limitations.
+PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence was implemented, its expanded PostgreSQL acceptance coverage was committed in `7e0b267`, and a GitHub source review on 2026-11-01 found no blocking defect in the inspected transaction boundary, tenant-scoped persistence paths, database guards, authorization snapshot assembly, or NestJS provider wiring. The recorded focused checkpoint contains 322 passing Access Control Unit tests and 16 passing Access Control Integration tests (338 total), with successful TypeScript, Access Control lint, Prettier, diff, and production build checks. The project owner formally approved PHASE 6 on 2026-11-02, accepting the explicitly documented deferred verification items in section 8.10. PHASE 6 is closed; this approval does not claim that the full application boot, full-project Integration suite, or production-scale benchmark has been completed. PHASE 7 — Audit Logging is the next phase and is ready to start. The review-time branch comparison and release/PR observations are retained in section 8.10.
 
 ### PHASE 3 Registry implementation result
 
@@ -925,12 +925,11 @@ A PostgreSQL 18.6 `EXPLAIN` review was performed for representative Branch, Memb
 
 The plans were collected against a small test dataset using synthetic/probe identifiers. PostgreSQL selected sequential scans for several low-cardinality or empty-table probes, with observed execution times around 0.017–0.077 ms. Those plans are expected for tiny relations and do **not** establish a missing-index defect or demonstrate production-scale performance. A representative data-volume benchmark with `EXPLAIN (ANALYZE, BUFFERS)` remains a production-readiness activity.
 
-The remaining PHASE 6 review items are:
+The following verification items were explicitly accepted by the project owner as deferred work at PHASE 6 closure; they are not represented as completed:
 
 - **Full module/application DI verification:** the default snapshot reader has a focused Nest testing-module test, but a full application boot/complete `AccessControlModule` dependency-graph test has not been recorded.
 - **Full-project Integration suite:** it was not rerun as part of the final focused PHASE 6 validation. A previously isolated, unrelated Outbound Email retry/lease Integration test remains failing and deferred: `schedules retry and releases the current lease after an enqueue failure`. It must be investigated separately and must not be masked by Access Control changes.
 - **Production-scale query benchmark:** repeat query-plan inspection with representative row counts and real fixture distributions before making production capacity claims.
-- **Project-owner review:** formal PHASE 6 closure still requires explicit owner approval.
 
 No Prisma schema change or migration was created in PHASE 6. The Integration tests ran against `tarkhineh_test`; no production CLI Seed run or intentional schema change was part of this phase.
 
@@ -951,11 +950,11 @@ No Prisma schema change or migration was created in PHASE 6. The Integration tes
 - [x] Query-plan/index review completed; small/synthetic-data limitations documented and no index change justified by current evidence.
 - [x] Focused Unit and PostgreSQL Integration tests pass.
 - [x] TypeScript, Access Control lint, Prettier, diff check, and production build have passed in the recorded runs.
-- [ ] Full application boot/complete AccessControlModule dependency-graph verification.
-- [ ] Full-project Integration suite review; the known unrelated Outbound Email retry/lease failure remains deferred.
-- [ ] Project-owner review and formal PHASE 6 approval.
+- [ ] Full application boot/complete AccessControlModule dependency-graph verification (accepted deferred verification; not claimed complete).
+- [ ] Full-project Integration suite review; the known unrelated Outbound Email retry/lease failure remains deferred (accepted deferred verification; not claimed complete).
+- [x] Project-owner review and formal PHASE 6 approval (2026-11-02; deferred verification explicitly accepted).
 
-**The PHASE 6 persistence acceptance scenarios requested for this work are implemented and verified. PHASE 6 remains active pending the remaining review items and explicit project-owner approval; do not mark it closed or begin PHASE 7 without that approval.**
+**PHASE 6 was formally approved and closed by the project owner on 2026-11-02. The persistence acceptance scenarios listed above are implemented and verified. The unchecked runtime/full-suite items remain accepted deferred verification, not completed work or claims of production readiness.**
 
 ### 8.10 GitHub technical review — 2026-11-01
 
@@ -983,22 +982,19 @@ Deferred verification and risk boundaries:
 - The PostgreSQL `EXPLAIN` review used a small test dataset and synthetic/probe identifiers. It supports the conclusion that current schema indexes are reasonable for the inspected paths; it does not provide production-scale performance evidence. A representative `EXPLAIN (ANALYZE, BUFFERS)` exercise belongs in the later production-readiness work.
 - The focused Access Control test and build results are recorded from actual terminal output supplied during the development session; this GitHub review did not execute code in a runner.
 
-**Recommendation:** Accept the PHASE 6 persistence implementation from a technical-review perspective and carry the full-app boot test, full-project Integration investigation, and production-scale query benchmark as explicit deferred verification. Keep the formal phase status pending until the project owner records sign-off. Do not claim that the feature is merged into `main`; open a PR from `access-control` to `main` as a separate release/integration step.
+**Outcome:** The project owner formally approved and closed PHASE 6 on 2026-11-02, accepting the full-app boot test, full-project Integration investigation, and production-scale query benchmark as explicit deferred verification. This approval does not claim those checks passed or that the feature is merged into `main`. The review-time repository comparison found no open Access Control pull request; creating a PR from `access-control` to `main` remains a separate release/integration step.
 
 ## 9. Open items and deferred work
 
-The following items belong to later phases or separate operational work. They must not be treated as PHASE 3 failures or as completed work.
+The following items are later-phase work, accepted deferred verification, or separate operational follow-ups. They do not reopen the formally approved PHASE 6 scope. Deferred verification is not represented as completed.
 
 1. **User account status — PHASE 8:** Identity Access owns `User.status`. Confirm how account status is enforced in authenticated and non-HTTP application operations without duplicating Identity lifecycle ownership.
 2. **Audit retention and access — PHASE 7:** define retention, access authorization, and operational handling for audit records.
-3. **Expanded concurrency and tenant-isolation verification — PHASE 6:** the core Serializable transaction and targeted Permission Override retry strategy is implemented. Dedicated tests for duplicate RoleAssignment races, concurrent Role/Permission changes, authorization changes, and two-tenant isolation remain open.
-4. **Database guard behavior tests — PHASE 6:** add negative-write Integration tests for cross-scope/cross-tenant constraints, composite relation guards, and immutable Role ownership.
-5. **Snapshot performance review — PHASE 6 / PHASE 10:** add a multi-Branch fixture and review representative query plans and index use; no EXPLAIN evidence is currently recorded.
-6. **Handler-level Override race — PHASE 6:** the existing race Integration test covers repositories and Unit of Work but does not invoke SetPermissionOverrideHandler.execute().
-7. **Backup recovery drill:** restore the recorded database backup into an isolated database before claiming a full recovery test.
-8. **Deferred Outbound Email Integration failure:** investigate `schedules retry and releases the current lease after an enqueue failure` separately. Do not change Access Control code to mask this unrelated failure.
-9. **Production Seed execution:** perform only after an explicit operational decision, with the target database confirmed and the resulting data reviewed.
-10. **Mid-operation Seed failure test:** consider a safe, isolated integration strategy to prove rollback after a database statement fails partway through synchronization.
+3. **Accepted PHASE 6 verification deferrals:** full application boot/complete module-graph runtime verification and a production-scale query benchmark remain open; see section 8.10. The small/synthetic-data query-plan review already recorded in PHASE 6 is not production-scale evidence.
+4. **Backup recovery drill:** restore the recorded database backup into an isolated database before claiming a full recovery test.
+5. **Deferred Outbound Email Integration failure:** investigate `schedules retry and releases the current lease after an enqueue failure` separately. Do not change Access Control code to mask this unrelated failure.
+6. **Production Seed execution:** perform only after an explicit operational decision, with the target database confirmed and the resulting data reviewed.
+7. **Mid-operation Seed failure test:** consider a safe, isolated integration strategy to prove rollback after a database statement fails partway through synchronization.
 
 ---
 
@@ -1025,6 +1021,4 @@ The repository documents and Git history are the project source of truth. Conver
 
 ## 11. Exact next step
 
-PHASE 5 is closed. The requested PHASE 6 tenant-isolation, database-guard, Handler-concurrency, Role/Permission-race, and Multi-Branch snapshot acceptance scenarios are verified. The next step is project-owner review of the remaining full application dependency-graph and full-project Integration limitations documented in section 8, followed by an explicit decision on PHASE 6 closure or documented deferral.
-
-Do not begin PHASE 7 (Audit Logging) until PHASE 6 has been formally approved. After PHASE 6 approval, proceed sequentially to PHASE 7 and then PHASE 8. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
+PHASES 0–6 are formally closed. PHASE 6 was approved by the project owner on 2026-11-02, with the full application boot, full-project Integration suite review, and production-scale query benchmark explicitly accepted as deferred verification rather than completed checks. The next step is to begin PHASE 7 — Audit Logging on the dedicated `access-control-phase-7-audit` branch. Proceed sequentially to PHASE 8 after PHASE 7 review and approval. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
