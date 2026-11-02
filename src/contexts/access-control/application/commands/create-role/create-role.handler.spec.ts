@@ -75,9 +75,7 @@ function createSut() {
 
   const execute = vi.fn(
     async (
-      operation: (
-        context: AccessControlUnitOfWorkContext,
-      ) => Promise<unknown>,
+      operation: (context: AccessControlUnitOfWorkContext) => Promise<unknown>,
     ) => {
       transactionActive = true;
 
@@ -154,7 +152,7 @@ describe('CreateRoleHandler', () => {
 
     const savedRole = sut.save.mock.calls[0]?.[0] as Role;
     expect(savedRole).toBeInstanceOf(Role);
-    expect(savedRole.getDefinitionScope()).toBe('ORGANIZATION');
+    expect(savedRole.getDefinitionSource()).toBe('ORGANIZATION');
     expect(savedRole.getAssignmentScope()).toBe('ORGANIZATION');
     expect(savedRole.getOrganizationId()).toBe('org-1');
     expect(savedRole.isAssignable()).toBe(true);
