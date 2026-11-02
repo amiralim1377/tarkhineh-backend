@@ -5,12 +5,12 @@
 | Attribute                    | Value                                                                                         |
 | ---------------------------- | --------------------------------------------------------------------------------------------- |
 | Document                     | Master Architecture & Implementation Specification                                            |
-| Version                      | 1.10                                                                                          |
+| Version                      | 1.11                                                                                          |
 | Last updated                 | 2026-11-02                                                                                    |
 | Architecture                 | Clean Architecture + DDD + Scoped RBAC                                                        |
 | Architecture status          | Approved by project owner                                                                     |
 | Repository audit             | PHASE 0 completed                                                                             |
-| Current implementation phase | PHASE 7 — Audit Logging (ready to start; PHASE 6 formally approved on 2026-11-02)              |
+| Current implementation phase | PHASE 7 — Audit Logging (in progress; 7.1 audit contract and policy design)                    |
 | Source of truth               | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
@@ -1274,9 +1274,9 @@ Do not move Prisma dependencies into Domain or Application. PHASE 6 implements t
 
 ## PHASE 7 — Audit Logging
 
-Status: **NOT STARTED — READY TO START FOLLOWING FORMAL PHASE 6 APPROVAL (2026-11-02).**
+Status: **IN PROGRESS — 7.1 AUDIT CONTRACT AND POLICY DESIGN (2026-11-02).**
 
-Implement audit model, repository, atomic mutation/audit transactions, before/after state where useful, correlation IDs, and tests. Keep audit append-only and free of secrets.
+Implement the audit model, repository, atomic mutation/audit transactions, before/after state where useful, correlation IDs, and tests. Keep audit append-only and free of secrets. The detailed execution sequence and unresolved owner decisions are recorded in `PHASE-7-AUDIT-LOGGING-PLAN.md`. The plan does not supersede ADR-014 or introduce unapproved retention, audit-reader, deletion, or event-selection policies.
 
 ## PHASE 8 — Cross-Context Integration
 
@@ -1478,6 +1478,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The current implementation checkpoint is **PHASE 7 — Audit Logging (ready to start)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
+The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; 7.1 audit contract and policy design)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 execution is governed by `PHASE-7-AUDIT-LOGGING-PLAN.md`, based on section 4.11 and ADR-014; no unresolved policy decision may be silently treated as accepted. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.
