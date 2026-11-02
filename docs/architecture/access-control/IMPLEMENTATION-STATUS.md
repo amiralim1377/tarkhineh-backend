@@ -3,12 +3,12 @@
 | Attribute              | Value                                                        |
 | ---------------------- | ------------------------------------------------------------ |
 | Project                | `tarkhineh-backend`                                          |
-| Document version       | 2.7                                                          |
+| Document version       | 2.8                                                          |
 | Last updated           | 2026-11-02                                                   |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.14                               |
-| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.12                           |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.15                               |
+| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.13                           |
 | Current phase          | PHASE 7 — Audit Logging                                      |
-| Current phase status   | **IN PROGRESS — PRISMA MODEL AND FORWARD MIGRATION DRAFTED; LOCAL VALIDATION PENDING**                        |
+| Current phase status   | **IN PROGRESS — PHASE 7.1 POLICY APPROVED; PRISMA SCHEMA VALIDATION PASSED LOCALLY; ISOLATED MIGRATION APPLICATION PENDING** |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -27,7 +27,7 @@
 |     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
 |     6 | Infrastructure and Authorization Persistence    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-02; deferred verification accepted) |
-|     7 | Audit Logging                                   | IN PROGRESS — schema/Migration draft; validation pending |
+|     7 | Audit Logging                                   | IN PROGRESS — 7.1 policy approved; schema validation passed locally; isolated Migration application pending |
 |     8 | Cross-Context Integration                       | NOT STARTED                                         |
 |     9 | HTTP Layer                                      | NOT STARTED                                         |
 |    10 | Security, Performance, and Production Readiness | NOT STARTED                                         |
@@ -36,9 +36,9 @@
 
 PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence was implemented, its expanded PostgreSQL acceptance coverage was committed in `7e0b267`, and a GitHub source review on 2026-11-01 found no blocking defect in the inspected transaction boundary, tenant-scoped persistence paths, database guards, authorization snapshot assembly, or NestJS provider wiring. The recorded focused checkpoint contains 322 passing Access Control Unit tests and 16 passing Access Control Integration tests (338 total), with successful TypeScript, Access Control lint, Prettier, diff, and production build checks. The project owner formally approved PHASE 6 on 2026-11-02, accepting the explicitly documented deferred verification items in section 8.10. PHASE 6 is closed; this approval does not claim that the full application boot, full-project Integration suite, or production-scale benchmark has been completed.
 
-PHASE 7 — Audit Logging started on 2026-11-02. Repository inspection confirmed that no Audit model, repository, or adapter exists yet. The seven existing mutation Handlers use the transaction-owning Access Control Unit of Work; its four current adapters are bound to the same Prisma transaction client. Successful-mutation Audit writes must be integrated into this same transaction, while selected authorization-denial events require separate handling because the business transaction is rolled back on denial.
+PHASE 7 — Audit Logging started on 2026-11-02. The dedicated Prisma Audit model and forward Migration draft exist, but no Domain/Application Audit contract, transaction-bound writer, Infrastructure adapter, or reader implementation exists yet. The seven existing mutation Handlers use the transaction-owning Access Control Unit of Work; its four current adapters are bound to the same Prisma transaction client. Successful-mutation Audit writes must be integrated into this same transaction, while selected authorization-denial events require separate handling because the business transaction is rolled back on denial.
 
-The project owner approved ADR-022 on 2026-11-02: Audit records are retained as ordinary database records indefinitely under the current policy, with no TTL, automatic deletion, scheduled purge, or cleanup. The historical reference strategy was selected and recorded in ADR-023: Actor, Organization, Branch, Membership, and Resource IDs are stored as scalar historical identifiers with no foreign keys; `organizationId` is required as the tenant scope key, and tenant ownership is enforced by Application validation and tenant-scoped reads. Selected denial events are stored only when the actor is authenticated and the Organization context is validated. The first Prisma/Migration draft is now committed: root `prisma.config.ts`, `prisma/models/access-control-audit.prisma`, and forward-only migration `20261102110000_access_control_audit_events`. The model uses scalar historical references only, the approved event vocabulary, allow-listed JSON state projections, a versioned payload contract, tenant/time indexes, database checks, and UPDATE/DELETE/TRUNCATE rejection triggers. ADR-024 records these technical choices. The three official architecture documents were updated; no separate plan document was created. The assistant did not execute Prisma validation, migration-diff generation, database migration, or tests. The Migration is not claimed to be applied; the draft still requires local validation and isolated PostgreSQL Integration tests. Runtime database-role privilege hardening is also unverified. Audit-reader authorization, selected denial policy, initial Role Permission event cardinality, and the exact correlation propagation contract remain open. Audit-reader authorization, selected denial events, initial Role Permission event cardinality, and correlation-ID propagation remain open decisions; the historical reference lifecycle is resolved by ADR-023.
+The project owner approved ADR-022 on 2026-11-02: Audit records are retained as ordinary database records indefinitely under the current policy, with no TTL, automatic deletion, scheduled purge, or cleanup. The historical reference strategy was selected and recorded in ADR-023: Actor, Organization, Branch, Membership, and Resource IDs are stored as scalar historical identifiers with no foreign keys; `organizationId` is required as the tenant scope key, and tenant ownership is enforced by Application validation and tenant-scoped reads. Selected denial events are stored only when the actor is authenticated and the Organization context is validated. The first Prisma/Migration draft is committed: the root Prisma 7 configuration, `prisma/models/access-control-audit.prisma`, and forward-only migration `20261102110000_access_control_audit_events`. The model uses scalar historical references only, the approved event vocabulary, allow-listed JSON state projections, a versioned payload contract, tenant/time indexes, database checks, and UPDATE/DELETE/TRUNCATE rejection triggers. ADR-024 records these technical choices. The project owner then approved all four PHASE 7.1 policy decisions on 2026-11-02; ADR-025 records: (1) `organization.audit.read` for Organization Owner access to all Audit events in that Organization, (2) `branch.audit.read.own` for Branch Manager access restricted to the manager's own permission-changing events in the exact Branch, (3) selective `AUTHORIZATION_DENIED` logging for actual `AccessControlForbiddenError` denials with best-effort persistence, (4) one `ROLE_CREATED` event containing its initial Permission set without duplicate per-Permission add events, and (5) optional `correlationId` propagation in Application Command metadata from the trusted HTTP `request.id`. The permission codes and runtime policies are not implemented yet; they remain implementation work in the later Phase 7 substeps. The user ran `npx prisma validate` locally with Prisma 7.10.1 and received the successful result that the schemas are valid. Migration-diff review, isolated PostgreSQL Migration application, writer/reader implementation, Integration tests, and runtime database-role privilege hardening remain unverified. No Audit Migration application or Audit data effect is claimed.
 
 ### PHASE 3 Registry implementation result
 
@@ -988,12 +988,43 @@ Deferred verification and risk boundaries:
 
 **Outcome:** The project owner formally approved and closed PHASE 6 on 2026-11-02, accepting the full-app boot test, full-project Integration investigation, and production-scale query benchmark as explicit deferred verification. This approval does not claim those checks passed or that the feature is merged into `main`. The review-time repository comparison found no open Access Control pull request; creating a PR from `access-control` to `main` remains a separate release/integration step.
 
-## 9. Open items and deferred work
+## 9. PHASE 7 — Audit Logging
+
+**Status: IN PROGRESS — 7.1 policy design approved; Prisma schema validation passed locally; Migration review/application and runtime implementation remain pending.**
+
+### 9.1 Approved PHASE 7.1 policy decisions
+
+All four owner decisions were approved on 2026-11-02 and recorded in ADR-025:
+
+1. **Audit readers:** `organization.audit.read` is ORGANIZATION-scoped, non-delegable, and assigned only to `ORGANIZATION_OWNER`; it grants access to all Audit events for the exact Organization, across all its Branches. `branch.audit.read.own` is BRANCH-scoped, non-delegable, and assigned to `BRANCH_MANAGER`; the reader sees only their own successful permission-changing events in the exact authorized Branch and Organization. The Application query must enforce the actor-self predicate and tenant/branch filters.
+2. **Denial events:** record `AUTHORIZATION_DENIED` only for actual authorization/delegation denials represented by `AccessControlForbiddenError`, and only with a trusted authenticated Actor and validated Organization context. Persistence is best-effort and must never mask the original denial. Input/validation errors, not-found results, conflicts, and missing Actor cases are excluded.
+3. **Role creation cardinality:** a Role created with initial Permission links emits one `ROLE_CREATED` event whose after-state contains the initial Permission codes. It does not emit an additional `ROLE_PERMISSION_ADDED` event for each initial link. Later Role Permission-set changes are represented by actual added/removed differences.
+4. **Correlation propagation:** optional `correlationId` is carried in Application Command metadata, populated by the HTTP adapter from the trusted `request.id`, and copied to Audit events. Non-HTTP commands may omit it. It is not business input.
+
+For Branch Manager visibility, `ROLE_ASSIGNED` after-state must preserve the Permission codes present in the assigned Role at the time of assignment. The Branch Manager reader is restricted to `ROLE_ASSIGNED`, `ROLE_REVOKED`, and `PERMISSION_OVERRIDE_*` events where `actorUserId` equals the authenticated Manager and `branchId`/`organizationId` match the authorized scope. Historical Actor and Subject IDs may be visible; credentials, tokens, email addresses, and unrelated personal data are not exposed.
+
+### 9.2 Repository and verification checkpoint
+
+- Prisma schema validation was run locally with Prisma CLI 7.10.1 and returned: `The schemas at prisma are valid`.
+- The Audit Prisma model and forward Migration draft are committed, but the Audit Migration has not been applied to a database as part of this checkpoint.
+- Schema-to-Migration diff review, isolated PostgreSQL Migration application, and Audit Persistence/immutability Integration tests remain pending.
+- The Domain/Application Audit contract, transaction-bound append-only writer, selected-denial writer, Audit reader authorization/query, Permission Registry additions, and explicit System Role Seed updates are not implemented yet.
+- The seven successful-mutation paths must append Audit events inside the same transaction-bound Unit of Work. Selected denial events use their separately approved best-effort boundary.
+- Runtime database-role privilege restrictions and production-scale query/index review remain unverified.
+
+**No Audit database effects or runtime feature behavior are claimed by this design checkpoint.**
+
+### 9.3 Next implementation step
+
+Proceed to PHASE 7.2 — Domain and Application contracts. Define the typed Audit event contract and append-only Application port, then add the transaction-bound writer to the existing Unit of Work context. Keep Prisma and NestJS dependencies out of Domain and Application. Do not apply the Audit Migration to a database until the schema-to-Migration review and isolated-database target are confirmed.
+
+---
+
+## 10. Open items and deferred work
 
 The following items are later-phase work, accepted deferred verification, or separate operational follow-ups. They do not reopen the formally approved PHASE 6 scope. Deferred verification is not represented as completed.
 
 1. **User account status — PHASE 8:** Identity Access owns `User.status`. Confirm how account status is enforced in authenticated and non-HTTP application operations without duplicating Identity lifecycle ownership.
-2. **Audit-reader authorization — PHASE 7:** define who may read Audit records, their Organization/Branch scope, and allowed visibility of actor/subject identifiers. Retention/no-automatic-deletion is resolved by ADR-022; historical scalar reference behavior is resolved by ADR-023.
 3. **Accepted PHASE 6 verification deferrals:** full application boot/complete module-graph runtime verification and a production-scale query benchmark remain open; see section 8.10. The small/synthetic-data query-plan review already recorded in PHASE 6 is not production-scale evidence.
 4. **Backup recovery drill:** restore the recorded database backup into an isolated database before claiming a full recovery test.
 5. **Deferred Outbound Email Integration failure:** investigate `schedules retry and releases the current lease after an enqueue failure` separately. Do not change Access Control code to mask this unrelated failure.
@@ -1002,7 +1033,7 @@ The following items are later-phase work, accepted deferred verification, or sep
 
 ---
 
-## 10. Session handoff protocol
+## 11. Session handoff protocol
 
 At the end of each meaningful development session:
 
@@ -1023,6 +1054,6 @@ The repository documents and Git history are the project source of truth. Conver
 
 ---
 
-## 11. Exact next step
+## 12. Exact next step
 
-PHASES 0–6 are formally closed. PHASE 6 was approved by the project owner on 2026-11-02, with the full application boot, full-project Integration suite review, and production-scale query benchmark explicitly accepted as deferred verification rather than completed checks. PHASE 7 — Audit Logging is active on the dedicated `access-control-phase-7-audit` branch. ADR-022 records the owner-approved no-automatic-deletion policy and ADR-023 records the historical scalar-reference strategy without operational foreign keys. Immediate next step: synchronize the committed draft locally and run Prisma schema validation; review its schema-to-Migration diff before applying anything to an isolated PostgreSQL test database. Do not run the Migration against an unconfirmed development or production database. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
+PHASES 0–6 are formally closed. PHASE 6 was approved by the project owner on 2026-11-02, with the full application boot, full-project Integration suite review, and production-scale query benchmark explicitly accepted as deferred verification rather than completed checks. PHASE 7 — Audit Logging is active on the dedicated `access-control-phase-7-audit` branch. ADR-022 records the owner-approved no-automatic-deletion policy, ADR-023 records historical scalar references without operational foreign keys, ADR-024 records the initial append-only Prisma schema design, and ADR-025 records all approved PHASE 7.1 event, reader, denial, and correlation policies. Local Prisma schema validation has passed. Immediate next step: begin PHASE 7.2 — Domain and Application contracts; keep migration review/application to an isolated, explicitly confirmed PostgreSQL test database as a separate later verification step. Do not run the Audit Migration against an unconfirmed development or production database. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
