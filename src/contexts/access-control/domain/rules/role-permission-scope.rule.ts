@@ -4,7 +4,10 @@ import {
   type PermissionCode,
 } from '../permissions/permission-catalog.js';
 
-import type { RoleAssignmentScope } from '../roles/role.types.js';
+import {
+  ROLE_ASSIGNMENT_SCOPE,
+  type RoleAssignmentScope,
+} from '../roles/role.types.js';
 
 export function isKnownPermissionCode(
   permissionCode: string,
@@ -20,16 +23,21 @@ export function isPermissionCompatibleWithRoleAssignmentScope(
   assignmentScope: RoleAssignmentScope,
   permissionCode: string,
 ): boolean {
+  // Permission must exist in the catalog.
   if (!isKnownPermissionCode(permissionCode)) {
     return false;
   }
 
-  if (assignmentScope === 'ORGANIZATION') {
-    return true;
-  }
+  const permissionScope = PERMISSION_CATALOG[permissionCode].targetScope;
 
-  return (
-    PERMISSION_CATALOG[permissionCode].targetScope ===
-    PERMISSION_TARGET_SCOPE.BRANCH
-  );
+  switch (assignmentScope) {
+    case ROLE_ASSIGNMENT_SCOPE.ORGANIZATION:
+      return true;
+
+    case ROLE_ASSIGNMENT_SCOPE.BRANCH:
+      return permissionScope === PERMISSION_TARGET_SCOPE.BRANCH;
+
+    default:
+      return false;
+  }
 }
