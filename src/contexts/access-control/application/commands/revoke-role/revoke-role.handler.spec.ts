@@ -26,7 +26,7 @@ function createRole(scope: 'ORGANIZATION' | 'BRANCH' = 'ORGANIZATION') {
     id: 'role-1',
     code: scope === 'ORGANIZATION' ? 'SALES_MANAGER' : 'BRANCH_SUPERVISOR',
     name: 'Test Role',
-    definitionScope: 'ORGANIZATION',
+    definitionSource: 'ORGANIZATION_DEFINED',
     assignmentScope: scope,
     organizationId: 'org-1',
     isAssignable: true,
@@ -109,9 +109,7 @@ function createSut(assignment: RoleAssignment | null = createAssignment()) {
   };
 
   const executeOperation = async <T>(
-    operation: (
-      context: AccessControlUnitOfWorkContext,
-    ) => Promise<T>,
+    operation: (context: AccessControlUnitOfWorkContext) => Promise<T>,
   ): Promise<T> => {
     transactionActive = true;
 
@@ -135,10 +133,7 @@ function createSut(assignment: RoleAssignment | null = createAssignment()) {
 
       return {
         snapshot: {},
-        permissionCodes: [
-          'organization.roles.assign',
-          'branch.roles.assign',
-        ],
+        permissionCodes: ['organization.roles.assign', 'branch.roles.assign'],
       };
     });
 
@@ -314,7 +309,7 @@ describe('RevokeRoleHandler', () => {
       id: 'system-organization-role',
       code: 'GLOBAL_ORGANIZATION_READER',
       name: 'Global Organization Reader',
-      definitionScope: 'SYSTEM',
+      definitionSource: 'SYSTEM',
       assignmentScope: 'ORGANIZATION',
       organizationId: null,
       isAssignable: true,
