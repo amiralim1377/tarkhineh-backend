@@ -3,12 +3,12 @@
 | Attribute              | Value                                                        |
 | ---------------------- | ------------------------------------------------------------ |
 | Project                | `tarkhineh-backend`                                          |
-| Document version       | 2.3                                                          |
+| Document version       | 2.4                                                          |
 | Last updated           | 2026-11-02                                                   |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.10                               |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.11                               |
 | Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.9                            |
 | Current phase          | PHASE 7 — Audit Logging                                      |
-| Current phase status   | **READY TO START — PHASE 6 FORMALLY APPROVED AND CLOSED**    |
+| Current phase status   | **IN PROGRESS — 7.1 AUDIT CONTRACT AND POLICY DESIGN**       |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -27,14 +27,16 @@
 |     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
 |     6 | Infrastructure and Authorization Persistence    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-02; deferred verification accepted) |
-|     7 | Audit Logging                                   | READY TO START                                      |
+|     7 | Audit Logging                                   | IN PROGRESS — 7.1 Audit contract and policy design  |
 |     8 | Cross-Context Integration                       | NOT STARTED                                         |
 |     9 | HTTP Layer                                      | NOT STARTED                                         |
 |    10 | Security, Performance, and Production Readiness | NOT STARTED                                         |
 
 ### Latest implementation checkpoint
 
-PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence was implemented, its expanded PostgreSQL acceptance coverage was committed in `7e0b267`, and a GitHub source review on 2026-11-01 found no blocking defect in the inspected transaction boundary, tenant-scoped persistence paths, database guards, authorization snapshot assembly, or NestJS provider wiring. The recorded focused checkpoint contains 322 passing Access Control Unit tests and 16 passing Access Control Integration tests (338 total), with successful TypeScript, Access Control lint, Prettier, diff, and production build checks. The project owner formally approved PHASE 6 on 2026-11-02, accepting the explicitly documented deferred verification items in section 8.10. PHASE 6 is closed; this approval does not claim that the full application boot, full-project Integration suite, or production-scale benchmark has been completed. PHASE 7 — Audit Logging is the next phase and is ready to start. The review-time branch comparison and release/PR observations are retained in section 8.10.
+PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence was implemented, its expanded PostgreSQL acceptance coverage was committed in `7e0b267`, and a GitHub source review on 2026-11-01 found no blocking defect in the inspected transaction boundary, tenant-scoped persistence paths, database guards, authorization snapshot assembly, or NestJS provider wiring. The recorded focused checkpoint contains 322 passing Access Control Unit tests and 16 passing Access Control Integration tests (338 total), with successful TypeScript, Access Control lint, Prettier, diff, and production build checks. The project owner formally approved PHASE 6 on 2026-11-02, accepting the explicitly documented deferred verification items in section 8.10. PHASE 6 is closed; this approval does not claim that the full application boot, full-project Integration suite, or production-scale benchmark has been completed.
+
+PHASE 7 — Audit Logging started on 2026-11-02. Repository inspection confirmed that no Audit model, repository, or adapter exists yet. The dedicated execution plan was added at `docs/architecture/access-control/PHASE-7-AUDIT-LOGGING-PLAN.md`. This is a documentation/planning checkpoint only: no application code, Prisma schema, or migration has been changed. The current work is 7.1 — Audit event contract and policy design; unresolved owner decisions are listed in the plan and must not be silently assumed.
 
 ### PHASE 3 Registry implementation result
 
@@ -1021,4 +1023,4 @@ The repository documents and Git history are the project source of truth. Conver
 
 ## 11. Exact next step
 
-PHASES 0–6 are formally closed. PHASE 6 was approved by the project owner on 2026-11-02, with the full application boot, full-project Integration suite review, and production-scale query benchmark explicitly accepted as deferred verification rather than completed checks. The next step is to begin PHASE 7 — Audit Logging on the dedicated `access-control-phase-7-audit` branch. Proceed sequentially to PHASE 8 after PHASE 7 review and approval. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
+PHASES 0–6 are formally closed. PHASE 6 was approved by the project owner on 2026-11-02, with the full application boot, full-project Integration suite review, and production-scale query benchmark explicitly accepted as deferred verification rather than completed checks. PHASE 7 — Audit Logging is active on the dedicated `access-control-phase-7-audit` branch. Immediate next step: complete 7.1 using `PHASE-7-AUDIT-LOGGING-PLAN.md`, resolve the listed owner decisions, then implement the Domain/Application Audit contract and transaction-bound writer. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
