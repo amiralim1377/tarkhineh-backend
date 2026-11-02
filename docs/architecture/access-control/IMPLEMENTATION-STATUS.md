@@ -3,12 +3,12 @@
 | Attribute              | Value                                                        |
 | ---------------------- | ------------------------------------------------------------ |
 | Project                | `tarkhineh-backend`                                          |
-| Document version       | 2.4                                                          |
+| Document version       | 2.5                                                          |
 | Last updated           | 2026-11-02                                                   |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.11                               |
-| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.9                            |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.12                               |
+| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.10                           |
 | Current phase          | PHASE 7 — Audit Logging                                      |
-| Current phase status   | **IN PROGRESS — 7.1 AUDIT CONTRACT AND POLICY DESIGN**       |
+| Current phase status   | **IN PROGRESS — AUDIT SCHEMA AND MIGRATION DESIGN**          |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -27,7 +27,7 @@
 |     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 |     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
 |     6 | Infrastructure and Authorization Persistence    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-02; deferred verification accepted) |
-|     7 | Audit Logging                                   | IN PROGRESS — 7.1 Audit contract and policy design  |
+|     7 | Audit Logging                                   | IN PROGRESS — Audit schema and Migration design     |
 |     8 | Cross-Context Integration                       | NOT STARTED                                         |
 |     9 | HTTP Layer                                      | NOT STARTED                                         |
 |    10 | Security, Performance, and Production Readiness | NOT STARTED                                         |
@@ -36,7 +36,9 @@
 
 PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence was implemented, its expanded PostgreSQL acceptance coverage was committed in `7e0b267`, and a GitHub source review on 2026-11-01 found no blocking defect in the inspected transaction boundary, tenant-scoped persistence paths, database guards, authorization snapshot assembly, or NestJS provider wiring. The recorded focused checkpoint contains 322 passing Access Control Unit tests and 16 passing Access Control Integration tests (338 total), with successful TypeScript, Access Control lint, Prettier, diff, and production build checks. The project owner formally approved PHASE 6 on 2026-11-02, accepting the explicitly documented deferred verification items in section 8.10. PHASE 6 is closed; this approval does not claim that the full application boot, full-project Integration suite, or production-scale benchmark has been completed.
 
-PHASE 7 — Audit Logging started on 2026-11-02. Repository inspection confirmed that no Audit model, repository, or adapter exists yet. The dedicated execution plan was added at `docs/architecture/access-control/PHASE-7-AUDIT-LOGGING-PLAN.md`. This is a documentation/planning checkpoint only: no application code, Prisma schema, or migration has been changed. The current work is 7.1 — Audit event contract and policy design; unresolved owner decisions are listed in the plan and must not be silently assumed.
+PHASE 7 — Audit Logging started on 2026-11-02. Repository inspection confirmed that no Audit model, repository, or adapter exists yet. The seven existing mutation Handlers use the transaction-owning Access Control Unit of Work; its four current adapters are bound to the same Prisma transaction client. Successful-mutation Audit writes must be integrated into this same transaction, while selected authorization-denial events require separate handling because the business transaction is rolled back on denial.
+
+The project owner approved ADR-022 on 2026-11-02: Audit records are retained as ordinary database records indefinitely under the current policy, with no TTL, automatic deletion, scheduled purge, cleanup, or automatic archival. No application code, Prisma schema, or Migration has been changed in Phase 7 to this checkpoint. The proposed Phase 7 execution sequence and repository constraints have been consolidated into the three source-of-truth documents; the temporary standalone plan file is being removed. The next task is Audit schema and Migration design. Audit-reader authorization, historical reference behavior, selected denial events, initial Role Permission event cardinality, and correlation-ID propagation remain open decisions.
 
 ### PHASE 3 Registry implementation result
 
@@ -991,7 +993,7 @@ Deferred verification and risk boundaries:
 The following items are later-phase work, accepted deferred verification, or separate operational follow-ups. They do not reopen the formally approved PHASE 6 scope. Deferred verification is not represented as completed.
 
 1. **User account status — PHASE 8:** Identity Access owns `User.status`. Confirm how account status is enforced in authenticated and non-HTTP application operations without duplicating Identity lifecycle ownership.
-2. **Audit retention and access — PHASE 7:** define retention, access authorization, and operational handling for audit records.
+2. **Audit-reader authorization and historical reference behavior — PHASE 7:** define who may read Audit records, their Organization/Branch scope, and how actor/subject references survive lifecycle changes. Retention/no-automatic-deletion is resolved by ADR-022.
 3. **Accepted PHASE 6 verification deferrals:** full application boot/complete module-graph runtime verification and a production-scale query benchmark remain open; see section 8.10. The small/synthetic-data query-plan review already recorded in PHASE 6 is not production-scale evidence.
 4. **Backup recovery drill:** restore the recorded database backup into an isolated database before claiming a full recovery test.
 5. **Deferred Outbound Email Integration failure:** investigate `schedules retry and releases the current lease after an enqueue failure` separately. Do not change Access Control code to mask this unrelated failure.
@@ -1023,4 +1025,4 @@ The repository documents and Git history are the project source of truth. Conver
 
 ## 11. Exact next step
 
-PHASES 0–6 are formally closed. PHASE 6 was approved by the project owner on 2026-11-02, with the full application boot, full-project Integration suite review, and production-scale query benchmark explicitly accepted as deferred verification rather than completed checks. PHASE 7 — Audit Logging is active on the dedicated `access-control-phase-7-audit` branch. Immediate next step: complete 7.1 using `PHASE-7-AUDIT-LOGGING-PLAN.md`, resolve the listed owner decisions, then implement the Domain/Application Audit contract and transaction-bound writer. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
+PHASES 0–6 are formally closed. PHASE 6 was approved by the project owner on 2026-11-02, with the full application boot, full-project Integration suite review, and production-scale query benchmark explicitly accepted as deferred verification rather than completed checks. PHASE 7 — Audit Logging is active on the dedicated `access-control-phase-7-audit` branch. ADR-022 records the owner-approved no-automatic-deletion policy. Immediate next step: design the Access Control Audit Prisma model and forward-only Migration against the approved event vocabulary and transaction boundary, while resolving the remaining schema-shaping decisions in `MASTER-ARCHITECTURE.md` section PHASE 7. No schema or Migration change is recorded yet. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
