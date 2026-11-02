@@ -2,6 +2,10 @@ import { Prisma } from '../../../../generated/prisma/client.js';
 import { PermissionOverride } from '../../domain/permission-overrides/permission-override.js';
 import { RoleAssignment } from '../../domain/role-assignments/role-assignment.js';
 import { Role } from '../../domain/roles/role.js';
+import {
+  ROLE_DEFINITION_SOURCE,
+  type RoleDefinitionSource,
+} from '../../domain/roles/role.types.js';
 
 export const ROLE_WITH_PERMISSIONS = {
   permissions: {
@@ -18,6 +22,46 @@ export const ROLE_WITH_PERMISSIONS = {
 export type PersistedRoleWithPermissions = Prisma.RoleGetPayload<{
   include: typeof ROLE_WITH_PERMISSIONS;
 }>;
+
+function mapRoleDefinitionSource(
+  definitionScope: PersistedRoleWithPermissions['definitionScope'],
+): RoleDefinitionSource {
+  switch (definitionScope) {
+    case 'SYSTEM':
+      return ROLE_DEFINITION_SOURCE.SYSTEM;
+
+    case 'ORGANIZATION':
+      return ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED;
+
+    default: {
+      const unexpectedValue: never = definitionScope;
+
+      throw new Error(
+        `Unsupported persisted Role definition scope: ${unexpectedValue}`,
+      );
+    }
+  }
+}
+
+export function mapRoleDefinitionSourceToPersistence(
+  definitionSource: RoleDefinitionSource,
+): PersistedRoleWithPermissions['definitionScope'] {
+  switch (definitionSource) {
+    case ROLE_DEFINITION_SOURCE.SYSTEM:
+      return 'SYSTEM';
+
+    case ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED:
+      return 'ORGANIZATION';
+
+    default: {
+      const unexpectedSource: never = definitionSource;
+
+      throw new Error(
+        `Unsupported Role definition source: ${unexpectedSource}`,
+      );
+    }
+  }
+}
 
 export const ROLE_ASSIGNMENT_WITH_RELATIONS = {
   role: {
@@ -76,7 +120,7 @@ export function mapRoleToDomain(record: PersistedRoleWithPermissions): Role {
     code: record.code,
     name: record.name,
     description: record.description,
-    definitionScope: record.definitionScope,
+    definitionSource: mapRoleDefinitionSource(record.definitionScope),
     assignmentScope: record.assignmentScope,
     organizationId: record.organizationId,
     isAssignable: record.isAssignable,
@@ -133,7 +177,6 @@ export function mapPermissionOverrideToDomain(
   });
 }
 
-
 // Scalar persistence records used to avoid loading three or more
 // sibling relations through one query inside an interactive transaction.
 
@@ -174,9 +217,7 @@ export type PersistedPermissionOverrideRecord = Pick<
 export function mapRoleAssignmentRecordToDomain(input: {
   readonly record: PersistedRoleAssignmentRecord;
   readonly role: Role;
-  readonly organizationMembership:
-    | PersistedOrganizationMembershipReference
-    | null;
+  readonly organizationMembership: PersistedOrganizationMembershipReference | null;
   readonly branchMembership: PersistedBranchMembershipReference | null;
 }): RoleAssignment {
   return RoleAssignment.reconstitute({

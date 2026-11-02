@@ -4,6 +4,7 @@ import { RoleCodeAlreadyExistsError } from '../../application/errors/role-code-a
 import type { RoleRepository } from '../../application/ports/role.repository.js';
 import type { Role } from '../../domain/roles/role.js';
 import {
+  mapRoleDefinitionSourceToPersistence,
   mapRoleToDomain,
   ROLE_WITH_PERMISSIONS,
 } from './access-control-persistence.mapper.js';
@@ -11,10 +12,7 @@ import {
 export class PrismaRoleRepository implements RoleRepository {
   constructor(private readonly prisma: Prisma.TransactionClient) {}
 
-  async existsByCode(
-    organizationId: string,
-    code: string,
-  ): Promise<boolean> {
+  async existsByCode(organizationId: string, code: string): Promise<boolean> {
     try {
       const record = await this.prisma.role.findFirst({
         where: {
@@ -63,10 +61,7 @@ export class PrismaRoleRepository implements RoleRepository {
     }
   }
 
-  async findById(
-    organizationId: string,
-    roleId: string,
-  ): Promise<Role | null> {
+  async findById(organizationId: string, roleId: string): Promise<Role | null> {
     try {
       const record = await this.prisma.role.findFirst({
         where: {
@@ -91,7 +86,9 @@ export class PrismaRoleRepository implements RoleRepository {
           code: role.getCode(),
           name: role.getName(),
           description: role.getDescription(),
-          definitionScope: role.getDefinitionScope(),
+          definitionScope: mapRoleDefinitionSourceToPersistence(
+            role.getDefinitionSource(),
+          ),
           assignmentScope: role.getAssignmentScope(),
           organizationId: role.getOrganizationId(),
           isAssignable: role.isAssignable(),
@@ -140,9 +137,7 @@ export class PrismaRoleRepository implements RoleRepository {
     }
   }
 
-  private isOrganizationRoleCodeUniqueViolation(
-    error: unknown,
-  ): boolean {
+  private isOrganizationRoleCodeUniqueViolation(error: unknown): boolean {
     if (
       !(error instanceof Prisma.PrismaClientKnownRequestError) ||
       error.code !== 'P2002'
@@ -153,10 +148,7 @@ export class PrismaRoleRepository implements RoleRepository {
     const target = error.meta?.target;
 
     if (Array.isArray(target)) {
-      return (
-        target.includes('organizationId') &&
-        target.includes('code')
-      );
+      return target.includes('organizationId') && target.includes('code');
     }
 
     if (typeof target === 'string') {
