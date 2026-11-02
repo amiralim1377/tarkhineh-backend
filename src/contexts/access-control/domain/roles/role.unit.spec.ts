@@ -4,13 +4,25 @@ import {
   InvalidRoleDataError,
   ROLE_DATA_ERROR_CODE,
 } from '../errors/invalid-role-data.error.js';
+
 import { PERMISSION_CODE } from '../permissions/permission-catalog.js';
+
 import {
   ROLE_ASSIGNMENT_SCOPE,
-  ROLE_DEFINITION_SCOPE,
+  ROLE_DEFINITION_SOURCE,
   ROLE_STATUS,
 } from './role.types.js';
+
+import {
+  SYSTEM_ROLE_CODE,
+  SYSTEM_ROLE_DEFINITIONS,
+} from './system-role-catalog.js';
+
 import { Role } from './role.js';
+
+// ============================================================
+// TEST HELPERS
+// ============================================================
 
 function createOrganizationRole(
   overrides: Partial<Parameters<typeof Role.create>[0]> = {},
@@ -18,7 +30,7 @@ function createOrganizationRole(
   return Role.create({
     code: 'SALES_MANAGER',
     name: 'Sales Manager',
-    definitionScope: ROLE_DEFINITION_SCOPE.ORGANIZATION,
+    definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
     assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
     organizationId: 'organization-1',
     isAssignable: true,
@@ -26,52 +38,67 @@ function createOrganizationRole(
   });
 }
 
+// ============================================================
+// ROLE TESTS
+// ============================================================
+
 describe('Role', () => {
+  // ==========================================================
+  // CREATION AND OWNERSHIP
+  // ==========================================================
+
   describe('creation and ownership', () => {
-    it('creates an Organization-defined role owned by one Organization', () => {
+    it('creates an Organization-defined Role owned by one Organization', () => {
       const role = createOrganizationRole();
 
       expect(role.getCode()).toBe('SALES_MANAGER');
+      expect(role.getName()).toBe('Sales Manager');
+      expect(role.getDefinitionSource()).toBe(
+        ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
+      );
       expect(role.getOrganizationId()).toBe('organization-1');
-      expect(role.getDefinitionScope()).toBe('ORGANIZATION');
-      expect(role.getAssignmentScope()).toBe('ORGANIZATION');
+      expect(role.getAssignmentScope()).toBe(
+        ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+      );
       expect(role.getStatus()).toBe(ROLE_STATUS.ACTIVE);
     });
 
-    it('creates a System role without an Organization owner', () => {
-      const role = Role.create({
-        code: 'BRANCH_MANAGER',
-        name: 'Branch Manager',
-        definitionScope: ROLE_DEFINITION_SCOPE.SYSTEM,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
-        organizationId: null,
-        isAssignable: true,
-      });
+    it.each(SYSTEM_ROLE_DEFINITIONS)(
+      'creates System Role $code using its catalog configuration',
+      (definition) => {
+        const role = Role.create({
+          code: definition.code,
+          name: definition.code,
+          definitionSource: definition.definitionSource,
+          assignmentScope: definition.assignmentScope,
+          organizationId: null,
+          isAssignable: definition.isAssignable,
+        });
 
-      expect(role.getOrganizationId()).toBeNull();
-    });
+        expect(role.getCode()).toBe(definition.code);
+        expect(role.getDefinitionSource()).toBe(ROLE_DEFINITION_SOURCE.SYSTEM);
+        expect(role.getAssignmentScope()).toBe(definition.assignmentScope);
+        expect(role.getOrganizationId()).toBeNull();
+        expect(role.isAssignable()).toBe(definition.isAssignable);
+      },
+    );
 
-    it('rejects an Organization-defined role without an Organization ID', () => {
+    it('rejects an Organization-defined Role without an Organization ID', () => {
       expect(() =>
         createOrganizationRole({ organizationId: null }),
-      ).toThrowError(InvalidRoleDataError);
-
-      try {
-        createOrganizationRole({ organizationId: null });
-      } catch (error) {
-        expect(error).toBeInstanceOf(InvalidRoleDataError);
-        expect((error as InvalidRoleDataError).code).toBe(
-          ROLE_DATA_ERROR_CODE.ORGANIZATION_ID_REQUIRED,
-        );
-      }
+      ).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.ORGANIZATION_ID_REQUIRED,
+        }),
+      );
     });
 
-    it('rejects a System role owned by an Organization', () => {
+    it('rejects a System Role owned by an Organization', () => {
       expect(() =>
         Role.create({
-          code: 'BRANCH_MANAGER',
+          code: SYSTEM_ROLE_CODE.BRANCH_MANAGER,
           name: 'Branch Manager',
-          definitionScope: ROLE_DEFINITION_SCOPE.SYSTEM,
+          definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
           assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
           organizationId: 'organization-1',
           isAssignable: true,
@@ -83,7 +110,36 @@ describe('Role', () => {
       );
     });
 
-    it('rejects an empty role code or name', () => {
+    it('rejects an invalid definition source', () => {
+      expect(() =>
+        Role.create({
+          code: 'SALES_MANAGER',
+          name: 'Sales Manager',
+          definitionSource: 'INVALID_SOURCE' as never,
+          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+          organizationId: 'organization-1',
+          isAssignable: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.DEFINITION_SOURCE_INVALID,
+        }),
+      );
+    });
+
+    it('rejects an invalid assignment scope', () => {
+      expect(() =>
+        createOrganizationRole({
+          assignmentScope: 'INVALID_SCOPE' as never,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.ASSIGNMENT_SCOPE_INVALID,
+        }),
+      );
+    });
+
+    it('rejects an empty Role code or name', () => {
       expect(() => createOrganizationRole({ code: '  ' })).toThrowError(
         expect.objectContaining({
           code: ROLE_DATA_ERROR_CODE.CODE_REQUIRED,
@@ -98,57 +154,114 @@ describe('Role', () => {
     });
   });
 
-  describe('reserved System Roles', () => {
-    it('keeps ORGANIZATION_OWNER non-assignable and Organization-scoped', () => {
+  // ==========================================================
+  // SYSTEM ROLE VALIDATION
+  // ==========================================================
+
+  describe('System Role validation', () => {
+    it('rejects a System Role that is not registered in the catalog', () => {
+      expect(() =>
+        Role.create({
+          code: 'UNKNOWN_SYSTEM_ROLE',
+          name: 'Unknown System Role',
+          definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
+          assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+          organizationId: null,
+          isAssignable: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.SYSTEM_ROLE_NOT_REGISTERED,
+        }),
+      );
+    });
+
+    it('rejects an Organization-defined Role using a reserved System Role code', () => {
+      expect(() =>
+        Role.create({
+          code: SYSTEM_ROLE_CODE.ORGANIZATION_OWNER,
+          name: 'Organization Owner',
+          definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
+          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+          organizationId: 'organization-1',
+          isAssignable: false,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.SYSTEM_ROLE_CODE_RESERVED,
+        }),
+      );
+    });
+
+    it('rejects a System Role with an assignment scope different from its catalog definition', () => {
+      expect(() =>
+        Role.create({
+          code: SYSTEM_ROLE_CODE.BRANCH_MANAGER,
+          name: 'Branch Manager',
+          definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
+          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+          organizationId: null,
+          isAssignable: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.SYSTEM_ROLE_CONFIGURATION_INVALID,
+        }),
+      );
+    });
+
+    it('rejects a System Role with an assignability different from its catalog definition', () => {
+      expect(() =>
+        Role.create({
+          code: SYSTEM_ROLE_CODE.ORGANIZATION_OWNER,
+          name: 'Organization Owner',
+          definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
+          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+          organizationId: null,
+          isAssignable: true,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.SYSTEM_ROLE_CONFIGURATION_INVALID,
+        }),
+      );
+    });
+
+    it('does not allow ORGANIZATION_OWNER through generic assignment', () => {
       const owner = Role.create({
-        code: 'ORGANIZATION_OWNER',
+        code: SYSTEM_ROLE_CODE.ORGANIZATION_OWNER,
         name: 'Organization Owner',
-        definitionScope: ROLE_DEFINITION_SCOPE.SYSTEM,
+        definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
         assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
         organizationId: null,
         isAssignable: false,
       });
 
+      expect(owner.isAssignable()).toBe(false);
       expect(owner.canBeAssignedThroughGenericWorkflow()).toBe(false);
     });
 
-    it('rejects an assignable or incorrectly scoped ORGANIZATION_OWNER', () => {
-      expect(() =>
-        Role.create({
-          code: 'ORGANIZATION_OWNER',
-          name: 'Organization Owner',
-          definitionScope: ROLE_DEFINITION_SCOPE.SYSTEM,
-          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
-          organizationId: null,
-          isAssignable: true,
-        }),
-      ).toThrowError(
-        expect.objectContaining({
-          code: ROLE_DATA_ERROR_CODE.OWNER_ROLE_RESERVED,
-        }),
-      );
-    });
+    it('allows BRANCH_MANAGER through generic assignment', () => {
+      const manager = Role.create({
+        code: SYSTEM_ROLE_CODE.BRANCH_MANAGER,
+        name: 'Branch Manager',
+        definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
+        assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+        organizationId: null,
+        isAssignable: true,
+      });
 
-    it('requires BRANCH_MANAGER to be an assignable System Branch Role', () => {
-      expect(() =>
-        Role.create({
-          code: 'BRANCH_MANAGER',
-          name: 'Branch Manager',
-          definitionScope: ROLE_DEFINITION_SCOPE.SYSTEM,
-          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
-          organizationId: null,
-          isAssignable: true,
-        }),
-      ).toThrowError(
-        expect.objectContaining({
-          code: ROLE_DATA_ERROR_CODE.BRANCH_MANAGER_ROLE_RESERVED,
-        }),
-      );
+      expect(manager.isAssignable()).toBe(true);
+      expect(manager.canBeAssignedThroughGenericWorkflow()).toBe(true);
     });
   });
 
+  // ==========================================================
+  // PERMISSION COMPATIBILITY
+  // ==========================================================
+
   describe('permission compatibility', () => {
-    it('allows Organization roles to contain Organization and Branch permissions', () => {
+    it('allows Organization Roles to contain Organization and Branch permissions', () => {
       const role = createOrganizationRole({
         permissionCodes: [
           PERMISSION_CODE.ORGANIZATION_READ,
@@ -162,14 +275,10 @@ describe('Role', () => {
       ]);
     });
 
-    it('allows Branch roles to contain Branch permissions', () => {
-      const role = Role.create({
+    it('allows Branch Roles to contain Branch permissions', () => {
+      const role = createOrganizationRole({
         code: 'BRANCH_SUPERVISOR',
-        name: 'Branch Supervisor',
-        definitionScope: ROLE_DEFINITION_SCOPE.ORGANIZATION,
         assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
-        organizationId: 'organization-1',
-        isAssignable: true,
         permissionCodes: [PERMISSION_CODE.BRANCH_DASHBOARD_READ],
       });
 
@@ -178,15 +287,11 @@ describe('Role', () => {
       ]);
     });
 
-    it('rejects Organization-target permissions on Branch roles', () => {
+    it('rejects Organization-target permissions on Branch Roles', () => {
       expect(() =>
-        Role.create({
+        createOrganizationRole({
           code: 'BRANCH_SUPERVISOR',
-          name: 'Branch Supervisor',
-          definitionScope: ROLE_DEFINITION_SCOPE.ORGANIZATION,
           assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
-          organizationId: 'organization-1',
-          isAssignable: true,
           permissionCodes: [PERMISSION_CODE.ORGANIZATION_READ],
         }),
       ).toThrowError(
@@ -196,7 +301,7 @@ describe('Role', () => {
       );
     });
 
-    it('rejects permission codes absent from the registry', () => {
+    it('rejects permission codes absent from the Permission Catalog', () => {
       expect(() =>
         createOrganizationRole({
           permissionCodes: ['organization.permission.unknown'],
@@ -245,14 +350,21 @@ describe('Role', () => {
           PERMISSION_CODE.ORGANIZATION_READ,
           'unknown.permission',
         ]),
-      ).toThrowError(InvalidRoleDataError);
+      ).toThrowError(
+        expect.objectContaining({
+          code: ROLE_DATA_ERROR_CODE.PERMISSION_UNKNOWN,
+        }),
+      );
 
-      // A failed replacement must not partially mutate the aggregate.
       expect(role.getPermissionCodes()).toEqual([
         PERMISSION_CODE.ORGANIZATION_READ,
       ]);
     });
   });
+
+  // ==========================================================
+  // ROLE DETAILS
+  // ==========================================================
 
   describe('mutable details', () => {
     it('updates and normalizes the Role name and description', () => {
@@ -323,22 +435,28 @@ describe('Role', () => {
     });
   });
 
+  // ==========================================================
+  // LIFECYCLE AND ASSIGNMENT
+  // ==========================================================
+
   describe('lifecycle and generic assignment', () => {
-    it('allows active and assignable roles through generic assignment workflows', () => {
+    it('allows active and assignable Organization Roles through generic assignment', () => {
       const role = createOrganizationRole();
 
       expect(role.canBeAssignedThroughGenericWorkflow()).toBe(true);
       expect(role.isEffectiveForAuthorization()).toBe(true);
     });
 
-    it('does not allow non-assignable roles through generic assignment workflows', () => {
-      const role = createOrganizationRole({ isAssignable: false });
+    it('does not allow non-assignable Organization Roles through generic assignment', () => {
+      const role = createOrganizationRole({
+        isAssignable: false,
+      });
 
       expect(role.canBeAssignedThroughGenericWorkflow()).toBe(false);
       expect(role.isEffectiveForAuthorization()).toBe(true);
     });
 
-    it('makes an archived role ineffective and unavailable for new assignments', () => {
+    it('makes an archived Role ineffective and unavailable for new assignments', () => {
       const role = createOrganizationRole();
 
       role.archive();
