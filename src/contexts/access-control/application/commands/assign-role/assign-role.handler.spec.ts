@@ -33,7 +33,7 @@ function createOrganizationRole(
     id: 'role-1',
     code: 'SALES_MANAGER',
     name: 'Sales Manager',
-    definitionScope: 'ORGANIZATION',
+    definitionSource: 'ORGANIZATION_DEFINED',
     assignmentScope: 'ORGANIZATION',
     organizationId: overrides.organizationId ?? 'org-1',
     isAssignable: overrides.isAssignable ?? true,
@@ -51,8 +51,8 @@ function createBranchRole(
     id: 'branch-role-1',
     code: 'BRANCH_MANAGER_CUSTOM',
     name: 'Branch Manager Custom',
-    definitionScope:
-      overrides.organizationId === null ? 'SYSTEM' : 'ORGANIZATION',
+    definitionSource:
+      overrides.organizationId === null ? 'SYSTEM' : 'ORGANIZATION_DEFINED',
     assignmentScope: 'BRANCH',
     organizationId:
       overrides.organizationId === null
@@ -121,17 +121,15 @@ function createSut(role: Role | null = createOrganizationRole()) {
       };
     });
 
-  const findActiveBranchMembership = vi
-    .fn()
-    .mockImplementation(async () => {
-      expect(transactionActive).toBe(true);
+  const findActiveBranchMembership = vi.fn().mockImplementation(async () => {
+    expect(transactionActive).toBe(true);
 
-      return {
-        id: 'branch-membership-1',
-        organizationId: 'org-1',
-        branchId: 'branch-1',
-      };
-    });
+    return {
+      id: 'branch-membership-1',
+      organizationId: 'org-1',
+      branchId: 'branch-1',
+    };
+  });
 
   const existsActiveForTarget = vi.fn().mockImplementation(async () => {
     expect(transactionActive).toBe(true);
@@ -167,9 +165,7 @@ function createSut(role: Role | null = createOrganizationRole()) {
   };
 
   const executeOperation = async <T>(
-    operation: (
-      context: AccessControlUnitOfWorkContext,
-    ) => Promise<T>,
+    operation: (context: AccessControlUnitOfWorkContext) => Promise<T>,
   ): Promise<T> => {
     transactionActive = true;
 
@@ -486,7 +482,7 @@ describe('AssignRoleHandler', () => {
       id: 'owner-role',
       code: 'ORGANIZATION_OWNER',
       name: 'Organization Owner',
-      definitionScope: 'SYSTEM',
+      definitionSource: 'SYSTEM',
       assignmentScope: 'ORGANIZATION',
       organizationId: null,
       isAssignable: false,
