@@ -1,10 +1,16 @@
 import type { Prisma } from '../../src/generated/prisma/client.js';
-
 import {
   PERMISSION_CODE,
-  PERMISSION_DEFINITIONS,
   type PermissionCode,
 } from '../../src/contexts/access-control/domain/permissions/permission-catalog.js';
+import { PERMISSION_DEFINITIONS } from '../../src/contexts/access-control/domain/permissions/permission-catalog-derived.js';
+import { ROLE_DEFINITION_SOURCE } from '../../src/contexts/access-control/domain/roles/role.types.js';
+import {
+  SYSTEM_ROLE_CODE,
+  SYSTEM_ROLE_DEFINITIONS as DOMAIN_SYSTEM_ROLE_DEFINITIONS,
+  type SystemRoleCode,
+  type SystemRoleDefinitionWithCode,
+} from '../../src/contexts/access-control/domain/roles/system-role-catalog.js';
 
 // ============================================================
 // SYSTEM ROLE PERMISSION SETS
@@ -17,7 +23,7 @@ import {
  * Adding a new permission must not silently expand system-role privileges.
  */
 export const SYSTEM_ROLE_PERMISSION_SETS = {
-  ORGANIZATION_OWNER: [
+  [SYSTEM_ROLE_CODE.ORGANIZATION_OWNER]: [
     PERMISSION_CODE.ORGANIZATION_READ,
     PERMISSION_CODE.ORGANIZATION_UPDATE,
     PERMISSION_CODE.ORGANIZATION_BRANCHES_READ,
@@ -42,7 +48,8 @@ export const SYSTEM_ROLE_PERMISSION_SETS = {
     PERMISSION_CODE.BRANCH_STAFF_REMOVE,
     PERMISSION_CODE.BRANCH_ROLES_ASSIGN,
   ],
-  BRANCH_MANAGER: [
+
+  [SYSTEM_ROLE_CODE.BRANCH_MANAGER]: [
     PERMISSION_CODE.BRANCH_DASHBOARD_READ,
     PERMISSION_CODE.BRANCH_STAFF_READ,
     PERMISSION_CODE.BRANCH_STAFF_INVITE,
@@ -51,45 +58,68 @@ export const SYSTEM_ROLE_PERMISSION_SETS = {
     PERMISSION_CODE.BRANCH_STAFF_REMOVE,
     PERMISSION_CODE.BRANCH_ROLES_ASSIGN,
   ],
-} as const satisfies Record<
-  'ORGANIZATION_OWNER' | 'BRANCH_MANAGER',
-  readonly PermissionCode[]
->;
+} as const satisfies Record<SystemRoleCode, readonly PermissionCode[]>;
 
 // ============================================================
-// SYSTEM ROLE DEFINITIONS
+// SYSTEM ROLE SEED METADATA
 // ============================================================
 
-type SystemRoleCode = keyof typeof SYSTEM_ROLE_PERMISSION_SETS;
-type AssignmentScope = 'ORGANIZATION' | 'BRANCH';
-
-interface SystemRoleDefinition {
-  readonly code: SystemRoleCode;
+/**
+ * Seed-specific metadata.
+ *
+ * Structural properties such as:
+ * - definitionSource
+ * - assignmentScope
+ * - isAssignable
+ *
+ * are owned by the Domain System Role Catalog.
+ *
+ * This object only contains information required by persistence.
+ */
+interface SystemRoleSeedMetadata {
   readonly name: string;
   readonly description: string;
-  readonly assignmentScope: AssignmentScope;
-  readonly isAssignable: boolean;
   readonly permissionCodes: readonly PermissionCode[];
 }
 
-const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
-  {
-    code: 'ORGANIZATION_OWNER',
+const SYSTEM_ROLE_SEED_METADATA = {
+  [SYSTEM_ROLE_CODE.ORGANIZATION_OWNER]: {
     name: 'مالک سازمان',
     description: 'مدیریت کامل سازمان ترخینه و تمام شعب آن.',
-    assignmentScope: 'ORGANIZATION',
-    isAssignable: false,
-    permissionCodes: SYSTEM_ROLE_PERMISSION_SETS.ORGANIZATION_OWNER,
+    permissionCodes:
+      SYSTEM_ROLE_PERMISSION_SETS[SYSTEM_ROLE_CODE.ORGANIZATION_OWNER],
   },
-  {
-    code: 'BRANCH_MANAGER',
+
+  [SYSTEM_ROLE_CODE.BRANCH_MANAGER]: {
     name: 'مدیر شعبه',
     description: 'مدیریت عملیات و کارکنان شعبه در محدوده اختیارات مجاز.',
-    assignmentScope: 'BRANCH',
-    isAssignable: true,
-    permissionCodes: SYSTEM_ROLE_PERMISSION_SETS.BRANCH_MANAGER,
+    permissionCodes:
+      SYSTEM_ROLE_PERMISSION_SETS[SYSTEM_ROLE_CODE.BRANCH_MANAGER],
   },
-];
+} as const satisfies Record<SystemRoleCode, SystemRoleSeedMetadata>;
+
+// ============================================================
+// SYSTEM ROLE SEED DEFINITIONS
+// ============================================================
+
+type SystemRoleSeedDefinition = SystemRoleDefinitionWithCode &
+  SystemRoleSeedMetadata;
+
+/**
+ * Combines the Domain-owned structural definitions with
+ * Seed-specific metadata.
+ *
+ * Domain Catalog remains the source of truth for Role structure.
+ */
+const SYSTEM_ROLE_SEED_DEFINITIONS: readonly SystemRoleSeedDefinition[] =
+  Object.freeze(
+    DOMAIN_SYSTEM_ROLE_DEFINITIONS.map((definition) =>
+      Object.freeze({
+        ...definition,
+        ...SYSTEM_ROLE_SEED_METADATA[definition.code],
+      }),
+    ),
+  );
 
 // ============================================================
 // RESULT
@@ -97,6 +127,7 @@ const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
 
 export interface AccessControlSeedResult {
   readonly permissionCount: number;
+
   readonly roles: readonly {
     readonly code: SystemRoleCode;
     readonly permissionCount: number;
@@ -110,32 +141,32 @@ export interface AccessControlSeedResult {
 async function validateSystemRoles(
   tx: Prisma.TransactionClient,
 ): Promise<Map<SystemRoleCode, Prisma.RoleModel>> {
-  const roleCodes = SYSTEM_ROLE_DEFINITIONS.map(
+  const roleCodes = SYSTEM_ROLE_SEED_DEFINITIONS.map(
     (definition) => definition.code,
   );
 
   const existingRoles = await tx.role.findMany({
     where: {
-      definitionScope: 'SYSTEM',
-      code: { in: roleCodes },
+      definitionScope: ROLE_DEFINITION_SOURCE.SYSTEM,
+      code: {
+        in: roleCodes,
+      },
     },
   });
 
   const rolesByCode = new Map<SystemRoleCode, Prisma.RoleModel>(
-    existingRoles.map((role) => [
-      role.code as SystemRoleCode,
-      role,
-    ]),
+    existingRoles.map((role) => [role.code as SystemRoleCode, role]),
   );
 
   // Validate every existing System Role before performing any write.
-  for (const definition of SYSTEM_ROLE_DEFINITIONS) {
+  for (const definition of SYSTEM_ROLE_SEED_DEFINITIONS) {
     const existingRole = rolesByCode.get(definition.code);
 
     if (!existingRole) {
       continue;
     }
 
+    // Archived System Roles require explicit manual intervention.
     if (existingRole.status === 'ARCHIVED') {
       throw new Error(
         `System role "${definition.code}" is archived. ` +
@@ -143,6 +174,7 @@ async function validateSystemRoles(
       );
     }
 
+    // Assignment Scope must match the Domain Catalog.
     if (existingRole.assignmentScope !== definition.assignmentScope) {
       throw new Error(
         `System role "${definition.code}" has an invalid assignment scope. ` +
@@ -151,6 +183,7 @@ async function validateSystemRoles(
       );
     }
 
+    // System Roles must never belong to an individual Organization.
     if (existingRole.organizationId !== null) {
       throw new Error(
         `System role "${definition.code}" unexpectedly belongs to an organization.`,
@@ -175,7 +208,9 @@ async function synchronizePermissions(
       where: {
         code: definition.code,
       },
+
       update: {},
+
       create: {
         code: definition.code,
       },
@@ -193,15 +228,17 @@ async function synchronizePermissions(
 
 async function synchronizeSystemRole(
   tx: Prisma.TransactionClient,
-  definition: SystemRoleDefinition,
+  definition: SystemRoleSeedDefinition,
   existingRole: Prisma.RoleModel | undefined,
   permissionIds: ReadonlyMap<PermissionCode, string>,
 ): Promise<void> {
+  // Create a missing System Role or update its existing record.
   const role = existingRole
     ? await tx.role.update({
         where: {
           id: existingRole.id,
         },
+
         data: {
           name: definition.name,
           description: definition.description,
@@ -213,12 +250,13 @@ async function synchronizeSystemRole(
           code: definition.code,
           name: definition.name,
           description: definition.description,
-          definitionScope: 'SYSTEM',
+          definitionScope: definition.definitionSource,
           assignmentScope: definition.assignmentScope,
           isAssignable: definition.isAssignable,
         },
       });
 
+  // Resolve Permission IDs for this exact System Role.
   const rolePermissionData = definition.permissionCodes.map(
     (permissionCode) => {
       const permissionId = permissionIds.get(permissionCode);
@@ -268,14 +306,14 @@ async function synchronizeSystemRole(
 export async function synchronizeAccessControlRegistry(
   tx: Prisma.TransactionClient,
 ): Promise<AccessControlSeedResult> {
-  // All preconditions are checked before the first write.
+  // Validate existing System Roles before the first database write.
   const existingRoles = await validateSystemRoles(tx);
 
-  // Upsert all source-controlled Permission codes.
+  // Synchronize all registered Permission definitions.
   const permissionIds = await synchronizePermissions(tx);
 
-  // Synchronize only the two known System Roles.
-  for (const definition of SYSTEM_ROLE_DEFINITIONS) {
+  // Synchronize every System Role registered in the Domain Catalog.
+  for (const definition of SYSTEM_ROLE_SEED_DEFINITIONS) {
     await synchronizeSystemRole(
       tx,
       definition,
@@ -286,7 +324,8 @@ export async function synchronizeAccessControlRegistry(
 
   return {
     permissionCount: permissionIds.size,
-    roles: SYSTEM_ROLE_DEFINITIONS.map((definition) => ({
+
+    roles: SYSTEM_ROLE_SEED_DEFINITIONS.map((definition) => ({
       code: definition.code,
       permissionCount: definition.permissionCodes.length,
     })),
