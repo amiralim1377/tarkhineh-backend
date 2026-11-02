@@ -1,6 +1,6 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
-import { ROLE_DEFINITION_SCOPE } from '../../../domain/roles/role.types.js';
+import { ROLE_DEFINITION_SOURCE } from '../../../domain/roles/role.types.js';
 import { PERMISSION_CODE } from '../../../domain/permissions/permission-catalog.js';
 import { AccessControlActorRequiredError } from '../../errors/access-control-actor-required.error.js';
 import { AccessControlForbiddenError } from '../../errors/access-control-forbidden.error.js';
@@ -17,9 +17,10 @@ import {
 } from './archive-role.command.js';
 
 @CommandHandler(ArchiveRoleCommand)
-export class ArchiveRoleHandler
-  implements ICommandHandler<ArchiveRoleCommand, ArchiveRoleResult>
-{
+export class ArchiveRoleHandler implements ICommandHandler<
+  ArchiveRoleCommand,
+  ArchiveRoleResult
+> {
   constructor(
     @Inject(ACCESS_CONTROL_UNIT_OF_WORK)
     private readonly unitOfWork: AccessControlUnitOfWork,
@@ -54,9 +55,7 @@ export class ArchiveRoleHandler
 
       const archivePermission = PERMISSION_CODE.ORGANIZATION_ROLES_ARCHIVE;
 
-      if (
-        !authorizationContext.permissionCodes.includes(archivePermission)
-      ) {
+      if (!authorizationContext.permissionCodes.includes(archivePermission)) {
         throw new AccessControlForbiddenError(archivePermission);
       }
 
@@ -68,7 +67,8 @@ export class ArchiveRoleHandler
 
       if (
         !role ||
-        role.getDefinitionScope() !== ROLE_DEFINITION_SCOPE.ORGANIZATION ||
+        role.getDefinitionSource() !==
+          ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED ||
         role.getOrganizationId() !== organizationId
       ) {
         throw new RoleNotFoundError(organizationId, roleId);
