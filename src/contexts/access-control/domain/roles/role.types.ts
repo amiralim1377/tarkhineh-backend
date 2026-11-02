@@ -1,10 +1,10 @@
-export const ROLE_DEFINITION_SCOPE = {
+export const ROLE_DEFINITION_SOURCE = {
   SYSTEM: 'SYSTEM',
-  ORGANIZATION: 'ORGANIZATION',
+  ORGANIZATION_DEFINED: 'ORGANIZATION_DEFINED',
 } as const;
 
-export type RoleDefinitionScope =
-  (typeof ROLE_DEFINITION_SCOPE)[keyof typeof ROLE_DEFINITION_SCOPE];
+export type RoleDefinitionSource =
+  (typeof ROLE_DEFINITION_SOURCE)[keyof typeof ROLE_DEFINITION_SOURCE];
 
 export const ROLE_ASSIGNMENT_SCOPE = {
   ORGANIZATION: 'ORGANIZATION',
