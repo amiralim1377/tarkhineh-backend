@@ -1,12 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  PERMISSION_TARGET_SCOPE,
+  PERMISSION_RESOURCE_LEVEL,
   type PermissionCode,
 } from '../../domain/permissions/permission-catalog.js';
 import { isKnownPermissionCode } from '../../domain/rules/role-permission-scope.rule.js';
 import {
-  ROLE_ASSIGNMENT_SCOPE,
-  type RoleAssignmentScope,
+  ROLE_ASSIGNMENT_TARGET,
+  type RoleAssignmentTarget,
 } from '../../domain/roles/role.types.js';
 import { AuthorizationDecision } from '../../domain/authorization/authorization-decision.js';
 import {
@@ -80,7 +80,7 @@ export class AuthorizationApplicationService {
         PERMISSION_DEFINITIONS.some(
           (definition) =>
             definition.code === input.permissionCode &&
-            definition.targetScope === PERMISSION_TARGET_SCOPE.BRANCH,
+            definition.resourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH,
         ) &&
         branchId === undefined)
     ) {
@@ -137,7 +137,7 @@ export class AuthorizationApplicationService {
 
     const permissionCodes = PERMISSION_DEFINITIONS.filter((definition) => {
       if (
-        definition.targetScope === PERMISSION_TARGET_SCOPE.BRANCH &&
+        definition.resourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH &&
         branchId === undefined
       ) {
         return false;
@@ -176,7 +176,7 @@ export class AuthorizationApplicationService {
     input: {
       readonly userId: string;
       readonly organizationId: string;
-      readonly assignmentScope?: RoleAssignmentScope;
+      readonly assignmentTarget?: RoleAssignmentTarget;
     },
     snapshotReader: AuthorizationSnapshotReader = this.snapshotReader,
   ): Promise<readonly PermissionCode[]> {
@@ -194,7 +194,7 @@ export class AuthorizationApplicationService {
 
     const organizationPermissionCodes = PERMISSION_DEFINITIONS.filter(
       (definition) =>
-        definition.targetScope === PERMISSION_TARGET_SCOPE.ORGANIZATION &&
+        definition.resourceLevel === PERMISSION_RESOURCE_LEVEL.ORGANIZATION &&
         this.evaluator
           .evaluate({
             request: {
@@ -211,7 +211,7 @@ export class AuthorizationApplicationService {
       snapshots.activeBranchSnapshots.length === 0
         ? []
         : PERMISSION_DEFINITIONS.filter((definition) => {
-            if (definition.targetScope !== PERMISSION_TARGET_SCOPE.BRANCH) {
+            if (definition.resourceLevel !== PERMISSION_RESOURCE_LEVEL.BRANCH) {
               return false;
             }
 
@@ -237,7 +237,7 @@ export class AuthorizationApplicationService {
                 .isAllowed();
             };
 
-            return input.assignmentScope === ROLE_ASSIGNMENT_SCOPE.BRANCH
+            return input.assignmentTarget === ROLE_ASSIGNMENT_TARGET.BRANCH
               ? snapshots.activeBranchSnapshots.some(isEffectiveInSnapshot)
               : snapshots.activeBranchSnapshots.every(isEffectiveInSnapshot);
           }).map((definition) => definition.code);
