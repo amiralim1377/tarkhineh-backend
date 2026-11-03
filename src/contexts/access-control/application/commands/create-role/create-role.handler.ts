@@ -44,7 +44,7 @@ export class CreateRoleHandler implements ICommandHandler<
       name: command.input.name,
       description: command.input.description,
       definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-      assignmentScope: command.input.assignmentScope,
+      assignmentTarget: command.input.assignmentTarget,
       organizationId,
       isAssignable: true,
       permissionCodes: command.input.permissionCodes,
@@ -57,7 +57,7 @@ export class CreateRoleHandler implements ICommandHandler<
           {
             userId: actorUserId,
             organizationId,
-            assignmentScope: role.getAssignmentScope(),
+            assignmentTarget: role.getAssignmentTarget(),
           },
           context.authorizationSnapshotReader,
         );

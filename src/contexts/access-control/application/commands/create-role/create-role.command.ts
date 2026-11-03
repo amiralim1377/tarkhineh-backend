@@ -1,15 +1,14 @@
 import { Command } from '@nestjs/cqrs';
-import type { RoleAssignmentScope } from '../../../domain/roles/role.types.js';
+import type { RoleAssignmentTarget } from '../../../domain/roles/role.types.js';
 
 export interface CreateRoleCommandInput {
   readonly organizationId: string;
   readonly code: string;
   readonly name: string;
   readonly description?: string | null;
-  readonly assignmentScope: RoleAssignmentScope;
+  readonly assignmentTarget: RoleAssignmentTarget;
   readonly permissionCodes: readonly string[];
 }
-
 export interface CreateRoleResult {
   readonly roleId: string;
 }
