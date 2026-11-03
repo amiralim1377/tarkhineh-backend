@@ -89,7 +89,7 @@ export class PrismaRoleRepository implements RoleRepository {
           definitionScope: mapRoleDefinitionSourceToPersistence(
             role.getDefinitionSource(),
           ),
-          assignmentScope: role.getAssignmentScope(),
+          assignmentTarget: role.getAssignmentTarget(),
           organizationId: role.getOrganizationId(),
           isAssignable: role.isAssignable(),
           status: role.getStatus(),

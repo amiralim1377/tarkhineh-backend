@@ -8,7 +8,7 @@ enum RoleDefinitionScope {
   ORGANIZATION
 }
 
-enum RoleAssignmentScope {
+enum RoleAssignmentTarget {
   ORGANIZATION
   BRANCH
 }
@@ -24,7 +24,7 @@ model Role {
   name            String
   description     String?
   definitionScope RoleDefinitionScope
-  assignmentScope RoleAssignmentScope
+  assignmentTarget RoleAssignmentTarget
   organizationId  String?
   isAssignable    Boolean             @default(true)
   status          RoleStatus          @default(ACTIVE)

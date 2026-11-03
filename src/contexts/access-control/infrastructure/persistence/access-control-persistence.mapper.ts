@@ -121,7 +121,7 @@ export function mapRoleToDomain(record: PersistedRoleWithPermissions): Role {
     name: record.name,
     description: record.description,
     definitionSource: mapRoleDefinitionSource(record.definitionScope),
-    assignmentScope: record.assignmentScope,
+    assignmentTarget: record.assignmentTarget,
     organizationId: record.organizationId,
     isAssignable: record.isAssignable,
     status: record.status,
