@@ -9,7 +9,7 @@ import {
   ROLE_ASSIGNMENT_ERROR_CODE,
 } from '../../../domain/errors/invalid-role-assignment.error.js';
 import { RoleAssignment } from '../../../domain/role-assignments/role-assignment.js';
-import { ROLE_ASSIGNMENT_SCOPE } from '../../../domain/roles/role.types.js';
+import { ROLE_ASSIGNMENT_TARGET } from '../../../domain/roles/role.types.js';
 import { PERMISSION_CODE } from '../../../domain/permissions/permission-catalog.js';
 import {
   CLOCK,
@@ -31,9 +31,10 @@ import {
 } from './assign-role.command.js';
 
 @CommandHandler(AssignRoleCommand)
-export class AssignRoleHandler
-  implements ICommandHandler<AssignRoleCommand, AssignRoleResult>
-{
+export class AssignRoleHandler implements ICommandHandler<
+  AssignRoleCommand,
+  AssignRoleResult
+> {
   private readonly delegationPolicy = new PermissionDelegationPolicy();
 
   constructor(
@@ -89,7 +90,7 @@ export class AssignRoleHandler
             {
               userId: actorUserId,
               organizationId,
-              assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+              assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
             },
             context.authorizationSnapshotReader,
           )
@@ -126,17 +127,16 @@ export class AssignRoleHandler
         throw new RoleNotFoundError(organizationId, roleId);
       }
 
-      const expectedScope = organizationTarget
-        ? ROLE_ASSIGNMENT_SCOPE.ORGANIZATION
-        : ROLE_ASSIGNMENT_SCOPE.BRANCH;
+      const expectedAssignmentTarget = organizationTarget
+        ? ROLE_ASSIGNMENT_TARGET.ORGANIZATION
+        : ROLE_ASSIGNMENT_TARGET.BRANCH;
 
-      if (role.getAssignmentScope() !== expectedScope) {
+      if (role.getAssignmentTarget() !== expectedAssignmentTarget) {
         throw new InvalidRoleAssignmentError(
           ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_SCOPE_MISMATCH,
-          'Role assignment scope does not match the supplied membership target.',
+          'Role assignment target does not match the supplied membership target.',
         );
       }
-
       const delegationDecision = this.delegationPolicy.canAssignRole({
         role,
         targetOrganizationId: organizationId,

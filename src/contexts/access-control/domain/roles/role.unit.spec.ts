@@ -8,7 +8,7 @@ import {
 import { PERMISSION_CODE } from '../permissions/permission-catalog.js';
 
 import {
-  ROLE_ASSIGNMENT_SCOPE,
+  ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
   ROLE_STATUS,
 } from './role.types.js';
@@ -31,7 +31,7 @@ function createOrganizationRole(
     code: 'SALES_MANAGER',
     name: 'Sales Manager',
     definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
     organizationId: 'organization-1',
     isAssignable: true,
     ...overrides,
@@ -57,8 +57,8 @@ describe('Role', () => {
         ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
       );
       expect(role.getOrganizationId()).toBe('organization-1');
-      expect(role.getAssignmentScope()).toBe(
-        ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+      expect(role.getAssignmentTarget()).toBe(
+        ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
       );
       expect(role.getStatus()).toBe(ROLE_STATUS.ACTIVE);
     });
@@ -70,14 +70,14 @@ describe('Role', () => {
           code: definition.code,
           name: definition.code,
           definitionSource: definition.definitionSource,
-          assignmentScope: definition.assignmentScope,
+          assignmentTarget: definition.assignmentTarget,
           organizationId: null,
           isAssignable: definition.isAssignable,
         });
 
         expect(role.getCode()).toBe(definition.code);
         expect(role.getDefinitionSource()).toBe(ROLE_DEFINITION_SOURCE.SYSTEM);
-        expect(role.getAssignmentScope()).toBe(definition.assignmentScope);
+        expect(role.getAssignmentTarget()).toBe(definition.assignmentTarget);
         expect(role.getOrganizationId()).toBeNull();
         expect(role.isAssignable()).toBe(definition.isAssignable);
       },
@@ -99,7 +99,7 @@ describe('Role', () => {
           code: SYSTEM_ROLE_CODE.BRANCH_MANAGER,
           name: 'Branch Manager',
           definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-          assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+          assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
           organizationId: 'organization-1',
           isAssignable: true,
         }),
@@ -116,7 +116,7 @@ describe('Role', () => {
           code: 'SALES_MANAGER',
           name: 'Sales Manager',
           definitionSource: 'INVALID_SOURCE' as never,
-          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+          assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
           organizationId: 'organization-1',
           isAssignable: true,
         }),
@@ -127,10 +127,10 @@ describe('Role', () => {
       );
     });
 
-    it('rejects an invalid assignment scope', () => {
+    it('rejects an invalid assignment target', () => {
       expect(() =>
         createOrganizationRole({
-          assignmentScope: 'INVALID_SCOPE' as never,
+          assignmentTarget: 'INVALID_SCOPE' as never,
         }),
       ).toThrowError(
         expect.objectContaining({
@@ -165,7 +165,7 @@ describe('Role', () => {
           code: 'UNKNOWN_SYSTEM_ROLE',
           name: 'Unknown System Role',
           definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-          assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+          assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
           organizationId: null,
           isAssignable: true,
         }),
@@ -182,7 +182,7 @@ describe('Role', () => {
           code: SYSTEM_ROLE_CODE.ORGANIZATION_OWNER,
           name: 'Organization Owner',
           definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+          assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
           organizationId: 'organization-1',
           isAssignable: false,
         }),
@@ -193,13 +193,13 @@ describe('Role', () => {
       );
     });
 
-    it('rejects a System Role with an assignment scope different from its catalog definition', () => {
+    it('rejects a System Role with an assignment target different from its catalog definition', () => {
       expect(() =>
         Role.create({
           code: SYSTEM_ROLE_CODE.BRANCH_MANAGER,
           name: 'Branch Manager',
           definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+          assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
           organizationId: null,
           isAssignable: true,
         }),
@@ -216,7 +216,7 @@ describe('Role', () => {
           code: SYSTEM_ROLE_CODE.ORGANIZATION_OWNER,
           name: 'Organization Owner',
           definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-          assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+          assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
           organizationId: null,
           isAssignable: true,
         }),
@@ -232,7 +232,7 @@ describe('Role', () => {
         code: SYSTEM_ROLE_CODE.ORGANIZATION_OWNER,
         name: 'Organization Owner',
         definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
         organizationId: null,
         isAssignable: false,
       });
@@ -246,7 +246,7 @@ describe('Role', () => {
         code: SYSTEM_ROLE_CODE.BRANCH_MANAGER,
         name: 'Branch Manager',
         definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
         organizationId: null,
         isAssignable: true,
       });
@@ -278,7 +278,7 @@ describe('Role', () => {
     it('allows Branch Roles to contain Branch permissions', () => {
       const role = createOrganizationRole({
         code: 'BRANCH_SUPERVISOR',
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
         permissionCodes: [PERMISSION_CODE.BRANCH_DASHBOARD_READ],
       });
 
@@ -287,11 +287,11 @@ describe('Role', () => {
       ]);
     });
 
-    it('rejects Organization-target permissions on Branch Roles', () => {
+    it('rejects Organization-level permissions on Branch Roles', () => {
       expect(() =>
         createOrganizationRole({
           code: 'BRANCH_SUPERVISOR',
-          assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+          assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
           permissionCodes: [PERMISSION_CODE.ORGANIZATION_READ],
         }),
       ).toThrowError(

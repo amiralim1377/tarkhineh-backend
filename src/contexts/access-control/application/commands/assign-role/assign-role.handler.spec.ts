@@ -19,6 +19,10 @@ import type { RoleRepository } from '../../ports/role.repository.js';
 import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import { AssignRoleCommand } from './assign-role.command.js';
 import { AssignRoleHandler } from './assign-role.handler.js';
+import {
+  ROLE_ASSIGNMENT_TARGET,
+  ROLE_DEFINITION_SOURCE,
+} from '../../../domain/roles/role.types.js';
 
 const FIXED_TIME = new Date('2026-11-01T12:00:00.000Z');
 
@@ -33,8 +37,8 @@ function createOrganizationRole(
     id: 'role-1',
     code: 'SALES_MANAGER',
     name: 'Sales Manager',
-    definitionSource: 'ORGANIZATION_DEFINED',
-    assignmentScope: 'ORGANIZATION',
+    definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
     organizationId: overrides.organizationId ?? 'org-1',
     isAssignable: overrides.isAssignable ?? true,
     permissionCodes: overrides.permissionCodes ?? ['organization.read'],
@@ -54,7 +58,7 @@ function createBranchRole(
     code: isSystemRole ? 'BRANCH_MANAGER' : 'BRANCH_MANAGER_CUSTOM',
     name: isSystemRole ? 'Branch Manager' : 'Branch Manager Custom',
     definitionSource: isSystemRole ? 'SYSTEM' : 'ORGANIZATION_DEFINED',
-    assignmentScope: 'BRANCH',
+    assignmentTarget: 'BRANCH',
     organizationId: isSystemRole ? null : (overrides.organizationId ?? 'org-1'),
     isAssignable: true,
     permissionCodes: overrides.permissionCodes ?? ['branch.dashboard.read'],
@@ -252,7 +256,7 @@ describe('AssignRoleHandler', () => {
       {
         userId: 'actor-1',
         organizationId: 'org-1',
-        assignmentScope: 'ORGANIZATION',
+        assignmentTarget: 'ORGANIZATION',
       },
       sut.transactionReader,
     );
@@ -438,7 +442,7 @@ describe('AssignRoleHandler', () => {
     expect(sut.isTransactionActive()).toBe(false);
   });
 
-  it('rejects a Role whose assignment scope does not match the target', async () => {
+  it('rejects a Role whose assignment target does not match the target', async () => {
     await expect(
       sut.handler.execute(createCommand({ target: 'BRANCH' })),
     ).rejects.toBeInstanceOf(InvalidRoleAssignmentError);
@@ -481,7 +485,7 @@ describe('AssignRoleHandler', () => {
       code: 'ORGANIZATION_OWNER',
       name: 'Organization Owner',
       definitionSource: 'SYSTEM',
-      assignmentScope: 'ORGANIZATION',
+      assignmentTarget: 'ORGANIZATION',
       organizationId: null,
       isAssignable: false,
     });
