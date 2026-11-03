@@ -14,7 +14,7 @@ function createRole(): Role {
     name: 'Test Organization Reader',
     description: null,
     definitionSource: 'ORGANIZATION_DEFINED',
-    assignmentScope: 'ORGANIZATION',
+    assignmentTarget: 'ORGANIZATION',
     organizationId: 'org-1',
     isAssignable: true,
     status: 'ACTIVE',
@@ -151,7 +151,7 @@ describe('AuthorizationApplicationService', () => {
       expect(sut.loadSnapshot).not.toHaveBeenCalled();
     });
 
-    it('requires a Branch ID for a Branch-target permission without loading a snapshot', async () => {
+    it('requires a Branch ID for a Branch-level permission without loading a snapshot', async () => {
       const decision = await sut.service.checkPermission({
         userId: 'user-1',
         organizationId: 'org-1',
@@ -199,7 +199,7 @@ describe('AuthorizationApplicationService', () => {
       expect(sut.loadSnapshot).not.toHaveBeenCalled();
     });
 
-    it('returns only Organization-target permissions without a Branch context', async () => {
+    it('returns only Organization-level permissions without a Branch context', async () => {
       const result = await sut.service.getEffectiveAuthorizationContext({
         userId: 'user-1',
         organizationId: 'org-1',
@@ -358,7 +358,7 @@ describe('AuthorizationApplicationService', () => {
       ]);
     });
 
-    it('uses the union of effective Branch permissions for Branch-assignment Roles', async () => {
+    it('uses the union of effective Branch permissions for Roles with a Branch assignment target', async () => {
       const secondBranchSnapshot = createSnapshot();
       secondBranchSnapshot.roles[0].replacePermissionCodes([
         'organization.read',
@@ -373,7 +373,7 @@ describe('AuthorizationApplicationService', () => {
         await sut.service.getEffectiveDelegationPermissionCodes({
           userId: 'user-1',
           organizationId: 'org-1',
-          assignmentScope: 'BRANCH',
+          assignmentTarget: 'BRANCH',
         });
 
       expect(permissions).toContain('branch.dashboard.read');

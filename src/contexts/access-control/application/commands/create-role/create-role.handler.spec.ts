@@ -31,7 +31,7 @@ function createCommand(
     organizationId: string;
     code: string;
     name: string;
-    assignmentScope: 'ORGANIZATION' | 'BRANCH';
+    assignmentTarget: 'ORGANIZATION' | 'BRANCH';
     permissionCodes: readonly string[];
   }> = {},
 ): CreateRoleCommand {
@@ -40,7 +40,7 @@ function createCommand(
     code: overrides.code ?? 'SALES_MANAGER',
     name: overrides.name ?? 'Sales Manager',
     description: 'Sales team permissions',
-    assignmentScope: overrides.assignmentScope ?? 'ORGANIZATION',
+    assignmentTarget: overrides.assignmentTarget ?? 'ORGANIZATION',
     permissionCodes: overrides.permissionCodes ?? ['organization.read'],
   });
 }
@@ -162,7 +162,7 @@ describe('CreateRoleHandler', () => {
       {
         userId: 'actor-1',
         organizationId: 'org-1',
-        assignmentScope: 'ORGANIZATION',
+        assignmentTarget: 'ORGANIZATION',
       },
       sut.transactionReader,
     );
@@ -181,7 +181,7 @@ describe('CreateRoleHandler', () => {
       ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
     );
 
-    expect(savedRole.getAssignmentScope()).toBe('ORGANIZATION');
+    expect(savedRole.getAssignmentTarget()).toBe('ORGANIZATION');
     expect(savedRole.getOrganizationId()).toBe('org-1');
     expect(savedRole.isAssignable()).toBe(true);
     expect(savedRole.getPermissionCodes()).toEqual(['organization.read']);
@@ -189,11 +189,11 @@ describe('CreateRoleHandler', () => {
     expect(sut.isTransactionActive()).toBe(false);
   });
 
-  it('supports a Branch-assignment Role when its permission is delegable by the actor', async () => {
+  it('supports a Role with a Branch assignment target when its permission is delegable by the actor', async () => {
     const result = await sut.handler.execute(
       createCommand({
         code: 'BRANCH_SALES_MANAGER',
-        assignmentScope: 'BRANCH',
+        assignmentTarget: 'BRANCH',
         permissionCodes: ['branch.dashboard.read'],
       }),
     );
@@ -204,7 +204,7 @@ describe('CreateRoleHandler', () => {
       {
         userId: 'actor-1',
         organizationId: 'org-1',
-        assignmentScope: 'BRANCH',
+        assignmentTarget: 'BRANCH',
       },
       sut.transactionReader,
     );
@@ -213,7 +213,7 @@ describe('CreateRoleHandler', () => {
 
     const savedRole = sut.save.mock.calls[0]?.[0] as Role;
 
-    expect(savedRole.getAssignmentScope()).toBe('BRANCH');
+    expect(savedRole.getAssignmentTarget()).toBe('BRANCH');
     expect(savedRole.getPermissionCodes()).toEqual(['branch.dashboard.read']);
   });
 
@@ -232,11 +232,11 @@ describe('CreateRoleHandler', () => {
     expect(sut.save).not.toHaveBeenCalled();
   });
 
-  it('validates the Role permission scope before opening a transaction', async () => {
+  it('validates the Role permission resource level before opening a transaction', async () => {
     await expect(
       sut.handler.execute(
         createCommand({
-          assignmentScope: 'BRANCH',
+          assignmentTarget: 'BRANCH',
           permissionCodes: ['organization.read'],
         }),
       ),

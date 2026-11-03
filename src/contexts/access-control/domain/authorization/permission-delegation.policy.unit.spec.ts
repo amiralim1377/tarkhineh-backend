@@ -6,7 +6,7 @@ import {
 } from './permission-delegation.policy.js';
 import { PERMISSION_CODE } from '../permissions/permission-catalog.js';
 import {
-  ROLE_ASSIGNMENT_SCOPE,
+  ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
 } from '../roles/role.types.js';
 import { Role } from '../roles/role.js';
@@ -25,7 +25,7 @@ function organizationRole(
     code: 'SALES_MANAGER',
     name: 'Sales Manager',
     definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
     organizationId: ORGANIZATION_ID,
     isAssignable: true,
     permissionCodes,
@@ -39,7 +39,7 @@ function branchRole(permissionCodes: readonly string[]): Role {
     code: 'BRANCH_SUPERVISOR',
     name: 'Branch Supervisor',
     definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
     organizationId: ORGANIZATION_ID,
     isAssignable: true,
     permissionCodes,
@@ -225,7 +225,7 @@ describe('PermissionDelegationPolicy', () => {
         code: 'BRANCH_MANAGER',
         name: 'Branch Manager',
         definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
         organizationId: null,
         isAssignable: true,
       });
@@ -357,7 +357,7 @@ describe('PermissionDelegationPolicy', () => {
         code: 'ORGANIZATION_OWNER',
         name: 'Organization Owner',
         definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
         organizationId: null,
         isAssignable: false,
       });
@@ -440,7 +440,7 @@ describe('PermissionDelegationPolicy', () => {
       );
     });
 
-    it('rejects Organization-target permissions for overrides', () => {
+    it('rejects Organization-level permissions for overrides', () => {
       const decision = policy.canSetPermissionOverride({
         permissionCode: PERMISSION_CODE.ORGANIZATION_READ,
         effect: PERMISSION_OVERRIDE_EFFECT.DENY,

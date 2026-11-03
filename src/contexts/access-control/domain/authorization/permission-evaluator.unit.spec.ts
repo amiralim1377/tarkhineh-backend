@@ -8,7 +8,7 @@ import {
 } from './permission-evaluator.js';
 import { PERMISSION_CODE } from '../permissions/permission-catalog.js';
 import {
-  ROLE_ASSIGNMENT_SCOPE,
+  ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
   ROLE_STATUS,
 } from '../roles/role.types.js';
@@ -37,7 +37,7 @@ function organizationRole(
     code: 'TEST_ORGANIZATION_ROLE',
     name: 'Test Organization Role',
     definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
     organizationId: ORGANIZATION_ID,
     isAssignable: true,
     permissionCodes,
@@ -54,7 +54,7 @@ function branchRole(
     code: 'TEST_BRANCH_ROLE',
     name: 'Test Branch Role',
     definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
     organizationId: ORGANIZATION_ID,
     isAssignable: true,
     permissionCodes,
@@ -68,7 +68,7 @@ function systemBranchRole(permissionCodes: readonly string[]): Role {
     code: 'BRANCH_MANAGER',
     name: 'Branch Manager',
     definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
     organizationId: null,
     isAssignable: true,
     permissionCodes,
@@ -208,7 +208,7 @@ describe('PermissionEvaluator', () => {
       expect(decision.reasonCode).toBe(
         AUTHORIZATION_DECISION_REASON.PERMISSION_UNKNOWN,
       );
-      expect(decision.context.targetScope).toBeNull();
+      expect(decision.context.resourceLevel).toBeNull();
     });
 
     it('denies when the Organization is missing', () => {
@@ -313,7 +313,7 @@ describe('PermissionEvaluator', () => {
     });
   });
 
-  describe('Organization-target permissions', () => {
+  describe('Organization-level permissions', () => {
     it('allows an Organization permission granted by an Organization Role', () => {
       const role = organizationRole([PERMISSION_CODE.ORGANIZATION_READ]);
 
@@ -328,7 +328,7 @@ describe('PermissionEvaluator', () => {
       expect(decision.reasonCode).toBe(
         AUTHORIZATION_DECISION_REASON.ROLE_GRANT,
       );
-      expect(decision.context.targetScope).toBe('ORGANIZATION');
+      expect(decision.context.resourceLevel).toBe('ORGANIZATION');
       expect(decision.context.branchId).toBeNull();
     });
 
@@ -367,7 +367,7 @@ describe('PermissionEvaluator', () => {
     });
   });
 
-  describe('Branch-target permissions and inheritance', () => {
+  describe('Branch-level permissions and inheritance', () => {
     it('requires a Branch ID for a Branch permission', () => {
       const decision = evaluator.evaluate({
         request: {
