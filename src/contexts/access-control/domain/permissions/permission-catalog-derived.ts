@@ -4,7 +4,7 @@
 
 import {
   PERMISSION_CATALOG,
-  PERMISSION_TARGET_SCOPE,
+  PERMISSION_RESOURCE_LEVEL,
   PermissionCode,
   PermissionDefinition,
 } from './permission-catalog.js';
@@ -34,13 +34,14 @@ export const NON_DELEGABLE_PERMISSIONS: readonly PermissionCode[] =
 // TARGET SCOPE HELPERS
 // ============================================================
 
-export const ORGANIZATION_TARGET_SCOPE_PERMISSIONS: readonly PermissionCode[] =
+export const ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS: readonly PermissionCode[] =
   PERMISSION_DEFINITIONS.filter(
     (permission) =>
-      permission.targetScope === PERMISSION_TARGET_SCOPE.ORGANIZATION,
+      permission.resourceLevel === PERMISSION_RESOURCE_LEVEL.ORGANIZATION,
   ).map((permission) => permission.code);
 
-export const BRANCH_TARGET_SCOPE_PERMISSIONS: readonly PermissionCode[] =
+export const BRANCH_RESOURCE_LEVEL_PERMISSIONS: readonly PermissionCode[] =
   PERMISSION_DEFINITIONS.filter(
-    (permission) => permission.targetScope === PERMISSION_TARGET_SCOPE.BRANCH,
+    (permission) =>
+      permission.resourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH,
   ).map((permission) => permission.code);
