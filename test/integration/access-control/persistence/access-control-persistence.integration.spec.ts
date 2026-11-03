@@ -1051,7 +1051,7 @@ describe('Access Control Persistence Integration', () => {
     }
   });
 
-  it('prevents changes to Role ownership and assignment scope', async () => {
+  it('prevents changes to Role ownership and assignment target', async () => {
     const current = fixture!;
     const role = createRole(current, ROLE_ASSIGNMENT_TARGET.ORGANIZATION);
 
@@ -1069,7 +1069,7 @@ describe('Access Control Persistence Integration', () => {
       {
         sqlState: '23514',
         message:
-          'Role ownership and assignment scope are immutable; create a new role instead',
+          'Role ownership and assignment target are immutable; create a new role instead',
       },
     );
   });
