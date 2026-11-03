@@ -2,7 +2,7 @@ import { Entity } from '../../../../shared/domain/entities/entity.js';
 import { UniqueId } from '../../../../shared/domain/value-objects/unique-id.vo.js';
 import {
   PERMISSION_CATALOG,
-  PERMISSION_TARGET_SCOPE,
+  PERMISSION_RESOURCE_LEVEL,
   type PermissionCode,
 } from '../permissions/permission-catalog.js';
 import {
@@ -200,8 +200,8 @@ export class PermissionOverride extends Entity<UniqueId> {
     const permissionCode = input.permissionCode as PermissionCode;
 
     if (
-      PERMISSION_CATALOG[permissionCode].targetScope !==
-      PERMISSION_TARGET_SCOPE.BRANCH
+      PERMISSION_CATALOG[permissionCode].resourceLevel !==
+      PERMISSION_RESOURCE_LEVEL.BRANCH
     ) {
       throw new InvalidPermissionOverrideError(
         PERMISSION_OVERRIDE_ERROR_CODE.PERMISSION_SCOPE_INVALID,

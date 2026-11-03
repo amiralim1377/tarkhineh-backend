@@ -261,14 +261,14 @@ export class RoleAssignment extends Entity<UniqueId> {
       );
     }
 
-    const expectedAssignmentScope = hasOrganizationMembership
+    const expectedAssignmentTarget = hasOrganizationMembership
       ? ROLE_ASSIGNMENT_TARGET.ORGANIZATION
       : ROLE_ASSIGNMENT_TARGET.BRANCH;
 
-    if (role.getAssignmentTarget() !== expectedAssignmentScope) {
+    if (role.getAssignmentTarget() !== expectedAssignmentTarget) {
       throw new InvalidRoleAssignmentError(
         ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_SCOPE_MISMATCH,
-        'Role assignment scope does not match the membership target.',
+        'Role assignment target does not match the membership target.',
       );
     }
 
