@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   PERMISSION_CODE,
-  PERMISSION_TARGET_SCOPE,
+  PERMISSION_RESOURCE_LEVEL,
 } from '../../../domain/permissions/permission-catalog.js';
 import { PERMISSION_DEFINITIONS } from '../../../domain/permissions/permission-catalog-derived.js';
 import {
-  ROLE_ASSIGNMENT_SCOPE,
-  type RoleAssignmentScope,
+  ROLE_ASSIGNMENT_TARGET,
+  type RoleAssignmentTarget,
 } from '../../../domain/roles/role.types.js';
 import type { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import { ListAvailablePermissionsHandler } from './list-available-permissions.handler.js';
@@ -31,14 +31,14 @@ function createQuery(
   input: {
     userId?: string;
     organizationId?: string;
-    assignmentScope?: string;
+    assignmentTarget?: string;
   } = {},
 ) {
   return new ListAvailablePermissionsQuery({
     userId: input.userId ?? 'actor-1',
     organizationId: input.organizationId ?? 'org-1',
-    assignmentScope: (input.assignmentScope ??
-      ROLE_ASSIGNMENT_SCOPE.ORGANIZATION) as RoleAssignmentScope,
+    assignmentTarget: (input.assignmentTarget ??
+      ROLE_ASSIGNMENT_TARGET.ORGANIZATION) as RoleAssignmentTarget,
   });
 }
 
@@ -63,11 +63,11 @@ describe('ListAvailablePermissionsHandler', () => {
     expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledWith({
       userId: 'actor-1',
       organizationId: 'org-1',
-      assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+      assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
     });
   });
 
-  it('returns only Branch-target permissions for a Branch Role', async () => {
+  it('returns only Branch-level permissions for a Branch Role', async () => {
     const sut = createSut([
       PERMISSION_CODE.ORGANIZATION_READ,
       PERMISSION_CODE.BRANCH_DASHBOARD_READ,
@@ -75,7 +75,7 @@ describe('ListAvailablePermissionsHandler', () => {
     ]);
 
     const result = await sut.handler.execute(
-      createQuery({ assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH }),
+      createQuery({ assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH }),
     );
 
     expect(result.map(({ code }) => code)).toEqual([
@@ -84,14 +84,15 @@ describe('ListAvailablePermissionsHandler', () => {
     ]);
     expect(
       result.every(
-        ({ targetScope }) => targetScope === PERMISSION_TARGET_SCOPE.BRANCH,
+        ({ resourceLevel }) =>
+          resourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH,
       ),
     ).toBe(true);
 
     expect(sut.getEffectiveDelegationPermissionCodes).toHaveBeenCalledWith({
       userId: 'actor-1',
       organizationId: 'org-1',
-      assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+      assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
     });
   });
 
@@ -137,11 +138,11 @@ describe('ListAvailablePermissionsHandler', () => {
     expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
   });
 
-  it('does not query authorization for an invalid assignment scope', async () => {
+  it('does not query authorization for an invalid assignment target', async () => {
     const sut = createSut();
 
     await expect(
-      sut.handler.execute(createQuery({ assignmentScope: 'INVALID' })),
+      sut.handler.execute(createQuery({ assignmentTarget: 'INVALID' })),
     ).resolves.toEqual([]);
 
     expect(sut.getEffectiveDelegationPermissionCodes).not.toHaveBeenCalled();
