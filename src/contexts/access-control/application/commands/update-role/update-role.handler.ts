@@ -95,7 +95,7 @@ export class UpdateRoleHandler implements ICommandHandler<
             {
               userId: actorUserId,
               organizationId,
-              assignmentScope: role.getAssignmentScope(),
+              assignmentTarget: role.getAssignmentTarget(),
             },
             context.authorizationSnapshotReader,
           );
