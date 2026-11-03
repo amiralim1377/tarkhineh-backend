@@ -177,7 +177,7 @@ async function validateSystemRoles(
     // Assignment Target must match the Domain Catalog.
     if (existingRole.assignmentTarget !== definition.assignmentTarget) {
       throw new Error(
-        `System role "${definition.code}" has an invalid Assignment Target. ` +
+        `System role "${definition.code}" has an invalid assignment target. ` +
           `Expected "${definition.assignmentTarget}", ` +
           `found "${existingRole.assignmentTarget}".`,
       );

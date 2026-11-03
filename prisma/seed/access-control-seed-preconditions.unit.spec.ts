@@ -7,7 +7,7 @@ type MockSystemRole = {
   id: string;
   code: 'ORGANIZATION_OWNER' | 'BRANCH_MANAGER';
   status: 'ACTIVE' | 'ARCHIVED';
-  assignmentScope: 'ORGANIZATION' | 'BRANCH';
+  assignmentTarget: 'ORGANIZATION' | 'BRANCH';
   organizationId: string | null;
 };
 
@@ -46,9 +46,7 @@ function createTransactionMock(existingRoles: MockSystemRole[]) {
   };
 }
 
-function expectNoWrites(
-  mocks: ReturnType<typeof createTransactionMock>,
-): void {
+function expectNoWrites(mocks: ReturnType<typeof createTransactionMock>): void {
   expect(mocks.permissionUpsert).not.toHaveBeenCalled();
   expect(mocks.roleCreate).not.toHaveBeenCalled();
   expect(mocks.roleUpdate).not.toHaveBeenCalled();
@@ -57,42 +55,38 @@ function expectNoWrites(
 }
 
 describe('Access Control Seed Preconditions', () => {
-  it('rejects ORGANIZATION_OWNER with an invalid assignment scope before any write', async () => {
+  it('rejects ORGANIZATION_OWNER with an invalid assignment target before any write', async () => {
     const mocks = createTransactionMock([
       {
         id: 'system-owner-id',
         code: 'ORGANIZATION_OWNER',
         status: 'ACTIVE',
-        assignmentScope: 'BRANCH',
+        assignmentTarget: 'BRANCH',
         organizationId: null,
       },
     ]);
 
-    await expect(
-      synchronizeAccessControlRegistry(mocks.tx),
-    ).rejects.toThrow(
-      'System role "ORGANIZATION_OWNER" has an invalid assignment scope.',
+    await expect(synchronizeAccessControlRegistry(mocks.tx)).rejects.toThrow(
+      'System role "ORGANIZATION_OWNER" has an invalid assignment target.',
     );
 
     expect(mocks.roleFindMany).toHaveBeenCalledOnce();
     expectNoWrites(mocks);
   });
 
-  it('rejects BRANCH_MANAGER with an invalid assignment scope before any write', async () => {
+  it('rejects BRANCH_MANAGER with an invalid assignment target before any write', async () => {
     const mocks = createTransactionMock([
       {
         id: 'branch-manager-id',
         code: 'BRANCH_MANAGER',
         status: 'ACTIVE',
-        assignmentScope: 'ORGANIZATION',
+        assignmentTarget: 'ORGANIZATION',
         organizationId: null,
       },
     ]);
 
-    await expect(
-      synchronizeAccessControlRegistry(mocks.tx),
-    ).rejects.toThrow(
-      'System role "BRANCH_MANAGER" has an invalid assignment scope.',
+    await expect(synchronizeAccessControlRegistry(mocks.tx)).rejects.toThrow(
+      'System role "BRANCH_MANAGER" has an invalid assignment target.',
     );
 
     expect(mocks.roleFindMany).toHaveBeenCalledOnce();
@@ -105,14 +99,12 @@ describe('Access Control Seed Preconditions', () => {
         id: 'system-owner-id',
         code: 'ORGANIZATION_OWNER',
         status: 'ACTIVE',
-        assignmentScope: 'ORGANIZATION',
+        assignmentTarget: 'ORGANIZATION',
         organizationId: 'unexpected-organization-id',
       },
     ]);
 
-    await expect(
-      synchronizeAccessControlRegistry(mocks.tx),
-    ).rejects.toThrow(
+    await expect(synchronizeAccessControlRegistry(mocks.tx)).rejects.toThrow(
       'System role "ORGANIZATION_OWNER" unexpectedly belongs to an organization.',
     );
 
