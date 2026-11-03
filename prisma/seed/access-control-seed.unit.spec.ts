@@ -74,13 +74,15 @@ describe('Access Control System Role Permission Sets', () => {
     }
   });
 
-  it('assigns only BRANCH-scoped permissions to BRANCH_MANAGER', () => {
+  it('assigns only BRANCH-level permissions to BRANCH_MANAGER', () => {
     const definitionsByCode = new Map(
       PERMISSION_DEFINITIONS.map((permission) => [permission.code, permission]),
     );
 
     for (const permissionCode of SYSTEM_ROLE_PERMISSION_SETS.BRANCH_MANAGER) {
-      expect(definitionsByCode.get(permissionCode)?.targetScope).toBe('BRANCH');
+      expect(definitionsByCode.get(permissionCode)?.resourceLevel).toBe(
+        'BRANCH',
+      );
     }
   });
 });
