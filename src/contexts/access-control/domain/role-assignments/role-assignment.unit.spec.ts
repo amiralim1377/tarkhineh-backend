@@ -5,7 +5,7 @@ import {
   ROLE_ASSIGNMENT_ERROR_CODE,
 } from '../errors/invalid-role-assignment.error.js';
 import {
-  ROLE_ASSIGNMENT_SCOPE,
+  ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
   ROLE_STATUS,
 } from '../roles/role.types.js';
@@ -23,7 +23,7 @@ function createOrganizationRole(
     code: 'SALES_MANAGER',
     name: 'Sales Manager',
     definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
     organizationId: 'organization-1',
     isAssignable: true,
     ...overrides,
@@ -38,7 +38,7 @@ function createBranchRole(
     code: 'BRANCH_SUPERVISOR',
     name: 'Branch Supervisor',
     definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
     organizationId: 'organization-1',
     isAssignable: true,
     ...overrides,
@@ -102,7 +102,7 @@ describe('RoleAssignment', () => {
         code: 'BRANCH_MANAGER',
         name: 'Branch Manager',
         definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
         organizationId: null,
         isAssignable: true,
       });
@@ -268,7 +268,7 @@ describe('RoleAssignment', () => {
         code: 'ORGANIZATION_OWNER',
         name: 'Organization Owner',
         definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
         organizationId: null,
         isAssignable: false,
       });
@@ -286,7 +286,7 @@ describe('RoleAssignment', () => {
         code: 'ORGANIZATION_OWNER',
         name: 'Organization Owner',
         definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
         organizationId: null,
         isAssignable: false,
       });
@@ -326,7 +326,7 @@ describe('RoleAssignment', () => {
         code: 'ORGANIZATION_OWNER',
         name: 'Organization Owner',
         definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
         organizationId: null,
         isAssignable: false,
       });
