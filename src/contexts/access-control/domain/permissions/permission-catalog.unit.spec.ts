@@ -5,7 +5,7 @@ import {
   PERMISSION_CATALOG,
   PERMISSION_CODE,
   PERMISSION_RESOURCE,
-  PERMISSION_TARGET_SCOPE,
+  PERMISSION_RESOURCE_LEVEL,
   type PermissionCode,
 } from './permission-catalog.js';
 
@@ -13,8 +13,8 @@ import {
   PERMISSION_DEFINITIONS,
   DELEGABLE_PERMISSIONS,
   NON_DELEGABLE_PERMISSIONS,
-  ORGANIZATION_TARGET_SCOPE_PERMISSIONS,
-  BRANCH_TARGET_SCOPE_PERMISSIONS,
+  ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS,
+  BRANCH_RESOURCE_LEVEL_PERMISSIONS,
 } from './permission-catalog-derived.js';
 
 const sortCodes = (codes: readonly string[]) => [...codes].sort();
@@ -74,26 +74,27 @@ const EXPECTED_NON_DELEGABLE_PERMISSIONS: readonly PermissionCode[] = [
   PERMISSION_CODE.ORGANIZATION_ROLES_ARCHIVE,
 ];
 
-const EXPECTED_ORGANIZATION_TARGET_PERMISSIONS: readonly PermissionCode[] = [
-  PERMISSION_CODE.ORGANIZATION_READ,
-  PERMISSION_CODE.ORGANIZATION_UPDATE,
-  PERMISSION_CODE.ORGANIZATION_BRANCHES_READ,
-  PERMISSION_CODE.ORGANIZATION_BRANCHES_CREATE,
-  PERMISSION_CODE.ORGANIZATION_BRANCHES_UPDATE,
-  PERMISSION_CODE.ORGANIZATION_BRANCHES_SUSPEND,
-  PERMISSION_CODE.ORGANIZATION_MEMBERS_READ,
-  PERMISSION_CODE.ORGANIZATION_MEMBERS_INVITE,
-  PERMISSION_CODE.ORGANIZATION_MEMBERS_UPDATE,
-  PERMISSION_CODE.ORGANIZATION_MEMBERS_REMOVE,
-  PERMISSION_CODE.ORGANIZATION_ROLES_ASSIGN,
-  PERMISSION_CODE.ORGANIZATION_ROLES_READ,
-  PERMISSION_CODE.ORGANIZATION_ROLES_CREATE,
-  PERMISSION_CODE.ORGANIZATION_ROLES_UPDATE,
-  PERMISSION_CODE.ORGANIZATION_ROLES_ARCHIVE,
-  PERMISSION_CODE.ORGANIZATION_MEMBERS_PERMISSIONS_MANAGE,
-];
+const EXPECTED_ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS: readonly PermissionCode[] =
+  [
+    PERMISSION_CODE.ORGANIZATION_READ,
+    PERMISSION_CODE.ORGANIZATION_UPDATE,
+    PERMISSION_CODE.ORGANIZATION_BRANCHES_READ,
+    PERMISSION_CODE.ORGANIZATION_BRANCHES_CREATE,
+    PERMISSION_CODE.ORGANIZATION_BRANCHES_UPDATE,
+    PERMISSION_CODE.ORGANIZATION_BRANCHES_SUSPEND,
+    PERMISSION_CODE.ORGANIZATION_MEMBERS_READ,
+    PERMISSION_CODE.ORGANIZATION_MEMBERS_INVITE,
+    PERMISSION_CODE.ORGANIZATION_MEMBERS_UPDATE,
+    PERMISSION_CODE.ORGANIZATION_MEMBERS_REMOVE,
+    PERMISSION_CODE.ORGANIZATION_ROLES_ASSIGN,
+    PERMISSION_CODE.ORGANIZATION_ROLES_READ,
+    PERMISSION_CODE.ORGANIZATION_ROLES_CREATE,
+    PERMISSION_CODE.ORGANIZATION_ROLES_UPDATE,
+    PERMISSION_CODE.ORGANIZATION_ROLES_ARCHIVE,
+    PERMISSION_CODE.ORGANIZATION_MEMBERS_PERMISSIONS_MANAGE,
+  ];
 
-const EXPECTED_BRANCH_TARGET_PERMISSIONS: readonly PermissionCode[] = [
+const EXPECTED_BRANCH_RESOURCE_LEVEL_PERMISSIONS: readonly PermissionCode[] = [
   PERMISSION_CODE.BRANCH_DASHBOARD_READ,
   PERMISSION_CODE.BRANCH_STAFF_READ,
   PERMISSION_CODE.BRANCH_STAFF_INVITE,
@@ -144,11 +145,11 @@ describe('Permission Registry', () => {
       }
     });
 
-    it('uses only registered target scopes', () => {
-      const validScopes = Object.values(PERMISSION_TARGET_SCOPE);
+    it('uses only registered resource levels', () => {
+      const validScopes = Object.values(PERMISSION_RESOURCE_LEVEL);
 
       for (const permission of PERMISSION_DEFINITIONS) {
-        expect(validScopes).toContain(permission.targetScope);
+        expect(validScopes).toContain(permission.resourceLevel);
       }
     });
 
@@ -198,7 +199,7 @@ describe('Permission Registry', () => {
       expect(sortCodes(combined)).toEqual(sortCodes(EXPECTED_PERMISSION_CODES));
     });
 
-    it('does not infer delegability from target scope', () => {
+    it('does not infer delegability from resource level', () => {
       expect(
         PERMISSION_CATALOG[PERMISSION_CODE.BRANCH_DASHBOARD_READ].delegable,
       ).toBe(true);
@@ -209,33 +210,33 @@ describe('Permission Registry', () => {
     });
   });
 
-  describe('target scope distribution', () => {
-    it('contains exactly the 16 approved Organization-target permissions', () => {
-      expect(ORGANIZATION_TARGET_SCOPE_PERMISSIONS).toHaveLength(16);
-      expect(sortCodes(ORGANIZATION_TARGET_SCOPE_PERMISSIONS)).toEqual(
-        sortCodes(EXPECTED_ORGANIZATION_TARGET_PERMISSIONS),
+  describe('resource level distribution', () => {
+    it('contains exactly the 16 approved Organization-level permissions', () => {
+      expect(ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS).toHaveLength(16);
+      expect(sortCodes(ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS)).toEqual(
+        sortCodes(EXPECTED_ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS),
       );
     });
 
-    it('contains exactly the 7 approved Branch-target permissions', () => {
-      expect(BRANCH_TARGET_SCOPE_PERMISSIONS).toHaveLength(7);
-      expect(sortCodes(BRANCH_TARGET_SCOPE_PERMISSIONS)).toEqual(
-        sortCodes(EXPECTED_BRANCH_TARGET_PERMISSIONS),
+    it('contains exactly the 7 approved Branch-level permissions', () => {
+      expect(BRANCH_RESOURCE_LEVEL_PERMISSIONS).toHaveLength(7);
+      expect(sortCodes(BRANCH_RESOURCE_LEVEL_PERMISSIONS)).toEqual(
+        sortCodes(EXPECTED_BRANCH_RESOURCE_LEVEL_PERMISSIONS),
       );
     });
 
-    it('assigns only Branch-target permissions to the Branch resource groups', () => {
-      for (const code of EXPECTED_BRANCH_TARGET_PERMISSIONS) {
-        expect(PERMISSION_CATALOG[code].targetScope).toBe(
-          PERMISSION_TARGET_SCOPE.BRANCH,
+    it('assigns only Branch-level permissions to the Branch resource groups', () => {
+      for (const code of EXPECTED_BRANCH_RESOURCE_LEVEL_PERMISSIONS) {
+        expect(PERMISSION_CATALOG[code].resourceLevel).toBe(
+          PERMISSION_RESOURCE_LEVEL.BRANCH,
         );
       }
     });
 
-    it('assigns only Organization-target permissions to the Organization resource groups', () => {
-      for (const code of EXPECTED_ORGANIZATION_TARGET_PERMISSIONS) {
-        expect(PERMISSION_CATALOG[code].targetScope).toBe(
-          PERMISSION_TARGET_SCOPE.ORGANIZATION,
+    it('assigns only Organization-level permissions to the Organization resource groups', () => {
+      for (const code of EXPECTED_ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS) {
+        expect(PERMISSION_CATALOG[code].resourceLevel).toBe(
+          PERMISSION_RESOURCE_LEVEL.ORGANIZATION,
         );
       }
     });
@@ -246,7 +247,7 @@ describe('Permission Registry', () => {
       expect(
         PERMISSION_CATALOG[PERMISSION_CODE.ORGANIZATION_ROLES_READ],
       ).toMatchObject({
-        targetScope: PERMISSION_TARGET_SCOPE.ORGANIZATION,
+        resourceLevel: PERMISSION_RESOURCE_LEVEL.ORGANIZATION,
         resource: PERMISSION_RESOURCE.ORGANIZATION_ROLES,
         action: PERMISSION_ACTION.READ,
         delegable: true,
@@ -257,7 +258,7 @@ describe('Permission Registry', () => {
       expect(
         PERMISSION_CATALOG[PERMISSION_CODE.ORGANIZATION_ROLES_CREATE],
       ).toMatchObject({
-        targetScope: PERMISSION_TARGET_SCOPE.ORGANIZATION,
+        resourceLevel: PERMISSION_RESOURCE_LEVEL.ORGANIZATION,
         resource: PERMISSION_RESOURCE.ORGANIZATION_ROLES,
         action: PERMISSION_ACTION.CREATE,
         delegable: false,
@@ -268,7 +269,7 @@ describe('Permission Registry', () => {
       expect(
         PERMISSION_CATALOG[PERMISSION_CODE.ORGANIZATION_ROLES_UPDATE],
       ).toMatchObject({
-        targetScope: PERMISSION_TARGET_SCOPE.ORGANIZATION,
+        resourceLevel: PERMISSION_RESOURCE_LEVEL.ORGANIZATION,
         resource: PERMISSION_RESOURCE.ORGANIZATION_ROLES,
         action: PERMISSION_ACTION.UPDATE,
         delegable: false,
@@ -279,7 +280,7 @@ describe('Permission Registry', () => {
       expect(
         PERMISSION_CATALOG[PERMISSION_CODE.ORGANIZATION_ROLES_ARCHIVE],
       ).toMatchObject({
-        targetScope: PERMISSION_TARGET_SCOPE.ORGANIZATION,
+        resourceLevel: PERMISSION_RESOURCE_LEVEL.ORGANIZATION,
         resource: PERMISSION_RESOURCE.ORGANIZATION_ROLES,
         action: PERMISSION_ACTION.ARCHIVE,
         delegable: false,
@@ -292,7 +293,7 @@ describe('Permission Registry', () => {
           PERMISSION_CODE.ORGANIZATION_MEMBERS_PERMISSIONS_MANAGE
         ],
       ).toMatchObject({
-        targetScope: PERMISSION_TARGET_SCOPE.ORGANIZATION,
+        resourceLevel: PERMISSION_RESOURCE_LEVEL.ORGANIZATION,
         resource: PERMISSION_RESOURCE.ORGANIZATION_MEMBERS_PERMISSIONS,
         action: PERMISSION_ACTION.MANAGE,
         delegable: false,
@@ -308,7 +309,7 @@ describe('Permission Registry', () => {
     });
 
     it('keeps all seven Branch permissions delegable', () => {
-      for (const code of EXPECTED_BRANCH_TARGET_PERMISSIONS) {
+      for (const code of EXPECTED_BRANCH_RESOURCE_LEVEL_PERMISSIONS) {
         expect(PERMISSION_CATALOG[code].delegable).toBe(true);
       }
     });
