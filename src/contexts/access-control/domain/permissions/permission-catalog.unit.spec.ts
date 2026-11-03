@@ -146,10 +146,10 @@ describe('Permission Registry', () => {
     });
 
     it('uses only registered resource levels', () => {
-      const validScopes = Object.values(PERMISSION_RESOURCE_LEVEL);
+      const validResourceLevels = Object.values(PERMISSION_RESOURCE_LEVEL);
 
       for (const permission of PERMISSION_DEFINITIONS) {
-        expect(validScopes).toContain(permission.resourceLevel);
+        expect(validResourceLevels).toContain(permission.resourceLevel);
       }
     });
 
