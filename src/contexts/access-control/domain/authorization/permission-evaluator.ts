@@ -1,10 +1,10 @@
 import { isKnownPermissionCode } from '../rules/role-permission-scope.rule.js';
 import {
   PERMISSION_CATALOG,
-  PERMISSION_TARGET_SCOPE,
+  PERMISSION_RESOURCE_LEVEL,
 } from '../permissions/permission-catalog.js';
 import {
-  ROLE_ASSIGNMENT_SCOPE,
+  ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
 } from '../roles/role.types.js';
 import { Role } from '../roles/role.js';
@@ -54,18 +54,18 @@ export class PermissionEvaluator {
     const organizationId = request.organizationId;
     const userId = request.userId;
 
-    const targetScope = isKnownPermissionCode(permissionCode)
-      ? PERMISSION_CATALOG[permissionCode].targetScope
+    const resourceLevel = isKnownPermissionCode(permissionCode)
+      ? PERMISSION_CATALOG[permissionCode].resourceLevel
       : null;
 
     const branchId =
-      targetScope === PERMISSION_TARGET_SCOPE.BRANCH
+      resourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH
         ? request.branchId?.trim() || null
         : null;
 
     const context: AuthorizationDecisionContext = {
       permissionCode,
-      targetScope,
+      resourceLevel,
       organizationId,
       branchId,
     };
@@ -92,7 +92,10 @@ export class PermissionEvaluator {
       return deny(AUTHORIZATION_DECISION_REASON.PERMISSION_UNKNOWN);
     }
 
-    if (targetScope === PERMISSION_TARGET_SCOPE.BRANCH && branchId === null) {
+    if (
+      resourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH &&
+      branchId === null
+    ) {
       return deny(AUTHORIZATION_DECISION_REASON.BRANCH_REQUIRED);
     }
 
@@ -128,7 +131,7 @@ export class PermissionEvaluator {
     // 3. Branch context is mandatory and validated for Branch permissions.
     let branch: AuthorizationBranchSnapshot | null = null;
 
-    if (targetScope === PERMISSION_TARGET_SCOPE.BRANCH) {
+    if (resourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH) {
       branch = snapshot.branch ?? null;
 
       if (!branch || branch.id !== branchId) {
@@ -152,7 +155,7 @@ export class PermissionEvaluator {
         override.organizationId === organizationId &&
         override.organizationMembershipId === organizationMembership.id &&
         override.permissionCode === permissionCode &&
-        targetScope === PERMISSION_TARGET_SCOPE.BRANCH &&
+        resourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH &&
         override.branchId === branchId,
     );
 
@@ -192,7 +195,7 @@ export class PermissionEvaluator {
 
         return (
           role !== undefined &&
-          role.getAssignmentScope() === ROLE_ASSIGNMENT_SCOPE.ORGANIZATION &&
+          role.getAssignmentTarget() === ROLE_ASSIGNMENT_TARGET.ORGANIZATION &&
           this.isRoleOwnedByOrganization(role, organizationId) &&
           assignment.isEffectiveForAuthorization(role) &&
           role.getPermissionCodes().includes(permissionCode)
@@ -204,10 +207,10 @@ export class PermissionEvaluator {
       return allow(AUTHORIZATION_DECISION_REASON.ROLE_GRANT);
     }
 
-    // Branch assignments are considered only for Branch-target permissions.
+    // Branch assignments are considered only for Branch-level permissions.
     // Inactive BranchMembership records suppress their own assignments, but
     // they do not suppress inherited grants from Organization assignments.
-    if (targetScope === PERMISSION_TARGET_SCOPE.BRANCH && branch !== null) {
+    if (resourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH && branch !== null) {
       const applicableBranchMemberships = (
         snapshot.branchMemberships ?? []
       ).filter(
@@ -240,7 +243,7 @@ export class PermissionEvaluator {
 
         return (
           role !== undefined &&
-          role.getAssignmentScope() === ROLE_ASSIGNMENT_SCOPE.BRANCH &&
+          role.getAssignmentTarget() === ROLE_ASSIGNMENT_TARGET.BRANCH &&
           this.isRoleOwnedByOrganization(role, organizationId) &&
           assignment.isEffectiveForAuthorization(role) &&
           role.getPermissionCodes().includes(permissionCode)

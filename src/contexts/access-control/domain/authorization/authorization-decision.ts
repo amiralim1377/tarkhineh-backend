@@ -1,4 +1,4 @@
-import type { PermissionTargetScope } from '../permissions/permission-catalog.js';
+import type { PermissionResourceLevel } from '../permissions/permission-catalog.js';
 
 export const AUTHORIZATION_DECISION_REASON = {
   USER_ID_REQUIRED: 'USER_ID_REQUIRED',
@@ -23,7 +23,7 @@ export type AuthorizationDecisionReason =
 
 export interface AuthorizationDecisionContext {
   readonly permissionCode: string;
-  readonly targetScope: PermissionTargetScope | null;
+  readonly resourceLevel: PermissionResourceLevel | null;
   readonly organizationId: string;
   readonly branchId: string | null;
 }
