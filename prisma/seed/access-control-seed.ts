@@ -69,7 +69,7 @@ export const SYSTEM_ROLE_PERMISSION_SETS = {
  *
  * Structural properties such as:
  * - definitionSource
- * - assignmentScope
+ * - assignmentTarget
  * - isAssignable
  *
  * are owned by the Domain System Role Catalog.
@@ -174,12 +174,12 @@ async function validateSystemRoles(
       );
     }
 
-    // Assignment Scope must match the Domain Catalog.
-    if (existingRole.assignmentScope !== definition.assignmentScope) {
+    // Assignment Target must match the Domain Catalog.
+    if (existingRole.assignmentTarget !== definition.assignmentTarget) {
       throw new Error(
-        `System role "${definition.code}" has an invalid assignment scope. ` +
-          `Expected "${definition.assignmentScope}", ` +
-          `found "${existingRole.assignmentScope}".`,
+        `System role "${definition.code}" has an invalid Assignment Target. ` +
+          `Expected "${definition.assignmentTarget}", ` +
+          `found "${existingRole.assignmentTarget}".`,
       );
     }
 
@@ -251,7 +251,7 @@ async function synchronizeSystemRole(
           name: definition.name,
           description: definition.description,
           definitionScope: definition.definitionSource,
-          assignmentScope: definition.assignmentScope,
+          assignmentTarget: definition.assignmentTarget,
           isAssignable: definition.isAssignable,
         },
       });
