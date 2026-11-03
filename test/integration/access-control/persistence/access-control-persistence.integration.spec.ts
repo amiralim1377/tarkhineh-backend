@@ -17,7 +17,7 @@ import { PrismaService } from '../../../../src/prisma/prisma.service.js';
 
 import { PERMISSION_CODE } from '../../../../src/contexts/access-control/domain/permissions/permission-catalog.js';
 import {
-  ROLE_ASSIGNMENT_SCOPE,
+  ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
 } from '../../../../src/contexts/access-control/domain/roles/role.types.js';
 import { Role } from '../../../../src/contexts/access-control/domain/roles/role.js';
@@ -457,12 +457,12 @@ async function expectPostgresError(
 
 function createRole(
   current: IntegrationFixture,
-  assignmentScope:
-    | typeof ROLE_ASSIGNMENT_SCOPE.ORGANIZATION
-    | typeof ROLE_ASSIGNMENT_SCOPE.BRANCH,
+  assignmentTarget:
+    | typeof ROLE_ASSIGNMENT_TARGET.ORGANIZATION
+    | typeof ROLE_ASSIGNMENT_TARGET.BRANCH,
 ): Role {
   const isOrganizationRole =
-    assignmentScope === ROLE_ASSIGNMENT_SCOPE.ORGANIZATION;
+    assignmentTarget === ROLE_ASSIGNMENT_TARGET.ORGANIZATION;
 
   return Role.create({
     code: `${isOrganizationRole ? 'IT_ORG' : 'IT_BRANCH'}_${current.suffix.replaceAll('-', '').toUpperCase()}`,
@@ -471,7 +471,7 @@ function createRole(
       : 'Integration Branch Role',
     description: 'Created by Access Control persistence integration tests.',
     definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-    assignmentScope,
+    assignmentTarget,
     organizationId: current.organizationId,
     isAssignable: true,
     permissionCodes: [
@@ -496,7 +496,7 @@ async function createOrganizationActorRole(
     name: `${codePrefix} Integration Actor Role`,
     description: 'Grants permissions required by an integration scenario.',
     definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
     organizationId: current.organizationId,
     isAssignable: true,
     permissionCodes,
@@ -553,7 +553,7 @@ describe('Access Control Persistence Integration', () => {
   it('commits an Organization Role and its complete Permission relation set', async () => {
     const current = fixture!;
 
-    const role = createRole(current, ROLE_ASSIGNMENT_SCOPE.ORGANIZATION);
+    const role = createRole(current, ROLE_ASSIGNMENT_TARGET.ORGANIZATION);
 
     const roleId = role.getId().getValue();
 
@@ -600,7 +600,7 @@ describe('Access Control Persistence Integration', () => {
   it('rolls back Role creation when the Unit of Work callback fails', async () => {
     const current = fixture!;
 
-    const role = createRole(current, ROLE_ASSIGNMENT_SCOPE.ORGANIZATION);
+    const role = createRole(current, ROLE_ASSIGNMENT_TARGET.ORGANIZATION);
 
     const roleId = role.getId().getValue();
     const applicationError = new Error('Intentional integration rollback.');
@@ -627,10 +627,10 @@ describe('Access Control Persistence Integration', () => {
 
     const organizationRole = createRole(
       current,
-      ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+      ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
     );
 
-    const branchRole = createRole(current, ROLE_ASSIGNMENT_SCOPE.BRANCH);
+    const branchRole = createRole(current, ROLE_ASSIGNMENT_TARGET.BRANCH);
 
     const identifiers = await unitOfWork.execute(async (context) => {
       await context.roleRepository.save(organizationRole, current.userId);
@@ -899,7 +899,7 @@ describe('Access Control Persistence Integration', () => {
         name: 'Secondary Tenant Integration Role',
         description: 'Role owned by the secondary integration tenant.',
         definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
         organizationId: secondary.organizationId,
         isAssignable: true,
         permissionCodes: [PERMISSION_CODE.ORGANIZATION_READ],
@@ -985,7 +985,7 @@ describe('Access Control Persistence Integration', () => {
 
   it('rejects a RoleAssignment whose target scope does not match the Role', async () => {
     const current = fixture!;
-    const branchRole = createRole(current, ROLE_ASSIGNMENT_SCOPE.BRANCH);
+    const branchRole = createRole(current, ROLE_ASSIGNMENT_TARGET.BRANCH);
 
     await unitOfWork.execute(async (context) => {
       await context.roleRepository.save(branchRole, current.userId);
@@ -1019,7 +1019,7 @@ describe('Access Control Persistence Integration', () => {
     try {
       const organizationRole = createRole(
         current,
-        ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+        ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
       );
 
       await unitOfWork.execute(async (context) => {
@@ -1053,7 +1053,7 @@ describe('Access Control Persistence Integration', () => {
 
   it('prevents changes to Role ownership and assignment scope', async () => {
     const current = fixture!;
-    const role = createRole(current, ROLE_ASSIGNMENT_SCOPE.ORGANIZATION);
+    const role = createRole(current, ROLE_ASSIGNMENT_TARGET.ORGANIZATION);
 
     await unitOfWork.execute(async (context) => {
       await context.roleRepository.save(role, current.userId);
@@ -1063,7 +1063,7 @@ describe('Access Control Persistence Integration', () => {
       () =>
         prisma.$executeRaw`
           UPDATE "Role"
-          SET "assignmentScope" = 'BRANCH'
+          SET "assignmentTarget" = 'BRANCH'
           WHERE "id" = ${role.getId().getValue()}
         `,
       {
@@ -1157,7 +1157,7 @@ describe('Access Control Persistence Integration', () => {
       };
     });
 
-    const branchRole = createRole(current, ROLE_ASSIGNMENT_SCOPE.BRANCH);
+    const branchRole = createRole(current, ROLE_ASSIGNMENT_TARGET.BRANCH);
     const roleId = branchRole.getId().getValue();
 
     await unitOfWork.execute(async (context) => {
@@ -1227,7 +1227,7 @@ describe('Access Control Persistence Integration', () => {
       await authorization.getEffectiveDelegationPermissionCodes({
         userId: current.userId,
         organizationId: current.organizationId,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
       });
 
     expect(beforeSecondAssignment).not.toContain(
@@ -1277,7 +1277,7 @@ describe('Access Control Persistence Integration', () => {
       await authorization.getEffectiveDelegationPermissionCodes({
         userId: current.userId,
         organizationId: current.organizationId,
-        assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+        assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
       });
 
     expect(afterSecondAssignment).toContain(PERMISSION_CODE.BRANCH_STAFF_READ);
@@ -1295,7 +1295,7 @@ describe('Access Control Persistence Integration', () => {
       'IT_ASSIGN_MANAGER',
     );
 
-    const targetRole = createRole(current, ROLE_ASSIGNMENT_SCOPE.ORGANIZATION);
+    const targetRole = createRole(current, ROLE_ASSIGNMENT_TARGET.ORGANIZATION);
 
     await unitOfWork.execute(async (context) => {
       await context.roleRepository.save(targetRole, current.userId);
@@ -1407,7 +1407,7 @@ describe('Access Control Persistence Integration', () => {
       organizationId: current.organizationId,
       code,
       name: 'Concurrent Integration Role',
-      assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+      assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
       permissionCodes: [PERMISSION_CODE.ORGANIZATION_READ],
     });
 
@@ -1499,7 +1499,7 @@ describe('Access Control Persistence Integration', () => {
       'IT_UPDATE_MANAGER',
     );
 
-    const role = createRole(current, ROLE_ASSIGNMENT_SCOPE.ORGANIZATION);
+    const role = createRole(current, ROLE_ASSIGNMENT_TARGET.ORGANIZATION);
 
     await unitOfWork.execute(async (context) => {
       await context.roleRepository.save(role, current.userId);
@@ -1617,7 +1617,7 @@ describe('Access Control Persistence Integration', () => {
       name: 'Integration Override Manager',
       description: 'Grants permission override management for this test.',
       definitionSource: ROLE_DEFINITION_SOURCE.ORGANIZATION_DEFINED,
-      assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+      assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
       organizationId: current.organizationId,
       isAssignable: true,
       permissionCodes: [

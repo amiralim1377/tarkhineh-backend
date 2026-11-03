@@ -27,7 +27,7 @@ function createRole(scope: 'ORGANIZATION' | 'BRANCH' = 'ORGANIZATION') {
     code: scope === 'ORGANIZATION' ? 'SALES_MANAGER' : 'BRANCH_SUPERVISOR',
     name: 'Test Role',
     definitionSource: 'ORGANIZATION_DEFINED',
-    assignmentScope: scope,
+    assignmentTarget: scope,
     organizationId: 'org-1',
     isAssignable: true,
     permissionCodes:
@@ -310,7 +310,7 @@ describe('RevokeRoleHandler', () => {
       code: 'SALES_MANAGER',
       name: 'Sales Manager',
       definitionSource: 'ORGANIZATION_DEFINED',
-      assignmentScope: 'ORGANIZATION',
+      assignmentTarget: 'ORGANIZATION',
       organizationId: 'org-2',
       isAssignable: true,
       permissionCodes: ['organization.read'],

@@ -22,7 +22,7 @@ function createOrganizationRole(organizationId = 'org-1'): Role {
     code: 'SALES_MANAGER',
     name: 'Sales Manager',
     definitionSource: 'ORGANIZATION_DEFINED',
-    assignmentScope: 'ORGANIZATION',
+    assignmentTarget: 'ORGANIZATION',
     organizationId,
     isAssignable: true,
     permissionCodes: ['organization.read'],
@@ -220,7 +220,7 @@ describe('ArchiveRoleHandler', () => {
       code: 'BRANCH_MANAGER',
       name: 'Branch Manager',
       definitionSource: 'SYSTEM',
-      assignmentScope: 'BRANCH',
+      assignmentTarget: 'BRANCH',
       organizationId: null,
       isAssignable: true,
     });

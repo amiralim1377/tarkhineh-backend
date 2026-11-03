@@ -28,7 +28,7 @@ function createOrganizationRole(
     name: 'Sales Manager',
     description: 'Existing description',
     definitionSource: 'ORGANIZATION_DEFINED',
-    assignmentScope: 'ORGANIZATION',
+    assignmentTarget: 'ORGANIZATION',
     organizationId: overrides.organizationId ?? 'org-1',
     isAssignable: true,
     permissionCodes: overrides.permissionCodes ?? ['organization.read'],
@@ -247,7 +247,7 @@ describe('UpdateRoleHandler', () => {
         {
           userId: 'actor-1',
           organizationId: 'org-1',
-          assignmentScope: 'ORGANIZATION',
+          assignmentTarget: 'ORGANIZATION',
         },
         sut.transactionReader,
       );
@@ -280,7 +280,7 @@ describe('UpdateRoleHandler', () => {
         {
           userId: 'actor-1',
           organizationId: 'org-1',
-          assignmentScope: 'ORGANIZATION',
+          assignmentTarget: 'ORGANIZATION',
         },
         sut.transactionReader,
       );
