@@ -1,9 +1,9 @@
 import { QueryHandler, type IQueryHandler } from '@nestjs/cqrs';
 import {
-  PERMISSION_TARGET_SCOPE,
+  PERMISSION_RESOURCE_LEVEL,
   type PermissionDefinition,
 } from '../../../domain/permissions/permission-catalog.js';
-import { ROLE_ASSIGNMENT_SCOPE } from '../../../domain/roles/role.types.js';
+import { ROLE_ASSIGNMENT_TARGET } from '../../../domain/roles/role.types.js';
 import { AuthorizationApplicationService } from '../../services/authorization-application.service.js';
 import { ListAvailablePermissionsQuery } from './list-available-permissions.query.js';
 import { PERMISSION_DEFINITIONS } from '../../../domain/permissions/permission-catalog-derived.js';
@@ -25,15 +25,15 @@ export class ListAvailablePermissionsHandler implements IQueryHandler<
   async execute(
     query: ListAvailablePermissionsQuery,
   ): Promise<readonly PermissionDefinition[]> {
-    const { userId, organizationId, assignmentScope } = query.input;
+    const { userId, organizationId, assignmentTarget } = query.input;
     const normalizedUserId = userId.trim();
     const normalizedOrganizationId = organizationId.trim();
 
     if (
       !normalizedUserId ||
       !normalizedOrganizationId ||
-      !Object.values(ROLE_ASSIGNMENT_SCOPE).some(
-        (scope) => scope === assignmentScope,
+      !Object.values(ROLE_ASSIGNMENT_TARGET).some(
+        (target) => target === assignmentTarget,
       )
     ) {
       return [];
@@ -43,7 +43,7 @@ export class ListAvailablePermissionsHandler implements IQueryHandler<
       await this.authorization.getEffectiveDelegationPermissionCodes({
         userId: normalizedUserId,
         organizationId: normalizedOrganizationId,
-        assignmentScope,
+        assignmentTarget,
       });
 
     const delegatedCodes = new Set(delegatedPermissionCodes);
@@ -54,11 +54,11 @@ export class ListAvailablePermissionsHandler implements IQueryHandler<
           return false;
         }
 
-        // Branch Roles may contain only Branch-target permissions.
-        // Organization Roles may contain either target scope.
+        // Branch-target Roles may contain only Branch-level permissions.
+        // Organization-target Roles may contain either resource level.
         return (
-          assignmentScope === ROLE_ASSIGNMENT_SCOPE.ORGANIZATION ||
-          permission.targetScope === PERMISSION_TARGET_SCOPE.BRANCH
+          assignmentTarget === ROLE_ASSIGNMENT_TARGET.ORGANIZATION ||
+          permission.resourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH
         );
       }),
     );
