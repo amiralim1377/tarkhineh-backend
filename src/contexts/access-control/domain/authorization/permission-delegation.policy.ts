@@ -1,10 +1,10 @@
 import {
   PERMISSION_CATALOG,
   PERMISSION_CODE,
-  PERMISSION_TARGET_SCOPE,
+  PERMISSION_RESOURCE_LEVEL,
 } from '../permissions/permission-catalog.js';
 import {
-  ROLE_ASSIGNMENT_SCOPE,
+  ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
 } from '../roles/role.types.js';
 import { Role } from '../roles/role.js';
@@ -160,8 +160,8 @@ export class PermissionDelegationPolicy {
   }
 
   /**
-   * Assigning a Role requires both assignment authority at the relevant
-   * scope and delegation authority for every permission in that Role.
+   * Assigning a Role requires both assignment authority for the Role's
+   * assignment target and delegation authority for every permission in that Role.
    */
   canAssignRole(input: AssignRoleInput): DelegationDecision {
     const { role } = input;
@@ -182,7 +182,7 @@ export class PermissionDelegationPolicy {
     }
 
     const managementPermission =
-      role.getAssignmentScope() === ROLE_ASSIGNMENT_SCOPE.ORGANIZATION
+      role.getAssignmentTarget() === ROLE_ASSIGNMENT_TARGET.ORGANIZATION
         ? PERMISSION_CODE.ORGANIZATION_ROLES_ASSIGN
         : PERMISSION_CODE.BRANCH_ROLES_ASSIGN;
 
@@ -229,7 +229,7 @@ export class PermissionDelegationPolicy {
         input.permissionCode as keyof typeof PERMISSION_CATALOG
       ];
 
-    if (definition.targetScope !== PERMISSION_TARGET_SCOPE.BRANCH) {
+    if (definition.resourceLevel !== PERMISSION_RESOURCE_LEVEL.BRANCH) {
       return denied(
         DELEGATION_DECISION_REASON.OVERRIDE_PERMISSION_SCOPE_INVALID,
         input.permissionCode,
