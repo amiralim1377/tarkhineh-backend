@@ -130,7 +130,7 @@ describe('Role', () => {
     it('rejects an invalid assignment target', () => {
       expect(() =>
         createOrganizationRole({
-          assignmentTarget: 'INVALID_SCOPE' as never,
+          assignmentTarget: 'INVALID_TARGET' as never,
         }),
       ).toThrowError(
         expect.objectContaining({
