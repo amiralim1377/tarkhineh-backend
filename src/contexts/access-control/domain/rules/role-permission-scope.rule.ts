@@ -1,12 +1,12 @@
 import {
   PERMISSION_CATALOG,
-  PERMISSION_TARGET_SCOPE,
+  PERMISSION_RESOURCE_LEVEL,
   type PermissionCode,
 } from '../permissions/permission-catalog.js';
 
 import {
-  ROLE_ASSIGNMENT_SCOPE,
-  type RoleAssignmentScope,
+  ROLE_ASSIGNMENT_TARGET,
+  type RoleAssignmentTarget,
 } from '../roles/role.types.js';
 
 export function isKnownPermissionCode(
@@ -16,26 +16,27 @@ export function isKnownPermissionCode(
 }
 
 /**
- * Organization-assigned roles can contain both Organization and Branch
- * permissions. Branch-assigned roles can contain only Branch permissions.
+ * Roles with an Organization assignment target can contain both Organization
+ * and Branch permissions. Roles with a Branch assignment target can contain
+ * only Branch permissions.
  */
-export function isPermissionCompatibleWithRoleAssignmentScope(
-  assignmentScope: RoleAssignmentScope,
+export function isPermissionCompatibleWithRoleAssignmentTarget(
+  assignmentTarget: RoleAssignmentTarget,
   permissionCode: string,
 ): boolean {
-  // Permission must exist in the catalog.
   if (!isKnownPermissionCode(permissionCode)) {
     return false;
   }
 
-  const permissionScope = PERMISSION_CATALOG[permissionCode].targetScope;
+  const permissionResourceLevel =
+    PERMISSION_CATALOG[permissionCode].resourceLevel;
 
-  switch (assignmentScope) {
-    case ROLE_ASSIGNMENT_SCOPE.ORGANIZATION:
+  switch (assignmentTarget) {
+    case ROLE_ASSIGNMENT_TARGET.ORGANIZATION:
       return true;
 
-    case ROLE_ASSIGNMENT_SCOPE.BRANCH:
-      return permissionScope === PERMISSION_TARGET_SCOPE.BRANCH;
+    case ROLE_ASSIGNMENT_TARGET.BRANCH:
+      return permissionResourceLevel === PERMISSION_RESOURCE_LEVEL.BRANCH;
 
     default:
       return false;

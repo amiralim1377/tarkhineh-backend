@@ -8,14 +8,14 @@ import {
 
 import {
   isKnownPermissionCode,
-  isPermissionCompatibleWithRoleAssignmentScope,
+  isPermissionCompatibleWithRoleAssignmentTarget,
 } from '../rules/role-permission-scope.rule.js';
 
 import {
-  ROLE_ASSIGNMENT_SCOPE,
+  ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
   ROLE_STATUS,
-  type RoleAssignmentScope,
+  type RoleAssignmentTarget,
   type RoleDefinitionSource,
   type RoleStatus,
 } from './role.types.js';
@@ -37,7 +37,7 @@ export interface CreateRoleProps {
   readonly name: string;
   readonly description?: string | null;
   readonly definitionSource: RoleDefinitionSource;
-  readonly assignmentScope: RoleAssignmentScope;
+  readonly assignmentTarget: RoleAssignmentTarget;
   readonly organizationId?: string | null;
   readonly isAssignable: boolean;
   readonly status?: RoleStatus;
@@ -57,7 +57,7 @@ export class Role extends Entity<UniqueId> {
     private name: string,
     private description: string | null,
     private readonly definitionSource: RoleDefinitionSource,
-    private readonly assignmentScope: RoleAssignmentScope,
+    private readonly assignmentTarget: RoleAssignmentTarget,
     private readonly organizationId: string | null,
     private readonly assignable: boolean,
     private status: RoleStatus,
@@ -102,10 +102,10 @@ export class Role extends Entity<UniqueId> {
       );
     }
 
-    if (!Object.hasOwn(ROLE_ASSIGNMENT_SCOPE, props.assignmentScope)) {
+    if (!Object.hasOwn(ROLE_ASSIGNMENT_TARGET, props.assignmentTarget)) {
       throw new InvalidRoleDataError(
         ROLE_DATA_ERROR_CODE.ASSIGNMENT_SCOPE_INVALID,
-        'Role assignment scope is invalid.',
+        'Role assignment target is invalid.',
       );
     }
 
@@ -139,12 +139,12 @@ export class Role extends Entity<UniqueId> {
     Role.validateSystemRoleConfiguration({
       code,
       definitionSource: props.definitionSource,
-      assignmentScope: props.assignmentScope,
+      assignmentTarget: props.assignmentTarget,
       isAssignable: props.isAssignable,
     });
 
     const validatedPermissionCodes = Role.validatePermissionCodes(
-      props.assignmentScope,
+      props.assignmentTarget,
       permissionCodes,
     );
 
@@ -154,7 +154,7 @@ export class Role extends Entity<UniqueId> {
       name,
       description,
       props.definitionSource,
-      props.assignmentScope,
+      props.assignmentTarget,
       organizationId,
       props.isAssignable,
       status,
@@ -169,7 +169,7 @@ export class Role extends Entity<UniqueId> {
   private static validateSystemRoleConfiguration(props: {
     readonly code: string;
     readonly definitionSource: RoleDefinitionSource;
-    readonly assignmentScope: RoleAssignmentScope;
+    readonly assignmentTarget: RoleAssignmentTarget;
     readonly isAssignable: boolean;
   }): void {
     if (props.definitionSource === ROLE_DEFINITION_SOURCE.SYSTEM) {
@@ -183,7 +183,7 @@ export class Role extends Entity<UniqueId> {
       const definition = getSystemRoleDefinition(props.code);
 
       const configurationMatchesCatalog =
-        props.assignmentScope === definition.assignmentScope &&
+        props.assignmentTarget === definition.assignmentTarget &&
         props.isAssignable === definition.isAssignable;
 
       if (!configurationMatchesCatalog) {
@@ -209,7 +209,7 @@ export class Role extends Entity<UniqueId> {
   // ============================================================
 
   private static validatePermissionCodes(
-    assignmentScope: RoleAssignmentScope,
+    assignmentTarget: RoleAssignmentTarget,
     permissionCodes: readonly string[],
   ): PermissionCode[] {
     const uniqueCodes = [...new Set(permissionCodes)];
@@ -224,14 +224,14 @@ export class Role extends Entity<UniqueId> {
       }
 
       if (
-        !isPermissionCompatibleWithRoleAssignmentScope(
-          assignmentScope,
+        !isPermissionCompatibleWithRoleAssignmentTarget(
+          assignmentTarget,
           permissionCode,
         )
       ) {
         throw new InvalidRoleDataError(
           ROLE_DATA_ERROR_CODE.PERMISSION_SCOPE_INCOMPATIBLE,
-          `Permission "${permissionCode}" is incompatible with "${assignmentScope}" assignment scope.`,
+          `Permission "${permissionCode}" is incompatible with "${assignmentTarget}" assignment target.`,
         );
       }
 
@@ -261,8 +261,8 @@ export class Role extends Entity<UniqueId> {
     return this.definitionSource;
   }
 
-  getAssignmentScope(): RoleAssignmentScope {
-    return this.assignmentScope;
+  getAssignmentTarget(): RoleAssignmentTarget {
+    return this.assignmentTarget;
   }
 
   getOrganizationId(): string | null {
@@ -317,7 +317,7 @@ export class Role extends Entity<UniqueId> {
     this.assertActiveForMutation();
 
     const validatedCodes = Role.validatePermissionCodes(
-      this.assignmentScope,
+      this.assignmentTarget,
       permissionCodes,
     );
 

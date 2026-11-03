@@ -5,7 +5,7 @@ import {
   ROLE_ASSIGNMENT_ERROR_CODE,
 } from '../errors/invalid-role-assignment.error.js';
 import {
-  ROLE_ASSIGNMENT_SCOPE,
+  ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
 } from '../roles/role.types.js';
 import { Role } from '../roles/role.js';
@@ -262,10 +262,10 @@ export class RoleAssignment extends Entity<UniqueId> {
     }
 
     const expectedAssignmentScope = hasOrganizationMembership
-      ? ROLE_ASSIGNMENT_SCOPE.ORGANIZATION
-      : ROLE_ASSIGNMENT_SCOPE.BRANCH;
+      ? ROLE_ASSIGNMENT_TARGET.ORGANIZATION
+      : ROLE_ASSIGNMENT_TARGET.BRANCH;
 
-    if (role.getAssignmentScope() !== expectedAssignmentScope) {
+    if (role.getAssignmentTarget() !== expectedAssignmentScope) {
       throw new InvalidRoleAssignmentError(
         ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_SCOPE_MISMATCH,
         'Role assignment scope does not match the membership target.',

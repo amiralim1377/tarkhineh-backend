@@ -1,7 +1,7 @@
 import {
-  ROLE_ASSIGNMENT_SCOPE,
+  ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
-  type RoleAssignmentScope,
+  type RoleAssignmentTarget,
 } from './role.types.js';
 
 // ============================================================
@@ -22,7 +22,7 @@ export type SystemRoleCode =
 
 export interface SystemRoleDefinition {
   readonly definitionSource: typeof ROLE_DEFINITION_SOURCE.SYSTEM;
-  readonly assignmentScope: RoleAssignmentScope;
+  readonly assignmentTarget: RoleAssignmentTarget;
   readonly isAssignable: boolean;
 }
 
@@ -37,13 +37,13 @@ export interface SystemRoleDefinitionWithCode extends SystemRoleDefinition {
 export const SYSTEM_ROLE_CATALOG = {
   [SYSTEM_ROLE_CODE.ORGANIZATION_OWNER]: {
     definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.ORGANIZATION,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
     isAssignable: false,
   },
 
   [SYSTEM_ROLE_CODE.BRANCH_MANAGER]: {
     definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-    assignmentScope: ROLE_ASSIGNMENT_SCOPE.BRANCH,
+    assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
     isAssignable: true,
   },
 } as const satisfies Record<SystemRoleCode, SystemRoleDefinition>;
