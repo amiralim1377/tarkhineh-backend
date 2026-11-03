@@ -1,3 +1,7 @@
+// ============================================================
+// ROLE DEFINITION SOURCE
+// ============================================================
+
 export const ROLE_DEFINITION_SOURCE = {
   SYSTEM: 'SYSTEM',
   ORGANIZATION_DEFINED: 'ORGANIZATION_DEFINED',
@@ -6,13 +10,21 @@ export const ROLE_DEFINITION_SOURCE = {
 export type RoleDefinitionSource =
   (typeof ROLE_DEFINITION_SOURCE)[keyof typeof ROLE_DEFINITION_SOURCE];
 
-export const ROLE_ASSIGNMENT_SCOPE = {
+// ============================================================
+// ROLE ASSIGNMENT TARGET
+// ============================================================
+
+export const ROLE_ASSIGNMENT_TARGET = {
   ORGANIZATION: 'ORGANIZATION',
   BRANCH: 'BRANCH',
 } as const;
 
-export type RoleAssignmentScope =
-  (typeof ROLE_ASSIGNMENT_SCOPE)[keyof typeof ROLE_ASSIGNMENT_SCOPE];
+export type RoleAssignmentTarget =
+  (typeof ROLE_ASSIGNMENT_TARGET)[keyof typeof ROLE_ASSIGNMENT_TARGET];
+
+// ============================================================
+// ROLE STATUS
+// ============================================================
 
 export const ROLE_STATUS = {
   ACTIVE: 'ACTIVE',
