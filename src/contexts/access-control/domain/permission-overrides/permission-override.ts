@@ -205,7 +205,7 @@ export class PermissionOverride extends Entity<UniqueId> {
     ) {
       throw new InvalidPermissionOverrideError(
         PERMISSION_OVERRIDE_ERROR_CODE.PERMISSION_SCOPE_INVALID,
-        'Permission overrides are supported only for Branch-target permissions.',
+        'Permission overrides are supported only for Branch-level permissions.',
       );
     }
 
