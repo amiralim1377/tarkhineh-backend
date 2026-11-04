@@ -114,7 +114,7 @@ export class RoleAssignment extends Entity<UniqueId> {
       input.branchMembership != null
     ) {
       throw new InvalidRoleAssignmentError(
-        ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_SCOPE_MISMATCH,
+        ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_TARGET_MISMATCH,
         'An organization owner must be assigned to an OrganizationMembership.',
       );
     }
@@ -267,7 +267,7 @@ export class RoleAssignment extends Entity<UniqueId> {
 
     if (role.getAssignmentTarget() !== expectedAssignmentTarget) {
       throw new InvalidRoleAssignmentError(
-        ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_SCOPE_MISMATCH,
+        ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_TARGET_MISMATCH,
         'Role assignment target does not match the membership target.',
       );
     }
