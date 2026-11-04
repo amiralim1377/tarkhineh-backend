@@ -450,7 +450,7 @@ describe('PermissionDelegationPolicy', () => {
       });
 
       expect(decision.reasonCode).toBe(
-        DELEGATION_DECISION_REASON.OVERRIDE_PERMISSION_SCOPE_INVALID,
+        DELEGATION_DECISION_REASON.OVERRIDE_PERMISSION_RESOURCE_LEVEL_INVALID,
       );
     });
 
