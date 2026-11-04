@@ -134,7 +134,7 @@ describe('Role', () => {
         }),
       ).toThrowError(
         expect.objectContaining({
-          code: ROLE_DATA_ERROR_CODE.ASSIGNMENT_SCOPE_INVALID,
+          code: ROLE_DATA_ERROR_CODE.ASSIGNMENT_TARGET_INVALID,
         }),
       );
     });
@@ -296,7 +296,7 @@ describe('Role', () => {
         }),
       ).toThrowError(
         expect.objectContaining({
-          code: ROLE_DATA_ERROR_CODE.PERMISSION_SCOPE_INCOMPATIBLE,
+          code: ROLE_DATA_ERROR_CODE.PERMISSION_RESOURCE_LEVEL_INCOMPATIBLE,
         }),
       );
     });

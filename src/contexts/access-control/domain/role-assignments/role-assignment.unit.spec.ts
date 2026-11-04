@@ -161,7 +161,7 @@ describe('RoleAssignment', () => {
         }),
       ).toThrowError(
         expect.objectContaining({
-          code: ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_SCOPE_MISMATCH,
+          code: ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_TARGET_MISMATCH,
         }),
       );
     });
@@ -178,7 +178,7 @@ describe('RoleAssignment', () => {
         }),
       ).toThrowError(
         expect.objectContaining({
-          code: ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_SCOPE_MISMATCH,
+          code: ROLE_ASSIGNMENT_ERROR_CODE.ASSIGNMENT_TARGET_MISMATCH,
         }),
       );
     });

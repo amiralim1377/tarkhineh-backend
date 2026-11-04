@@ -104,7 +104,7 @@ export class Role extends Entity<UniqueId> {
 
     if (!Object.hasOwn(ROLE_ASSIGNMENT_TARGET, props.assignmentTarget)) {
       throw new InvalidRoleDataError(
-        ROLE_DATA_ERROR_CODE.ASSIGNMENT_SCOPE_INVALID,
+        ROLE_DATA_ERROR_CODE.ASSIGNMENT_TARGET_INVALID,
         'Role assignment target is invalid.',
       );
     }
@@ -230,7 +230,7 @@ export class Role extends Entity<UniqueId> {
         )
       ) {
         throw new InvalidRoleDataError(
-          ROLE_DATA_ERROR_CODE.PERMISSION_SCOPE_INCOMPATIBLE,
+          ROLE_DATA_ERROR_CODE.PERMISSION_RESOURCE_LEVEL_INCOMPATIBLE,
           `Permission "${permissionCode}" is incompatible with "${assignmentTarget}" assignment target.`,
         );
       }
