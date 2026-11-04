@@ -1,14 +1,14 @@
 # Tarkhineh Backend — Access Control Implementation Status
 
-| Attribute              | Value                                                        |
-| ---------------------- | ------------------------------------------------------------ |
-| Project                | `tarkhineh-backend`                                          |
-| Document version       | 2.8                                                          |
-| Last updated           | 2026-11-02                                                   |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.15                               |
-| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.13                           |
-| Current phase          | PHASE 7 — Audit Logging                                      |
-| Current phase status   | **IN PROGRESS — PHASE 7.1 POLICY APPROVED; PRISMA SCHEMA VALIDATION PASSED LOCALLY; ISOLATED MIGRATION APPLICATION PENDING** |
+| Attribute              | Value                                                                                                                                                                |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Project                | `tarkhineh-backend`                                                                                                                                                  |
+| Document version       | 2.9                                                                                                                                                                  |
+| Last updated           | 2026-11-04                                                                                                                                                           |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.16                                                                                                                                       |
+| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.14                                                                                                                                   |
+| Current phase          | PHASE 7 — Audit Logging                                                                                                                                              |
+| Current phase status   | **IN PROGRESS — PHASE 7.1 POLICY APPROVED; AUDIT AND ROLE ASSIGNMENT-TARGET MIGRATIONS APPLIED TO DEVELOPMENT/TEST DATABASES; AUDIT RUNTIME IMPLEMENTATION PENDING** |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -18,27 +18,27 @@
 
 ### Phase summary
 
-| Phase | Name                                            | Status                                              |
-| ----: | ----------------------------------------------- | --------------------------------------------------- |
-|     0 | Repository Audit and Baseline                   | COMPLETED                                           |
-|     1 | Requirements and Architecture Design            | COMPLETED — approved by project owner               |
-|     2 | Database Schema and Migration Design            | COMPLETED — approved by project owner on 2026-11-01 |
-|     3 | Permission Registry and Seed                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
-|     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
-|     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
-|     6 | Infrastructure and Authorization Persistence    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-02; deferred verification accepted) |
-|     7 | Audit Logging                                   | IN PROGRESS — 7.1 policy approved; schema validation passed locally; isolated Migration application pending |
-|     8 | Cross-Context Integration                       | NOT STARTED                                         |
-|     9 | HTTP Layer                                      | NOT STARTED                                         |
-|    10 | Security, Performance, and Production Readiness | NOT STARTED                                         |
+| Phase | Name                                            | Status                                                                                                                                     |
+| ----: | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+|     0 | Repository Audit and Baseline                   | COMPLETED                                                                                                                                  |
+|     1 | Requirements and Architecture Design            | COMPLETED — approved by project owner                                                                                                      |
+|     2 | Database Schema and Migration Design            | COMPLETED — approved by project owner on 2026-11-01                                                                                        |
+|     3 | Permission Registry and Seed                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)                                                                                         |
+|     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)                                                                                         |
+|     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)                                                                                         |
+|     6 | Infrastructure and Authorization Persistence    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-02; deferred verification accepted)                                                         |
+|     7 | Audit Logging                                   | IN PROGRESS — 7.1 policy approved; Audit and Role assignment-target migrations applied on 2026-11-03; Audit runtime implementation pending |
+|     8 | Cross-Context Integration                       | NOT STARTED                                                                                                                                |
+|     9 | HTTP Layer                                      | NOT STARTED                                                                                                                                |
+|    10 | Security, Performance, and Production Readiness | NOT STARTED                                                                                                                                |
 
 ### Latest implementation checkpoint
 
 PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence was implemented, its expanded PostgreSQL acceptance coverage was committed in `7e0b267`, and a GitHub source review on 2026-11-01 found no blocking defect in the inspected transaction boundary, tenant-scoped persistence paths, database guards, authorization snapshot assembly, or NestJS provider wiring. The recorded focused checkpoint contains 322 passing Access Control Unit tests and 16 passing Access Control Integration tests (338 total), with successful TypeScript, Access Control lint, Prettier, diff, and production build checks. The project owner formally approved PHASE 6 on 2026-11-02, accepting the explicitly documented deferred verification items in section 8.10. PHASE 6 is closed; this approval does not claim that the full application boot, full-project Integration suite, or production-scale benchmark has been completed.
 
-PHASE 7 — Audit Logging started on 2026-11-02. The dedicated Prisma Audit model and forward Migration draft exist, but no Domain/Application Audit contract, transaction-bound writer, Infrastructure adapter, or reader implementation exists yet. The seven existing mutation Handlers use the transaction-owning Access Control Unit of Work; its four current adapters are bound to the same Prisma transaction client. Successful-mutation Audit writes must be integrated into this same transaction, while selected authorization-denial events require separate handling because the business transaction is rolled back on denial.
+PHASE 7 — Audit Logging started on 2026-11-02. The dedicated Prisma Audit model and forward Migration exist. No Domain/Application Audit contract, transaction-bound writer, Infrastructure adapter, or reader implementation exists yet. The seven existing mutation Handlers use the transaction-owning Access Control Unit of Work; its four current adapters are bound to the same Prisma transaction client. Successful-mutation Audit writes must be integrated into this same transaction, while selected authorization-denial events require separate handling because the business transaction is rolled back on denial.
 
-The project owner approved ADR-022 on 2026-11-02: Audit records are retained as ordinary database records indefinitely under the current policy, with no TTL, automatic deletion, scheduled purge, or cleanup. The historical reference strategy was selected and recorded in ADR-023: Actor, Organization, Branch, Membership, and Resource IDs are stored as scalar historical identifiers with no foreign keys; `organizationId` is required as the tenant scope key, and tenant ownership is enforced by Application validation and tenant-scoped reads. Selected denial events are stored only when the actor is authenticated and the Organization context is validated. The first Prisma/Migration draft is committed: the root Prisma 7 configuration, `prisma/models/access-control-audit.prisma`, and forward-only migration `20261102110000_access_control_audit_events`. The model uses scalar historical references only, the approved event vocabulary, allow-listed JSON state projections, a versioned payload contract, tenant/time indexes, database checks, and UPDATE/DELETE/TRUNCATE rejection triggers. ADR-024 records these technical choices. The project owner then approved all four PHASE 7.1 policy decisions on 2026-11-02. ADR-025 records the approved Organization Owner and Branch Manager reader scopes, selective best-effort `AUTHORIZATION_DENIED` policy, single `ROLE_CREATED` event for initial Permission links, and optional `correlationId` propagation through Application Command metadata from the trusted HTTP `request.id`. The permission codes and runtime policies are not implemented yet; they remain implementation work in the later Phase 7 substeps. A local `npx prisma validate` run with Prisma 7.10.1 reported that the schemas are valid. Migration-diff review, isolated PostgreSQL Migration application, writer/reader implementation, Integration tests, and runtime database-role privilege hardening remain unverified. No Audit Migration application or Audit data effect is claimed.
+The project owner approved ADR-022 on 2026-11-02: Audit records are retained as ordinary database records indefinitely under the current policy, with no TTL, automatic deletion, scheduled purge, or cleanup. The historical reference strategy was selected and recorded in ADR-023: Actor, Organization, Branch, Membership, and Resource IDs are stored as scalar historical identifiers with no foreign keys; `organizationId` is required as the tenant scope key, and tenant ownership is enforced by Application validation and tenant-scoped reads. Selected denial events are stored only when the actor is authenticated and the Organization context is validated. The first Prisma/Migration implementation is committed: the root Prisma 7 configuration, `prisma/models/access-control-audit.prisma`, and forward-only migration `20261102110000_access_control_audit_events`. The model uses scalar historical references only, the approved event vocabulary, allow-listed JSON state projections, a versioned payload contract, tenant/time indexes, database checks, and UPDATE/DELETE/TRUNCATE rejection triggers. ADR-024 records these technical choices. The project owner then approved all four PHASE 7.1 policy decisions on 2026-11-02. ADR-025 records the approved Organization Owner and Branch Manager reader scopes, selective best-effort `AUTHORIZATION_DENIED` policy, single `ROLE_CREATED` event for initial Permission links, and optional `correlationId` propagation through Application Command metadata from the trusted HTTP `request.id`. A local `npx prisma validate` run with Prisma 7.10.1 reported that the schemas are valid. The Audit Migration and the Role assignment-target rename Migration were applied to `tarkhineh_db` and `tarkhineh_test` on 2026-11-03; the subsequent migration-status check reported the schemas up to date. A separately documented schema-to-Migration diff review, writer/reader implementation, Audit Integration tests, and runtime database-role privilege hardening remain unverified. Migration application does not claim that Audit event records or runtime Audit behavior exist.
 
 ### PHASE 3 Registry implementation result
 
@@ -107,7 +107,7 @@ The initial schema was an intermediate design. The approved target and implement
 The audit identified the following items for PHASE 2 design review:
 
 1. Role ownership allowed `SYSTEM`, `ORGANIZATION`, and `BRANCH`; the v1 target required only `SYSTEM` and `ORGANIZATION` ownership.
-2. Role assignment scope reused Organization Management's `MembershipScope`; Access Control needed its own `RoleAssignmentScope`.
+2. Role assignment target reused Organization Management's `MembershipScope`; Access Control needed its own `RoleAssignmentTarget`.
 3. Role contained branch ownership fields; branch-owned Role definitions were not required for v1.
 4. `UserPermissionOverride` was tied to `BranchMembership`; the target needed to support Organization members without BranchMembership by associating an override with OrganizationMembership, Branch, and Permission.
 5. Permission metadata ownership between source code and database needed to be clarified.
@@ -118,9 +118,9 @@ The audit identified the following items for PHASE 2 design review:
 
 The audit inspected `prisma/migrations/20261031063647_add_multi_tenant_access_control/migration.sql`, including:
 
-- Role scope/ownership checks.
+- Role definition-source/ownership checks.
 - The exactly-one-membership target check for RoleAssignment.
-- `enforce_role_assignment_scope()` and `RoleAssignment_scope_guard`.
+- the pre-rename `enforce_role_assignment_scope()` / `RoleAssignment_scope_guard`, subsequently replaced by `enforce_role_assignment_target()` / `RoleAssignment_target_guard` in the 2026-11-03 forward migration.
 - `prevent_role_ownership_change()` and `Role_ownership_immutability_guard`.
 - `prevent_branch_organization_change()` and `Branch_organization_immutability_guard`.
 - Partial unique indexes for active assignments by OrganizationMembership + Role and BranchMembership + Role.
@@ -244,11 +244,11 @@ The project-owner-approved target schema was implemented in the Prisma models.
 Implemented decisions:
 
 - Added Access Control-owned `RoleDefinitionScope` (`SYSTEM`, `ORGANIZATION`).
-- Added Access Control-owned `RoleAssignmentScope` (`ORGANIZATION`, `BRANCH`).
+- Added Access Control-owned `RoleAssignmentTarget` (`ORGANIZATION`, `BRANCH`).
 - Added `RoleStatus` (`ACTIVE`, `ARCHIVED`).
 - Removed branch ownership from Role definitions.
 - Added `Role.isAssignable` and `Role.status`.
-- Kept Role definition ownership and assignment scope independent.
+- Kept Role definition ownership and assignment target independent.
 - Simplified Permission persistence to stable code and timestamps; localized metadata is source-controlled rather than stored in Permission rows.
 - Preserved RolePermission composite identity and restrictive Permission deletion behavior.
 - Preserved RoleAssignment membership targeting and exactly-one-membership invariant.
@@ -284,10 +284,10 @@ The following counts were observed after the PHASE 2 migration and its then-curr
 
 System Roles at that checkpoint:
 
-| Role                 | Definition Scope | Assignment Scope | Assignable | Status | Permissions |
-| -------------------- | ---------------- | ---------------- | ---------: | ------ | ----------: |
-| `ORGANIZATION_OWNER` | SYSTEM           | ORGANIZATION     |      false | ACTIVE |          18 |
-| `BRANCH_MANAGER`     | SYSTEM           | BRANCH           |       true | ACTIVE |           7 |
+| Role                 | Definition Scope | Assignment Target | Assignable | Status | Permissions |
+| -------------------- | ---------------- | ----------------- | ---------: | ------ | ----------: |
+| `ORGANIZATION_OWNER` | SYSTEM           | ORGANIZATION      |      false | ACTIVE |          18 |
+| `BRANCH_MANAGER`     | SYSTEM           | BRANCH            |       true | ACTIVE |           7 |
 
 The existing OrganizationMembership assignment for `ORGANIZATION_OWNER` remained present.
 
@@ -312,7 +312,7 @@ Inspected constraints included:
 
 Inspected triggers included:
 
-- `RoleAssignment_scope_guard`
+- `RoleAssignment_target_guard` (current name after the 2026-11-03 forward rename migration)
 - `Role_ownership_immutability_guard`
 - `Branch_organization_immutability_guard`
 - `OrganizationMembership_identity_immutability_guard`
@@ -398,7 +398,7 @@ Each Registry definition includes:
 
 - Stable `code`.
 - English and Persian `name` and `description`.
-- `targetScope`: `ORGANIZATION` or `BRANCH`.
+- `resourceLevel`: `ORGANIZATION` or `BRANCH`.
 - `resource`.
 - `action`.
 - Explicit `delegable: boolean`.
@@ -407,12 +407,12 @@ The Registry contains 16 ORGANIZATION-target and 7 BRANCH-target permissions. It
 
 `organization.members.permissions.manage` is defined with:
 
-- Target scope: `ORGANIZATION`.
+- Resource level: `ORGANIZATION`.
 - Resource: `organization.members.permissions`.
 - Action: `MANAGE`.
 - Delegable: `false`.
 
-It represents management of permission overrides for Organization members, including branch-specific exceptions. Its target scope remains ORGANIZATION.
+It represents management of permission overrides for Organization members, including branch-specific exceptions. Its resource level remains ORGANIZATION.
 
 ### 5.2 Delegability policy
 
@@ -489,10 +489,10 @@ Both System Role permission sets are explicit, static source-controlled lists. T
 
 Role configuration:
 
-| Role                 | Assignment scope | Assignable |
-| -------------------- | ---------------- | ---------: |
-| `ORGANIZATION_OWNER` | ORGANIZATION     |      false |
-| `BRANCH_MANAGER`     | BRANCH           |       true |
+| Role                 | Assignment target | Assignable |
+| -------------------- | ----------------- | ---------: |
+| `ORGANIZATION_OWNER` | ORGANIZATION      |      false |
+| `BRANCH_MANAGER`     | BRANCH            |       true |
 
 `isAssignable` is persisted role configuration; it does not itself establish that an actor has authority to assign a role. Assignment and delegation authorization are later Application responsibilities.
 
@@ -504,7 +504,7 @@ The synchronizer in `prisma/seed/access-control-seed.ts` performs these steps:
 
 1. Reads only the two known SYSTEM roles.
 2. Validates all existing managed roles before the first write.
-3. Fails if a managed role is `ARCHIVED`, has an unexpected `assignmentScope`, or unexpectedly has a non-null `organizationId`.
+3. Fails if a managed role is `ARCHIVED`, has an unexpected `assignmentTarget`, or unexpectedly has a non-null `organizationId`.
 4. Upserts all 23 source-controlled Permission codes.
 5. Creates or updates only `ORGANIZATION_OWNER` and `BRANCH_MANAGER` as SYSTEM roles.
 6. Replaces RolePermission links only for the exact IDs of those two managed roles.
@@ -581,8 +581,8 @@ Additional Unit tests cover:
 - Exact Owner and Branch Manager permission membership.
 - Uniqueness of the static permission sets.
 - Membership of every System Role permission in the Registry.
-- BRANCH target scope for all Branch Manager permissions.
-- Rejection of assignment-scope drift for either managed System Role before writes.
+- BRANCH resource level for all Branch Manager permissions.
+- Rejection of assignment-target drift for either managed System Role before writes.
 - Rejection of unexpected Organization ownership before writes.
 
 Known limitations:
@@ -751,13 +751,13 @@ A source search across the seven command-handler files returned no matches for t
 
 Observed local terminal results on 2026-11-01:
 
-| Command | Observed result |
-| --- | --- |
-| `npx vitest run src/contexts/access-control` | 15 files passed; 275 tests passed; 0 failed |
-| `npx tsc --noEmit` | Completed without reported errors |
-| `npx oxlint --type-aware src/contexts/access-control/` | 68 files; 0 warnings; 0 errors |
-| `git diff --check` | No whitespace errors |
-| Command-handler direct-injection search | No matches in the seven command handlers |
+| Command                                                | Observed result                             |
+| ------------------------------------------------------ | ------------------------------------------- |
+| `npx vitest run src/contexts/access-control`           | 15 files passed; 275 tests passed; 0 failed |
+| `npx tsc --noEmit`                                     | Completed without reported errors           |
+| `npx oxlint --type-aware src/contexts/access-control/` | 68 files; 0 warnings; 0 errors              |
+| `git diff --check`                                     | No whitespace errors                        |
+| Command-handler direct-injection search                | No matches in the seven command handlers    |
 
 The 275 passing tests include Domain tests, Application service tests, all seven command-handler suites, and the existing query-handler suite. The final three-test increase covers metadata-only Role updates without delegation checks, Permission-set delegation checks (including clearing the set), and delegation snapshot failure behavior.
 
@@ -894,15 +894,15 @@ Focused tests:
 
 The following results were observed after the final code changes and Prettier formatting in the user's terminal:
 
-| Command | Observed result |
-| --- | --- |
-| `npm run test:integration -- test/integration/access-control` | 2 files passed; 16 tests passed (14 Persistence, 2 Registry Seed) |
-| `npm test -- src/contexts/access-control` | 21 files passed; 322 tests passed |
-| `npx tsc --noEmit` | Passed; no TypeScript diagnostics |
-| `npx oxlint src/contexts/access-control test/integration/access-control` | 83 files; 0 warnings; 0 errors |
-| `npx prettier --check test/integration/access-control/persistence/access-control-persistence.integration.spec.ts` | Passed |
-| `git diff --check` | Passed; no whitespace errors |
-| `npm run build` | Completed successfully |
+| Command                                                                                                           | Observed result                                                   |
+| ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `npm run test:integration -- test/integration/access-control`                                                     | 2 files passed; 16 tests passed (14 Persistence, 2 Registry Seed) |
+| `npm test -- src/contexts/access-control`                                                                         | 21 files passed; 322 tests passed                                 |
+| `npx tsc --noEmit`                                                                                                | Passed; no TypeScript diagnostics                                 |
+| `npx oxlint src/contexts/access-control test/integration/access-control`                                          | 83 files; 0 warnings; 0 errors                                    |
+| `npx prettier --check test/integration/access-control/persistence/access-control-persistence.integration.spec.ts` | Passed                                                            |
+| `git diff --check`                                                                                                | Passed; no whitespace errors                                      |
+| `npm run build`                                                                                                   | Completed successfully                                            |
 
 The Access Control-focused validation therefore covers 338 passing tests across 23 test files (322 Unit + 16 Integration). The commands above were run in the guarded development/test setup. The Integration fixture rewrites the configured development database URL to `tarkhineh_test` and refuses an unexpected source database name.
 
@@ -914,7 +914,7 @@ The 14 Persistence Integration tests now cover the following acceptance areas:
 
 1. **Transaction behavior:** commit, rollback, transaction-bound read-your-writes, and committed snapshot behavior.
 2. **Tenant isolation:** separate Organizations and Branches prove that Role, RoleAssignment, and authorization snapshot reads do not leak across tenant boundaries.
-3. **Database guards:** negative writes assert PostgreSQL `23514` check/trigger violations for Branch/Organization mismatch, cross-tenant Organization-owned Role assignment, and immutable Role ownership/assignment scope; a cross-tenant Branch reference for a Permission Override asserts `23503`.
+3. **Database guards:** negative writes assert PostgreSQL `23514` check/trigger violations for Branch/Organization mismatch, cross-tenant Organization-owned Role assignment, and immutable Role ownership/assignment target; a cross-tenant Branch reference for a Permission Override asserts `23503`.
 4. **Real Handler concurrency:** two concurrent calls to `SetPermissionOverrideHandler.execute()` use the real PostgreSQL Unit of Work; one reports a change, the other reports no change, and exactly one Override remains persisted.
 5. **Assignment and Role races:** concurrent duplicate `AssignRoleHandler` calls produce one active assignment and one duplicate-assignment error; concurrent same-code Role creation produces one Role and one duplicate-code error.
 6. **Role permission-set race:** concurrent `UpdateRoleHandler` calls replacing the complete permission set both complete under the Serializable/retry strategy; the persisted set equals one complete submitted set rather than a partial mixture.
@@ -969,7 +969,7 @@ Review scope:
 - Reviewed the concrete Unit of Work, all three transaction-bound repositories, the authorization snapshot reader, persistence mappers, Application ports, AccessControlModule, PrismaModule, SharedModule, AppModule, Prisma schema, and the PHASE 2 Access Control migration.
 - Confirmed the Unit of Work supplies one transaction client to all persistence adapters, uses PostgreSQL `Serializable` isolation for mutations, retries bounded `P2034` conflicts, and only treats the exact Permission Override composite unique-key `P2002` as retryable. Other unique violations and application errors are not intentionally retried.
 - Confirmed standalone authorization reads use one `RepeatableRead` transaction, including the organization and all active-Branch delegation snapshots. The evaluator filters inactive BranchMemberships and inactive/revoked Roles/Assignments according to the Domain rules.
-- Reviewed tenant filters on membership, Role, Assignment, and Permission Override access paths, plus database-level Role ownership/scope guards and composite tenant foreign keys.
+- Reviewed tenant filters on membership, Role, Assignment, and Permission Override access paths, plus database-level Role ownership/assignment-target guards and composite tenant foreign keys.
 - Statically traced the NestJS provider graph: `ACCESS_CONTROL_UNIT_OF_WORK` and `AUTHORIZATION_SNAPSHOT_READER` resolve to their concrete adapters; `PrismaService` is exported by `PrismaModule`; `CLOCK` is exported by `SharedModule`; and `AppModule` registers global `ConfigModule` before importing `AccessControlModule`.
 - Matched the Persistence Integration file's 14 test cases to the tenant-isolation, PostgreSQL guard, Handler concurrency, duplicate Role/Assignment, permission-set race, and Multi-Branch acceptance scenarios recorded above.
 
@@ -990,13 +990,13 @@ Deferred verification and risk boundaries:
 
 ## 9. PHASE 7 — Audit Logging
 
-**Status: IN PROGRESS — 7.1 policy design approved; Prisma schema validation passed locally; Migration review/application and runtime implementation remain pending.**
+**Status: IN PROGRESS — 7.1 policy design approved; Audit and Role assignment-target migrations applied to development/test databases on 2026-11-03; Audit runtime implementation remains pending.**
 
 ### 9.1 Approved PHASE 7.1 policy decisions
 
 All four owner decisions were approved on 2026-11-02 and recorded in ADR-025:
 
-1. **Audit readers:** `organization.audit.read` is ORGANIZATION-scoped, non-delegable, and assigned only to `ORGANIZATION_OWNER`; it grants access to all Audit events for the exact Organization, across all its Branches. `branch.audit.read.own` is BRANCH-scoped, non-delegable, and assigned to `BRANCH_MANAGER`; the reader sees only their own successful permission-changing events in the exact authorized Branch and Organization. The Application query must enforce the actor-self predicate and tenant/branch filters.
+1. **Audit readers:** `organization.audit.read` is ORGANIZATION-resource-level, non-delegable, and assigned only to `ORGANIZATION_OWNER`; it grants access to all Audit events for the exact Organization, across all its Branches. `branch.audit.read.own` is BRANCH-resource-level, non-delegable, and assigned to `BRANCH_MANAGER`; the reader sees only their own successful permission-changing events in the exact authorized Branch and Organization. The Application query must enforce the actor-self predicate and tenant/branch filters.
 2. **Denial events:** record `AUTHORIZATION_DENIED` only for actual authorization/delegation denials represented by `AccessControlForbiddenError`, and only with a trusted authenticated Actor and validated Organization context. Persistence is best-effort and must never mask the original denial. Input/validation errors, not-found results, conflicts, and missing Actor cases are excluded.
 3. **Role creation cardinality:** a Role created with initial Permission links emits one `ROLE_CREATED` event whose after-state contains the initial Permission codes. It does not emit an additional `ROLE_PERMISSION_ADDED` event for each initial link. Later Role Permission-set changes are represented by actual added/removed differences.
 4. **Correlation propagation:** optional `correlationId` is carried in Application Command metadata, populated by the HTTP adapter from the trusted `request.id`, and copied to Audit events. Non-HTTP commands may omit it. It is not business input.
@@ -1006,17 +1006,38 @@ For Branch Manager visibility, `ROLE_ASSIGNED` after-state must preserve the Per
 ### 9.2 Repository and verification checkpoint
 
 - Prisma schema validation was run locally with Prisma CLI 7.10.1 and returned: `The schemas at prisma are valid`.
-- The Audit Prisma model and forward Migration draft are committed, but the Audit Migration has not been applied to a database as part of this checkpoint.
-- Schema-to-Migration diff review, isolated PostgreSQL Migration application, and Audit Persistence/immutability Integration tests remain pending.
+- The Audit Prisma model and forward Migration are committed. The Audit Migration was applied to `tarkhineh_db` and `tarkhineh_test` on 2026-11-03; the separate writer/reader runtime implementation remains pending.
+- A separately documented schema-to-Migration diff review is not present in this record, and Audit Persistence/immutability Integration tests remain pending; Migration application itself is complete.
 - The Domain/Application Audit contract, transaction-bound append-only writer, selected-denial writer, Audit reader authorization/query, Permission Registry additions, and explicit System Role Seed updates are not implemented yet.
 - The seven successful-mutation paths must append Audit events inside the same transaction-bound Unit of Work. Selected denial events use their separately approved best-effort boundary.
 - Runtime database-role privilege restrictions and production-scale query/index review remain unverified.
 
-**No Audit database effects or runtime feature behavior are claimed by this design checkpoint.**
+**The Audit schema Migration is applied; no Audit runtime feature behavior is claimed until the writer, reader, authorization, and Integration work is complete.**
 
 ### 9.3 Next implementation step
 
-Proceed to PHASE 7.2 — Domain and Application contracts. Define the typed Audit event contract and append-only Application port, then add the transaction-bound writer to the existing Unit of Work context. Keep Prisma and NestJS dependencies out of Domain and Application. Do not apply the Audit Migration to a database until the schema-to-Migration review and isolated-database target are confirmed.
+Proceed to PHASE 7.2 — Domain and Application contracts. Define the typed Audit event contract and append-only Application port, then add the transaction-bound writer to the existing Unit of Work context. Keep Prisma and NestJS dependencies out of Domain and Application.
+
+### 9.4 Naming alignment implemented — 2026-11-03
+
+A terminology and persistence-identifier cleanup was completed after the original PHASE 2 implementation. It changes names only; the approved authorization semantics are unchanged.
+
+| Previous name             | Current canonical name      |
+| ------------------------- | --------------------------- |
+| `RoleAssignmentScope`     | `RoleAssignmentTarget`      |
+| `ROLE_ASSIGNMENT_SCOPE`   | `ROLE_ASSIGNMENT_TARGET`    |
+| `assignmentScope`         | `assignmentTarget`          |
+| `PermissionTargetScope`   | `PermissionResourceLevel`   |
+| `PERMISSION_TARGET_SCOPE` | `PERMISSION_RESOURCE_LEVEL` |
+| `targetScope`             | `resourceLevel`             |
+
+The Permission Registry also derives `ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS` and `BRANCH_RESOURCE_LEVEL_PERMISSIONS`. In the Domain, Role uses `definitionSource` / `RoleDefinitionSource`; Prisma retains the persistence-specific `definitionScope` / `RoleDefinitionScope` mapping. These names were not part of the rename.
+
+Forward migration `prisma/migrations/20261103120000_rename_role_assignment_scope_to_target/migration.sql` renames the PostgreSQL enum and Role column, recreates the assignment-target guard, and preserves Role ownership/assignment-target immutability. The migration was applied to `tarkhineh_db` and `tarkhineh_test` on 2026-11-03; the subsequent migration status check reported the schemas up to date. The migration filename and earlier immutable migration contents retain legacy wording as historical identifiers and must not be edited.
+
+The implementation deliberately retains stable Domain error-code identifiers containing `SCOPE` for compatibility. New types, constants, properties, schema fields, and active documentation must use the canonical names in the table above. No Permission code, Role behavior, delegation rule, override precedence, or authorization result was changed by this rename.
+
+Do not treat Migration application as proof that the Audit runtime feature is complete; writer, reader, authorization, and integration coverage remain required.
 
 ---
 

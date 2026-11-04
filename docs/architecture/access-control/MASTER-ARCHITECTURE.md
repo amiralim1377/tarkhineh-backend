@@ -2,16 +2,16 @@
 
 ## Tarkhineh Backend
 
-| Attribute                    | Value                                                                                         |
-| ---------------------------- | --------------------------------------------------------------------------------------------- |
-| Document                     | Master Architecture & Implementation Specification                                            |
-| Version                      | 1.15                                                                                          |
-| Last updated                 | 2026-11-02                                                                                    |
-| Architecture                 | Clean Architecture + DDD + Scoped RBAC                                                        |
-| Architecture status          | Approved by project owner                                                                     |
-| Repository audit             | PHASE 0 completed                                                                             |
-| Current implementation phase | PHASE 7 — Audit Logging (in progress; 7.1 policy design approved; Prisma schema validation passed locally; isolated Migration application pending) |
-| Source of truth               | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md` |
+| Attribute                    | Value                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Document                     | Master Architecture & Implementation Specification                                                                                                                 |
+| Version                      | 1.16                                                                                                                                                               |
+| Last updated                 | 2026-11-04                                                                                                                                                         |
+| Architecture                 | Clean Architecture + DDD + Scoped RBAC                                                                                                                             |
+| Architecture status          | Approved by project owner                                                                                                                                          |
+| Repository audit             | PHASE 0 completed                                                                                                                                                  |
+| Current implementation phase | PHASE 7 — Audit Logging (in progress; 7.1 policy design approved; Audit and Role assignment-target migrations applied; Audit writer/reader implementation pending) |
+| Source of truth              | This document, `IMPLEMENTATION-STATUS.md`, and `ARCHITECTURAL-DECISIONS.md`                                                                                        |
 
 > This document defines the approved target architecture and implementation constraints. It does not claim that the target system has already been implemented. Current implementation facts and verified test results are recorded separately in `IMPLEMENTATION-STATUS.md`.
 
@@ -199,7 +199,7 @@ The chosen model is:
 
 Included in the first implementation:
 
-- Three independent scope concepts.
+- Three independent authorization dimensions: Role definition source, Role assignment target, and Permission resource level.
 - System-defined roles.
 - Organization-defined custom roles.
 - Organization-to-branch permission inheritance.
@@ -220,31 +220,33 @@ Not included in the first implementation unless separately approved:
 - Arbitrary permission conditions or rules builder.
 - Event sourcing.
 
-## 4.3 Three independent scope concepts
+## 4.3 Three independent authorization dimensions
 
-These three scopes have different meanings and must not share an enum merely because their string values overlap.
+These dimensions describe different responsibilities and must not share one enum merely because their stored string values overlap.
 
-### Role Definition Scope
+### Role Definition Source
 
-Describes who owns/defines a Role.
+Describes which authority defines and owns a Role. The Domain contract is:
 
 ```ts
-export const ROLE_DEFINITION_SCOPE = {
+export const ROLE_DEFINITION_SOURCE = {
   SYSTEM: 'SYSTEM',
-  ORGANIZATION: 'ORGANIZATION',
+  ORGANIZATION_DEFINED: 'ORGANIZATION_DEFINED',
 } as const;
 ```
 
 - `SYSTEM`: defined and governed by the application.
-- `ORGANIZATION`: defined and owned by one Organization.
+- `ORGANIZATION_DEFINED`: defined and owned by one Organization.
 - Branch-owned custom Roles are not supported in the first version.
 
-### Role Assignment Scope
+For persistence, Prisma deliberately retains `RoleDefinitionScope` / `definitionScope`, whose values are `SYSTEM` and `ORGANIZATION`. The persistence mapper translates `ORGANIZATION` to the Domain value `ORGANIZATION_DEFINED`. This Domain/Prisma naming boundary is not part of ADR-026.
+
+### Role Assignment Target
 
 Describes which kind of membership can receive a Role.
 
 ```ts
-export const ROLE_ASSIGNMENT_SCOPE = {
+export const ROLE_ASSIGNMENT_TARGET = {
   ORGANIZATION: 'ORGANIZATION',
   BRANCH: 'BRANCH',
 } as const;
@@ -252,34 +254,40 @@ export const ROLE_ASSIGNMENT_SCOPE = {
 
 This enum belongs to Access Control. It must not reuse or depend on Organization Management's `MembershipScope` enum.
 
-### Permission Target Scope
+The Domain exports `RoleAssignmentTarget` as `ROLE_ASSIGNMENT_TARGET` and stores it on `Role.assignmentTarget` (read through `getAssignmentTarget()`). Prisma uses the matching `RoleAssignmentTarget` enum and `assignmentTarget` column.
 
-Describes the kind of resource against which a Permission is evaluated.
+### Permission Resource Level
+
+Describes the level of resource against which a Permission is evaluated.
 
 ```ts
-export const PERMISSION_TARGET_SCOPE = {
+export const PERMISSION_RESOURCE_LEVEL = {
   ORGANIZATION: 'ORGANIZATION',
   BRANCH: 'BRANCH',
 } as const;
 ```
 
+The Domain exports the `PermissionResourceLevel` type and uses `resourceLevel` on each `PermissionDefinition`. The Registry-derived collections are `ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS` and `BRANCH_RESOURCE_LEVEL_PERMISSIONS`.
+
+These names supersede the earlier Permission target-scope terminology. The rename is identifier-only and is recorded in ADR-026; it does not change authorization behavior.
+
 Examples:
 
-| Permission                     | Target scope |
-| ------------------------------ | ------------ |
-| `organization.read`            | ORGANIZATION |
-| `organization.branches.create` | ORGANIZATION |
-| `branch.dashboard.read`        | BRANCH       |
-| `branch.staff.invite`          | BRANCH       |
+| Permission                     | Resource level |
+| ------------------------------ | -------------- |
+| `organization.read`            | ORGANIZATION   |
+| `organization.branches.create` | ORGANIZATION   |
+| `branch.dashboard.read`        | BRANCH         |
+| `branch.staff.invite`          | BRANCH         |
 
 ## 4.4 System roles
 
 The initial system roles are:
 
-| Role code            | Definition scope | Assignment scope |
-| -------------------- | ---------------- | ---------------- |
-| `ORGANIZATION_OWNER` | SYSTEM           | ORGANIZATION     |
-| `BRANCH_MANAGER`     | SYSTEM           | BRANCH           |
+| Role code            | Definition scope | Assignment target |
+| -------------------- | ---------------- | ----------------- |
+| `ORGANIZATION_OWNER` | SYSTEM           | ORGANIZATION      |
+| `BRANCH_MANAGER`     | SYSTEM           | BRANCH            |
 
 ### ORGANIZATION_OWNER
 
@@ -303,16 +311,16 @@ Rules:
 
 - A custom Role belongs to exactly one Organization.
 - A custom Role from Organization A cannot be assigned or used in Organization B.
-- An Organization-defined Role may have assignment scope ORGANIZATION or BRANCH.
-- An Organization-assigned Role may contain both Organization and Branch target-scope permissions.
-- A Branch-assigned Role may contain only Branch target-scope permissions.
+- An Organization-defined Role may have assignment target ORGANIZATION or BRANCH.
+- An Organization-assigned Role may contain both Organization- and Branch-resource-level permissions.
+- A Branch-assigned Role may contain only Branch-resource-level permissions.
 - Branch-owned custom Role definitions are not supported in v1.
 
 ## 4.6 Permission Registry
 
 Permission codes and metadata are defined by application source code. Organization administrators cannot invent new Permission codes.
 
-Organizations may compose known registry permissions into their permitted custom roles, subject to scope compatibility and delegation rules.
+Organizations may compose known registry permissions into their permitted custom roles, subject to Permission resource-level compatibility and delegation rules.
 
 The source-code Permission Registry is the source of truth for permission metadata. The database stores stable permission identity/code and its relations to roles and overrides; it should not become a second competing source for localized metadata.
 
@@ -323,7 +331,7 @@ export interface PermissionDefinition {
   readonly code: PermissionCode;
   readonly name: LocalizedText;
   readonly description: LocalizedText;
-  readonly targetScope: PermissionTargetScope;
+  readonly resourceLevel: PermissionResourceLevel;
   readonly resource: PermissionResource;
   readonly action: PermissionAction;
   readonly delegable: boolean;
@@ -334,11 +342,11 @@ export interface PermissionDefinition {
 
 ## 4.7 Organization-to-branch inheritance
 
-An active OrganizationMembership with an applicable Organization-assigned Role may receive Branch target-scope permissions across all active branches belonging to that same Organization.
+An active OrganizationMembership with an applicable Organization-assigned Role may receive Branch resource-level permissions across all active branches belonging to that same Organization.
 
 A BranchMembership is not required for this inherited Organization-level access.
 
-Branch-assigned Roles apply only to the branch membership to which they are assigned. BranchMembership does not grant Organization target-scope permissions.
+Branch-assigned Roles apply only to the branch membership to which they are assigned. BranchMembership does not grant Organization resource-level permissions.
 
 ### BranchMembership status semantics
 
@@ -361,7 +369,7 @@ An override is scoped to one OrganizationMembership, one Branch, and one Permiss
 
 - A valid DENY blocks permission even if inherited from an Organization role, granted by a Branch role, or present as an ALLOW override.
 - A valid ALLOW may grant the specific branch permission even if no role grants it, but only when the actor is allowed to delegate that permission.
-- Overrides never bypass invalid global context: inactive Organization, inactive OrganizationMembership, inactive Branch, unknown Permission, or invalid target scope.
+- Overrides never bypass invalid global context: inactive Organization, inactive OrganizationMembership, inactive Branch, unknown Permission, or a Permission resource-level/context mismatch.
 - An override must be associated with a membership and branch from the same Organization.
 - The logical uniqueness key is `(organizationMembershipId, branchId, permissionId)`; changing effect updates that override rather than creating conflicting parallel rows.
 
@@ -373,7 +381,7 @@ No actor may grant a role or permission that they are not authorized to delegate
 
 For Role assignment, two independent checks are required:
 
-1. The actor is authorized to perform the assignment operation in the target scope.
+1. The actor is authorized to perform the assignment operation in the requested Organization or Branch target context.
 2. The actor is authorized to delegate every permission contained in the target Role.
 
 Conceptual rule:
@@ -447,8 +455,8 @@ Audit records are append-only. Successful sensitive mutations and their Audit wr
 
 ### Audit reader authorization
 
-- `organization.audit.read` is an ORGANIZATION-target-scope, non-delegable Permission assigned only to `ORGANIZATION_OWNER`. It permits reading all Audit events for the exact authorized Organization, including its Organization-level and all Branch-level events.
-- `branch.audit.read.own` is a BRANCH-target-scope, non-delegable Permission assigned to `BRANCH_MANAGER`. It permits reading only that authenticated manager's own successful permission-changing events in the exact authorized Branch and Organization.
+- `organization.audit.read` is an ORGANIZATION-resource-level, non-delegable Permission assigned only to `ORGANIZATION_OWNER`. It permits reading all Audit events for the exact authorized Organization, including its Organization-level and all Branch-level events.
+- `branch.audit.read.own` is a BRANCH-resource-level, non-delegable Permission assigned to `BRANCH_MANAGER`. It permits reading only that authenticated manager's own successful permission-changing events in the exact authorized Branch and Organization.
 - Branch-manager reads must enforce `organizationId`, `branchId`, and `actorUserId = authenticated actor` in the Application query. The client cannot supply or weaken the actor filter. The manager does not see other actors' events, other branches, Organization-wide logs, or the Organization's complete Audit history.
 - The Branch-manager view is limited to `ROLE_ASSIGNED`, `ROLE_REVOKED`, and `PERMISSION_OVERRIDE_CREATED`, `PERMISSION_OVERRIDE_UPDATED`, and `PERMISSION_OVERRIDE_REMOVED` events. A `ROLE_ASSIGNED` after-state must preserve the permission codes granted by that Role at assignment time.
 - Readers may see historical Actor and Subject identifiers needed to explain the event, but not email addresses, credentials, tokens, or unrelated personal attributes. All reads are authorized in Application and tenant-scoped; UI-only filtering is not a security boundary.
@@ -472,21 +480,21 @@ export interface CheckPermissionInput {
 }
 ```
 
-For Organization-target permissions, `branchId` is not required to determine scope.
+For Organization-resource-level permissions, `branchId` is not required to determine scope.
 
-For Branch-target permissions, `branchId` is required and the branch must belong to `organizationId`.
+For Branch-resource-level permissions, `branchId` is required and the branch must belong to `organizationId`.
 
-Unknown permission codes and mismatched target scopes are denied.
+Unknown permission codes and mismatches between the requested context and a Permission resource level are denied.
 
 ## 5.2 Global context validation
 
 Before evaluating grants or overrides:
 
 1. Confirm the permission code exists in the registry.
-2. Confirm target context matches the permission's target scope.
+2. Confirm the requested context is compatible with the Permission's `resourceLevel`.
 3. Confirm the Organization exists and is ACTIVE.
 4. Confirm the user's OrganizationMembership exists and is ACTIVE.
-5. For Branch-target permissions, confirm the Branch exists, belongs to the requested Organization, and is ACTIVE.
+5. For Branch-resource-level permissions, confirm the Branch exists, belongs to the requested Organization, and is ACTIVE.
 
 Global validation cannot be bypassed by ALLOW overrides.
 
@@ -506,7 +514,7 @@ For Branch target permissions:
 - BranchMembership status does not revoke Organization-level inherited permissions by itself.
 - Branch-specific overrides are evaluated before effective role grants according to precedence below.
 
-A valid RoleAssignment must not be revoked; its Role must be ACTIVE; its definition scope, owning organization, and assignment scope must be compatible with the membership target.
+A valid RoleAssignment must not be revoked; its Role must be ACTIVE; its definition scope, owning organization, and assignment target must be compatible with the membership target.
 
 ## 5.4 Override precedence
 
@@ -526,7 +534,7 @@ The internal decision should contain more than an opaque boolean where useful:
 - allowed/denied.
 - internal reason code.
 - permission code.
-- target scope.
+- Permission resource level.
 - organization context.
 - branch context when applicable.
 
@@ -538,7 +546,7 @@ The Domain evaluator should be deterministic and independent of persistence. Inf
 
 # 6. Database Design Principles and Target Model
 
-PHASE 2 produced the approved Prisma schema and forward migration. The migration was applied and verified on both development and test databases; implementation evidence is recorded in `IMPLEMENTATION-STATUS.md`. The following is the approved conceptual target, not yet an implemented schema.
+PHASE 2 produced the approved Prisma schema and forward migration. The migration was applied and verified on both development and test databases; implementation evidence is recorded in `IMPLEMENTATION-STATUS.md`. This section describes the approved model and its implemented Prisma representation.
 
 ## 6.1 Role target
 
@@ -549,7 +557,7 @@ The conceptual Role fields are:
 - `name`
 - `description`
 - `definitionScope`
-- `assignmentScope`
+- `assignmentTarget`
 - `organizationId`
 - `isAssignable`
 - `status`
@@ -557,12 +565,14 @@ The conceptual Role fields are:
 - `createdAt`
 - `updatedAt`
 
+The Domain entity calls the ownership discriminator `definitionSource`; its Prisma mapping is `definitionScope` (`RoleDefinitionScope`). This pre-existing persistence/domain mapping is not part of ADR-026.
+
 Rules:
 
 - Definition scope is only SYSTEM or ORGANIZATION.
 - SYSTEM roles have no organization owner.
 - ORGANIZATION roles require an owning organization.
-- Role ownership and assignment scope are immutable after creation; create a new Role rather than moving an existing Role between tenants/scopes.
+- Role ownership and assignment target are immutable after creation; create a new Role rather than moving an existing Role between tenants or assignment targets.
 - No branch-owned custom Role in v1.
 - Generic assignment must not permit reserved `ORGANIZATION_OWNER`.
 - `isAssignable` was selected and implemented in PHASE 2. `ORGANIZATION_OWNER` is seeded as non-assignable and protected by the database constraint `Role_reserved_owner_non_assignable_check`.
@@ -584,7 +594,7 @@ Validate cross-table ownership/scope compatibility in Application transactions a
 
 The existing join-table pattern with a composite primary key `(roleId, permissionId)` is appropriate and should be retained unless PHASE 2 discovers a concrete issue.
 
-Permission attachment must validate target-scope compatibility and delegation before persistence.
+Permission attachment must validate resource-level compatibility and delegation before persistence.
 
 ## 6.4 Permission persistence
 
@@ -606,7 +616,7 @@ The conceptual association is:
 
 The membership and branch must belong to the same Organization. The logical unique key is `(organizationMembershipId, branchId, permissionId)`.
 
-Use composite relations/foreign keys to protect the shared organization identity where practical. Target-scope compatibility and delegation remain Application rules.
+Use composite relations/foreign keys to protect the shared organization identity where practical. Permission resource-level compatibility and delegation remain Application rules.
 
 ## 6.6 Constraints and triggers
 
@@ -616,8 +626,8 @@ Expected invariants to assess:
 
 - Role definition-scope ownership consistency.
 - RoleAssignment exactly-one-membership constraint.
-- RoleAssignment scope and tenant ownership validation.
-- Role ownership/assignment-scope immutability.
+- RoleAssignment target and tenant ownership validation.
+- Role ownership/assignment-target immutability.
 - Override membership/branch same-organization consistency.
 - Branch organization immutability.
 - Active-assignment partial unique indexes.
@@ -727,7 +737,7 @@ For every privileged mutation, validate both management authority and delegation
 
 ### Role assignment
 
-- Actor can perform role assignment at the target scope.
+- Actor can perform role assignment at the requested assignment target context.
 - Actor can delegate every permission contained in the target role.
 - Target membership and role must belong to compatible scopes and the same tenant.
 - Archived or non-assignable/reserved roles cannot be assigned through generic workflows.
@@ -736,20 +746,20 @@ For every privileged mutation, validate both management authority and delegation
 
 - Actor can create/manage a role in the organization.
 - All permissions are known registry entries.
-- All permissions are scope-compatible with the role assignment scope.
+- All Permissions have resource levels compatible with the Role assignment target.
 - All assigned permissions are delegable by the actor for this operation.
 - Adding a permission to an existing role must re-run delegation validation.
 
 ### ALLOW override
 
-- Actor is authorized to manage overrides in the relevant target scope.
+- Actor is authorized to manage overrides in the relevant Organization/Branch context.
 - Permission is known and branch-scoped.
 - Actor may delegate the permission.
 - OrganizationMembership, Branch, and permission context are valid.
 
 ### DENY override
 
-- Actor is authorized to manage overrides in the relevant target scope.
+- Actor is authorized to manage overrides in the relevant Organization/Branch context.
 - DENY reduces access and does not create a permission grant.
 - It cannot bypass global context validation.
 
@@ -795,7 +805,7 @@ Testing is part of the definition of done.
 
 ## 11.1 Domain unit tests
 
-- Definition, assignment, and target scope validation.
+- Definition source, assignment target, and Permission resource-level validation.
 - Scope compatibility.
 - Role lifecycle and archived role behavior.
 - Registry uniqueness and metadata validation.
@@ -849,7 +859,7 @@ At minimum, tests must prove:
 | Archived Role                                  | Does not grant access                                                                                    |
 | Organization role used in another organization | Rejected/denied                                                                                          |
 | Unknown permission                             | Denied                                                                                                   |
-| Mismatched target scope                        | Denied                                                                                                   |
+| Mismatched Permission resource level/context   | Denied                                                                                                   |
 | Assignment outside actor authority             | Rejected                                                                                                 |
 | Generic assignment of ORGANIZATION_OWNER       | Rejected                                                                                                 |
 | Non-delegable permission in target role        | Cannot be delegated by ordinary actor                                                                    |
@@ -864,19 +874,19 @@ All tenant-isolation scenarios must use distinct organizations and branches.
 
 Only one phase is active at a time. Do not mark a phase complete from code appearance alone. Each phase requires deliverables, passing acceptance criteria, observed verification, and project-owner review.
 
-| Phase | Name                                            | Status as of 2026-11-01           |
-| ----- | ----------------------------------------------- | --------------------------------- |
-| 0     | Repository Audit and Baseline                   | COMPLETED                         |
-| 1     | Requirements and Architecture Design            | COMPLETED — APPROVED              |
-| 2     | Database Schema and Migration Design            | COMPLETED — APPROVED              |
-| 3     | Permission Registry and Seed                    | COMPLETED — APPROVED              |
-| 4     | Domain Model                                    | COMPLETED — APPROVED (2026-11-01) |
-| 5     | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01) |
+| Phase | Name                                            | Status as of 2026-11-01                             |
+| ----- | ----------------------------------------------- | --------------------------------------------------- |
+| 0     | Repository Audit and Baseline                   | COMPLETED                                           |
+| 1     | Requirements and Architecture Design            | COMPLETED — APPROVED                                |
+| 2     | Database Schema and Migration Design            | COMPLETED — APPROVED                                |
+| 3     | Permission Registry and Seed                    | COMPLETED — APPROVED                                |
+| 4     | Domain Model                                    | COMPLETED — APPROVED (2026-11-01)                   |
+| 5     | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)  |
 | 6     | Infrastructure and Authorization Persistence    | CORE IMPLEMENTATION PRESENT — ACCEPTANCE ITEMS OPEN |
-| 7     | Audit Logging                                   | NOT STARTED                       |
-| 8     | Cross-Context Integration                       | NOT STARTED                       |
-| 9     | HTTP Layer                                      | NOT STARTED                       |
-| 10    | Security, Performance, and Production Readiness | NOT STARTED                       |
+| 7     | Audit Logging                                   | NOT STARTED                                         |
+| 8     | Cross-Context Integration                       | NOT STARTED                                         |
+| 9     | HTTP Layer                                      | NOT STARTED                                         |
+| 10    | Security, Performance, and Production Readiness | NOT STARTED                                         |
 
 ## PHASE 0 — Repository Audit and Baseline
 
@@ -891,7 +901,7 @@ Status: **COMPLETED — APPROVED BY USER**.
 Approved outputs:
 
 - Scoped RBAC.
-- Three independent scope concepts.
+- Three independent authorization dimensions: Role definition source, Role assignment target, and Permission resource level.
 - System and organization-owned roles.
 - Permission Registry.
 - Organization-to-branch inheritance.
@@ -915,9 +925,9 @@ Goal: finalize Prisma schema, database invariants, and migration strategy before
 
 Activities:
 
-1. Define `RoleDefinitionScope`.
-2. Define Access Control-owned `RoleAssignmentScope`.
-3. Finalize permission target-scope model (source-code registry metadata).
+1. Define the Domain `RoleDefinitionSource` and its Prisma `RoleDefinitionScope` persistence mapping.
+2. Define Access Control-owned `RoleAssignmentTarget`.
+3. Finalize the `PermissionResourceLevel` model (source-code Registry metadata).
 4. Redesign Role model and remove branch-owned role concept.
 5. Add Role lifecycle status.
 6. Decide exact reserved/non-assignable role representation (`isAssignable` or equivalent).
@@ -973,7 +983,7 @@ Every Registry entry explicitly defines:
 
 - Stable `code`.
 - English and Persian `name` and `description`.
-- `targetScope`: `ORGANIZATION` or `BRANCH`.
+- `resourceLevel`: `ORGANIZATION` or `BRANCH`.
 - `resource`.
 - `action`.
 - Explicit `delegable` boolean.
@@ -984,12 +994,12 @@ Defined actions: `READ`, `CREATE`, `UPDATE`, `INVITE`, `SUSPEND`, `REMOVE`, `ASS
 
 `organization.members.permissions.manage` is:
 
-- Target scope: `ORGANIZATION`
+- Resource level: `ORGANIZATION`
 - Resource: `organization.members.permissions`
 - Action: `MANAGE`
 - Delegable: `false`
 
-It covers Organization-member permission overrides, including branch-specific exceptions. Its target scope remains ORGANIZATION.
+It covers Organization-member permission overrides, including branch-specific exceptions. Its resource level remains ORGANIZATION.
 
 ### Delegability policy
 
@@ -1066,8 +1076,8 @@ Both permission sets are static source-controlled lists. They are never derived 
 
 Role configuration:
 
-- `ORGANIZATION_OWNER`: `assignmentScope = ORGANIZATION`, `isAssignable = false`.
-- `BRANCH_MANAGER`: `assignmentScope = BRANCH`, `isAssignable = true`.
+- `ORGANIZATION_OWNER`: `assignmentTarget = ORGANIZATION`, `isAssignable = false`.
+- `BRANCH_MANAGER`: `assignmentTarget = BRANCH`, `isAssignable = true`.
 
 `isAssignable` is not itself assignment authority. Application-level assignment and delegation rules remain for the later Application phase.
 
@@ -1079,7 +1089,7 @@ The synchronizer:
 
 1. Reads the two known System Roles.
 2. Validates all existing managed roles before the first write.
-3. Fails if either managed role is ARCHIVED, has an unexpected assignment scope, or unexpectedly belongs to an Organization.
+3. Fails if either managed role is ARCHIVED, has an unexpected assignment target, or unexpectedly belongs to an Organization.
 4. Upserts the 23 source-controlled Permission codes.
 5. Creates or updates only the two known SYSTEM roles.
 6. Replaces RolePermission links only for those exact System Role IDs.
@@ -1144,10 +1154,10 @@ Status: **COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)**.
 
 The Access Control Domain model has been implemented with the following responsibilities:
 
-- **Role:** validates definition scope, assignment scope, ownership, reserved System Role invariants, permission membership, assignability, and ACTIVE/ARCHIVED lifecycle.
+- **Role:** validates definition scope, assignment target, ownership, reserved System Role invariants, permission membership, assignability, and ACTIVE/ARCHIVED lifecycle.
 - **RoleAssignment:** validates assignment targets and scope compatibility, distinguishes generic assignment from the dedicated Organization Owner factory, supports historical reconstitution, and evaluates revocation/effectiveness.
 - **PermissionOverride:** models Branch-target ALLOW and DENY exceptions for an OrganizationMembership, validates tenant consistency and known permission scope, and protects timestamp state.
-- **Permission scope rules:** validate Permission codes against the source-controlled Registry and enforce Role assignment-scope compatibility.
+- **Permission resource-level rules:** validate Permission codes against the source-controlled Registry and enforce compatibility with the Role assignment target.
 - **Authorization decision:** represents allow/deny outcomes and their reason codes.
 - **Permission evaluator:** evaluates a supplied authorization snapshot, validates global Organization/Membership/Branch context, applies DENY before ALLOW, then evaluates Organization and Branch Role grants. It is stateless and does not perform persistence or I/O.
 - **Delegation policy:** evaluates permission delegability, actor-held permissions, Role composition, Role assignment, and ALLOW/DENY override requirements.
@@ -1283,7 +1293,7 @@ Do not move Prisma dependencies into Domain or Application. PHASE 6 implements t
 
 ## PHASE 7 — Audit Logging
 
-Status: **IN PROGRESS — PHASE 7.1 policy design approved; Prisma schema validation passed locally; schema-to-Migration review and isolated-database application pending (2026-11-02).**
+Status: **IN PROGRESS — PHASE 7.1 policy design approved; Audit and Role assignment-target migrations applied to development/test databases on 2026-11-03; Audit runtime implementation pending.**
 
 ### Purpose and approved scope
 
@@ -1374,7 +1384,6 @@ The Phase 7 repository inspection established:
 - Do not add Audit relations or inverse relation fields to Identity or Organization models solely for historical references.
 - The Audit record's required `organizationId` is a tenant scope key, not a foreign key. Selected denial events are persisted in this table only when the actor is authenticated and the Organization context is validated.
 
-
 **Initial Prisma/Migration design (ADR-024; draft committed; Prisma schema validation passed locally, Migration not yet applied):**
 
 - Store events in the dedicated `AccessControlAuditEvent` model in `prisma/models/access-control-audit.prisma`; do not add Audit relations or inverse fields to operational models.
@@ -1390,15 +1399,15 @@ The Phase 7 repository inspection established:
 
 Integrate event creation into the seven existing mutation Handlers. Business persistence and Audit append must share one Unit of Work callback and one transaction.
 
-| Handler operation | Required event behavior |
-| --- | --- |
-| Create Role | Record one `ROLE_CREATED` event with Role identity and allow-listed resulting state, including the initial Permission codes. Do not emit separate `ROLE_PERMISSION_ADDED` events for those initial links. |
-| Update Role | Record `ROLE_UPDATED` for actual metadata changes and separate Permission added/removed events for actual set differences. No event for no-op. |
-| Archive Role | Record `ROLE_ARCHIVED` only on ACTIVE → ARCHIVED. |
-| Assign Role | Record `ROLE_ASSIGNED` with target Membership and scope. |
-| Revoke Role | Record `ROLE_REVOKED` only for an actual active → revoked transition. |
-| Set Permission Override | Record CREATED or UPDATED with actual previous/new effect. No event for unchanged effect. |
-| Remove Permission Override | Record REMOVED only when an existing Override is deleted. |
+| Handler operation          | Required event behavior                                                                                                                                                                                   |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Create Role                | Record one `ROLE_CREATED` event with Role identity and allow-listed resulting state, including the initial Permission codes. Do not emit separate `ROLE_PERMISSION_ADDED` events for those initial links. |
+| Update Role                | Record `ROLE_UPDATED` for actual metadata changes and separate Permission added/removed events for actual set differences. No event for no-op.                                                            |
+| Archive Role               | Record `ROLE_ARCHIVED` only on ACTIVE → ARCHIVED.                                                                                                                                                         |
+| Assign Role                | Record `ROLE_ASSIGNED` with target Membership and scope.                                                                                                                                                  |
+| Revoke Role                | Record `ROLE_REVOKED` only for an actual active → revoked transition.                                                                                                                                     |
+| Set Permission Override    | Record CREATED or UPDATED with actual previous/new effect. No event for unchanged effect.                                                                                                                 |
+| Remove Permission Override | Record REMOVED only when an existing Override is deleted.                                                                                                                                                 |
 
 **Exit criteria:** tests prove mutation + Audit atomicity, rollback if Audit append fails, correct before/after state, and no duplicate events for idempotent operations.
 
@@ -1657,6 +1666,6 @@ Use this document as the architecture contract for the Tarkhineh Access Control 
 
 Do not restart completed phases. Do not make assumptions about code that has not been inspected. Work one phase at a time, record status, verify all claims, and request approval before changing an accepted architectural decision.
 
-The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; the Prisma model and forward Migration draft are committed, with local validation and isolated-database application pending)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 is governed by this document's section 4.11, this PHASE 7 roadmap, and ADR-014 and ADR-022 through ADR-025 in `ARCHITECTURAL-DECISIONS.md`. The three repository documents are the complete source of truth; no separate Phase 7 plan document is maintained. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
+The current implementation checkpoint is **PHASE 7 — Audit Logging (in progress; the Audit Prisma model and forward Migration are committed and applied to `tarkhineh_db` and `tarkhineh_test` on 2026-11-03; Audit writer/reader runtime implementation remains pending)**. PHASES 0–6 are formally closed; PHASE 6 was approved by the project owner on 2026-11-02 with its full-app boot, full-project Integration, and production-scale benchmark items explicitly deferred and documented. Phase 7 is governed by this document's section 4.11, this PHASE 7 roadmap, and ADR-014 and ADR-022 through ADR-026 in `ARCHITECTURAL-DECISIONS.md`. The three repository documents are the complete source of truth; no separate Phase 7 plan document is maintained. Proceed sequentially through PHASE 7 (Audit Logging), PHASE 8 (Cross-Context Integration), and the remaining phases. Only one phase may be active at a time.
 
 **Final goal:** Build a production-ready, secure, scalable, and maintainable Access Control system for Tarkhineh Backend using Clean Architecture, DDD, and Scoped RBAC — without unnecessary complexity.

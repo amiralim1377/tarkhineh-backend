@@ -1,11 +1,11 @@
 # Access Control — Architectural Decision Records
 
-| Attribute              | Value                         |
-| ---------------------- | ----------------------------- |
-| Project                | `tarkhineh-backend`           |
-| Document version       | 1.13                          |
-| Last updated           | 2026-11-02                    |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.15 |
+| Attribute              | Value                          |
+| ---------------------- | ------------------------------ |
+| Project                | `tarkhineh-backend`            |
+| Document version       | 1.14                           |
+| Last updated           | 2026-11-04                     |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.16 |
 
 This document is the decision log for the Access Control bounded context. Each ADR records the context, the decision, and its consequences. Accepted decisions are binding implementation constraints. They must not be silently changed. If later evidence or a product requirement requires a change, add a new ADR that explicitly supersedes the affected decision and obtain project-owner approval before implementing the change.
 
@@ -35,7 +35,7 @@ Use **Scoped Role-Based Access Control (Scoped RBAC) with Permission Overrides a
 ### Consequences
 
 - Roles and their Permission links are the primary mechanism for composing grants.
-- Organization, Branch, membership, and Permission target scope must be explicit in authorization decisions.
+- Organization, Branch, membership, and Permission resource level must be explicit in authorization decisions.
 - Permission Overrides provide targeted exceptions to role-derived grants.
 - Delegation rules constrain which permissions an actor may grant to another principal.
 - V1 does not include ABAC, wildcard permissions, role hierarchy, Event Sourcing, or an external/general-purpose policy engine.
@@ -65,30 +65,31 @@ Support multiple `OrganizationMembership` records for one `User`. Every authoriz
 
 ---
 
-## ADR-003 — Keep the three scope concepts independent
+## ADR-003 — Keep role definition source, assignment target, and permission resource level independent
 
-**Status:** ACCEPTED
+**Status:** ACCEPTED — terminology clarified by ADR-026
 **Decision owner:** Project owner
-**Date:** 2026-11-01
+**Date:** 2026-11-01; terminology clarification: 2026-11-03
 
 ### Context
 
-The earlier design reused Organization Management's `MembershipScope` for Role assignment and used a separate Role scope to represent ownership. Permission definitions also had a scope. These concepts describe different things and must not share one enum or meaning.
+The model contains three independent concepts: who defines/owns a Role, which membership type may receive that Role, and the resource level at which a Permission is evaluated. These concepts must not share one enum or one ambiguous meaning. The original implementation terminology used “assignment scope” and “permission target scope”; the canonical names were clarified by ADR-026 without changing authorization behavior.
 
 ### Decision
 
-Maintain three independent scope concepts:
+Maintain three independent concepts with explicit names at the Domain boundary:
 
-1. `RoleDefinitionScope`: `SYSTEM` or `ORGANIZATION` — who owns/defines a Role.
-2. `RoleAssignmentScope`: `ORGANIZATION` or `BRANCH` — which membership type can receive a Role.
-3. `PermissionTargetScope`: `ORGANIZATION` or `BRANCH` — the context in which a Permission applies.
+1. `RoleDefinitionSource`: `SYSTEM` or `ORGANIZATION_DEFINED` — who defines/owns a Role. The Prisma persistence representation remains `RoleDefinitionScope` / `definitionScope` (`SYSTEM` or `ORGANIZATION`) and is mapped to the Domain type.
+2. `RoleAssignmentTarget`: `ORGANIZATION` or `BRANCH` — which membership type can receive a Role. The canonical Domain constant and property are `ROLE_ASSIGNMENT_TARGET` and `assignmentTarget`.
+3. `PermissionResourceLevel`: `ORGANIZATION` or `BRANCH` — the resource level at which a Permission applies. The canonical Registry constant and property are `PERMISSION_RESOURCE_LEVEL` and `resourceLevel`.
 
 ### Consequences
 
-- Access Control owns its `RoleAssignmentScope` and does not depend on Organization Management's `MembershipScope` enum for Role assignment semantics.
-- Role ownership is independent from the membership receiving the Role.
-- Permission target scope is independent from both Role ownership and Role assignment scope.
-- Scope compatibility is an authorization invariant. It must be enforced by Domain/Application rules and supported by database constraints where appropriate.
+- Access Control owns `RoleAssignmentTarget` and does not depend on Organization Management's `MembershipScope` enum for Role assignment semantics.
+- Role definition source is independent from the membership receiving the Role.
+- Permission resource level is independent from both Role definition source and Role assignment target.
+- Compatibility between a Role's assignment target and the resource levels of its Permissions is an authorization invariant. It must be enforced by Domain/Application rules and supported by database constraints where appropriate.
+- The Domain uses `RoleDefinitionSource` / `definitionSource`; Prisma continues to use the persistence-specific `RoleDefinitionScope` / `definitionScope`. This mapping is intentional and is not part of the assignment/permission terminology rename.
 
 ---
 
@@ -104,7 +105,7 @@ The previous schema allowed Roles to be owned by `SYSTEM`, `ORGANIZATION`, or `B
 
 ### Decision
 
-Role definition ownership is limited to `SYSTEM` and `ORGANIZATION`. An Organization-owned custom Role may have either `ORGANIZATION` or `BRANCH` assignment scope.
+Role definition ownership is limited to `SYSTEM` and `ORGANIZATION`. An Organization-owned custom Role may have either `ORGANIZATION` or `BRANCH` assignment target.
 
 ### Consequences
 
@@ -134,10 +135,10 @@ The application needs stable built-in Roles as well as tenant-specific Role comp
 
 Initial System Roles:
 
-| Role                 | Definition scope | Assignment scope |
-| -------------------- | ---------------- | ---------------- |
-| `ORGANIZATION_OWNER` | `SYSTEM`         | `ORGANIZATION`   |
-| `BRANCH_MANAGER`     | `SYSTEM`         | `BRANCH`         |
+| Role                 | Definition scope | Assignment target |
+| -------------------- | ---------------- | ----------------- |
+| `ORGANIZATION_OWNER` | `SYSTEM`         | `ORGANIZATION`    |
+| `BRANCH_MANAGER`     | `SYSTEM`         | `BRANCH`          |
 
 ### Consequences
 
@@ -247,7 +248,7 @@ The logical uniqueness key is `(organizationMembershipId, branchId, permissionId
 
 - An Organization member without a `BranchMembership` may receive a Branch-specific `DENY` or `ALLOW` override.
 - Composite foreign keys and relations enforce shared Organization ownership where supported by the schema.
-- Target-scope validation and delegation remain application responsibilities.
+- Permission resource-level validation and delegation remain Application responsibilities.
 - PHASE 2 implemented this relation model around `OrganizationMembership + Branch + Permission` through the approved forward migration.
 
 ---
@@ -504,7 +505,7 @@ The architecture requires stable source-controlled Permission semantics, explici
   - `organization.roles.archive`
   - `organization.members.permissions.manage`
 - Keep `organization.roles.assign` as an existing code; do not rename or recreate it under a new code.
-- Define every Registry entry with localized English and Persian name/description, `targetScope`, `resource`, `action`, and explicit `delegable` metadata.
+- Define every Registry entry with localized English and Persian name/description, `resourceLevel`, `resource`, `action`, and explicit `delegable` metadata.
 - Define 16 ORGANIZATION-target permissions and 7 BRANCH-target permissions.
 - Define 16 delegable permissions:
   - `organization.read`
@@ -531,19 +532,19 @@ The architecture requires stable source-controlled Permission semantics, explici
   - `organization.roles.update`
   - `organization.roles.archive`
   - `organization.members.permissions.manage`
-- Define `organization.members.permissions.manage` with ORGANIZATION target scope, resource `organization.members.permissions`, action `MANAGE`, and `delegable = false`.
+- Define `organization.members.permissions.manage` with ORGANIZATION resource level, resource `organization.members.permissions`, action `MANAGE`, and `delegable = false`.
 
 #### Explicit System Role permission sets
 
 - Give `ORGANIZATION_OWNER` an explicit static set of all 23 approved Permission codes. It remains ORGANIZATION-assigned and non-assignable.
 - Give `BRANCH_MANAGER` an explicit static set of the seven Branch-target permissions. It remains BRANCH-assigned and assignable.
 - Do not derive either System Role permission set dynamically from the full Permission Registry.
-- `isAssignable` describes whether a Role may be assigned; it does not replace operation authority, target-scope validation, or delegation checks in later Application use cases.
+- `isAssignable` describes whether a Role may be assigned; it does not replace operation authority, resource-level validation, or delegation checks in later Application use cases.
 
 #### Seed synchronization and safety
 
 - Synchronize the Permission Registry and the two managed System Roles inside one caller-owned Prisma interactive transaction.
-- Validate all existing managed System Roles before the first write. Fail if either managed Role is archived, has unexpected `assignmentScope`, or unexpectedly belongs to an Organization.
+- Validate all existing managed System Roles before the first write. Fail if either managed Role is archived, has an unexpected `assignmentTarget`, or unexpectedly belongs to an Organization.
 - Upsert source-controlled Permission codes.
 - Create or update only the two known `SYSTEM` Roles.
 - Replace `RolePermission` links only for the exact IDs of those two managed System Roles.
@@ -642,8 +643,8 @@ The repository also has a database-enforced unique key for Permission Overrides.
 
 ## ADR-022 — Retain Access Control audit records without automatic deletion
 
-**Status:** ACCEPTED  
-**Decision owner:** Project owner  
+**Status:** ACCEPTED
+**Decision owner:** Project owner
 **Date:** 2026-11-02
 
 ### Context
@@ -673,8 +674,8 @@ For the initial Access Control Audit implementation:
 
 ## ADR-023 — Preserve Audit references as immutable historical identifiers
 
-**Status:** ACCEPTED  
-**Decision owner:** Project owner (delegated technical decision)  
+**Status:** ACCEPTED
+**Decision owner:** Project owner (delegated technical decision)
 **Date:** 2026-11-02
 
 ### Context
@@ -737,8 +738,8 @@ The PostgreSQL documentation defines the semantics of `CASCADE`, `RESTRICT`, and
 
 ## ADR-024 — Use a dedicated append-only Access Control Audit event table
 
-**Status:** ACCEPTED — DELEGATED TECHNICAL DECISION  
-**Decision owner:** Project owner (technical design delegated to the architecture reviewer)  
+**Status:** ACCEPTED — DELEGATED TECHNICAL DECISION
+**Decision owner:** Project owner (technical design delegated to the architecture reviewer)
 **Date:** 2026-11-02
 
 ### Context
@@ -772,8 +773,8 @@ ADR-014, ADR-022, and ADR-023 require a durable Access Control security history 
 
 ## ADR-025 — Finalize PHASE 7.1 Audit event, reader, denial, and correlation policies
 
-**Status:** ACCEPTED  
-**Decision owner:** Project owner  
+**Status:** ACCEPTED
+**Decision owner:** Project owner
 **Date:** 2026-11-02
 
 ### Context
@@ -796,7 +797,7 @@ Two dedicated, non-delegable Permission codes define the initial readers. They m
 **Organization Owner**
 
 - Permission: `organization.audit.read`.
-- Target scope: `ORGANIZATION`.
+- Resource level: `ORGANIZATION`.
 - Delegability: `false`.
 - Initial recipient: `ORGANIZATION_OWNER` only.
 - Visibility: every Audit event whose `organizationId` equals the exact Organization for which the reader has been authorized, including Organization-level events and events from every Branch in that Organization.
@@ -805,7 +806,7 @@ Two dedicated, non-delegable Permission codes define the initial readers. They m
 **Branch Manager — own actions only**
 
 - Permission: `branch.audit.read.own`.
-- Target scope: `BRANCH`.
+- Resource level: `BRANCH`.
 - Delegability: `false`.
 - Initial recipient: `BRANCH_MANAGER`.
 - Visibility: only the authenticated Manager's own successful permission-changing events in the exact authorized Branch and Organization.
@@ -892,3 +893,55 @@ The following topics remain open and must be resolved in their relevant implemen
 4. **Accepted PHASE 6 deferrals:** full application boot, full-project Integration-suite review, and production-scale query benchmarking remain deferred as documented in IMPLEMENTATION-STATUS.md section 8.10.
 
 For the current phase status, exact verification results, and known limitations, see `IMPLEMENTATION-STATUS.md`.
+
+---
+
+## ADR-026 — Use explicit target/resource-level terminology for Role assignments and Permissions
+
+**Status:** ACCEPTED — IMPLEMENTED
+**Decision owner:** Project owner
+**Decision date:** 2026-11-03
+**Implementation migration:** `prisma/migrations/20261103120000_rename_role_assignment_scope_to_target/migration.sql`
+
+### Context
+
+The word “scope” was being used for two different concepts: the membership destination of a Role assignment and the level of resource governed by a Permission. This made Domain APIs, persistence fields, Registry metadata, and architecture documentation less explicit. The recent implementation renamed these concepts to express what each value actually identifies. This is a terminology and schema-identifier change; it does not change the approved RBAC rules or grant/revoke behavior.
+
+### Decision
+
+Use the following canonical names throughout current Domain code, Prisma schema, and active documentation:
+
+| Concept                                  | Previous name             | Canonical name              |
+| ---------------------------------------- | ------------------------- | --------------------------- |
+| Role assignment destination type         | `RoleAssignmentScope`     | `RoleAssignmentTarget`      |
+| Role assignment enum constant            | `ROLE_ASSIGNMENT_SCOPE`   | `ROLE_ASSIGNMENT_TARGET`    |
+| Role assignment property / Prisma column | `assignmentScope`         | `assignmentTarget`          |
+| Permission resource level type           | `PermissionTargetScope`   | `PermissionResourceLevel`   |
+| Permission resource-level constant       | `PERMISSION_TARGET_SCOPE` | `PERMISSION_RESOURCE_LEVEL` |
+| Permission Registry property             | `targetScope`             | `resourceLevel`             |
+
+The Registry-derived collections are named `ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS` and `BRANCH_RESOURCE_LEVEL_PERMISSIONS`.
+
+### Database implementation
+
+The forward-only migration `20261103120000_rename_role_assignment_scope_to_target`:
+
+- Renames the PostgreSQL enum `RoleAssignmentScope` to `RoleAssignmentTarget`.
+- Renames the `Role.assignmentScope` column to `Role.assignmentTarget`.
+- Replaces the old assignment guard with `enforce_role_assignment_target()` and `RoleAssignment_target_guard`.
+- Keeps Role definition ownership and assignment target immutable, with the updated error message referring to the assignment target.
+
+The migration was applied to `tarkhineh_db` and `tarkhineh_test` on 2026-11-03; the subsequent Prisma migration-status check reported the schemas up to date.
+
+### Compatibility and historical naming
+
+- Do not rename `RoleDefinitionScope` / `definitionScope` in Prisma or `RoleDefinitionSource` / `definitionSource` in the Domain as part of this decision. They describe Role definition ownership/source, not assignment destination.
+- Existing stable Domain error identifiers containing `SCOPE` remain unchanged for compatibility. They are legacy error-code identifiers, not canonical type/property names; a future public error-code migration would require a separate compatibility decision.
+- Earlier immutable Prisma migration files retain their original identifiers as historical migration inputs. Do not edit those migrations. The new forward migration is the mechanism that changes the live database identifiers.
+- Do not change Permission codes, Role semantics, scope/tenant validation behavior, inheritance, override precedence, or delegation rules as a side effect of this rename.
+
+### Consequences
+
+- New code and active documentation must use `RoleAssignmentTarget`, `ROLE_ASSIGNMENT_TARGET`, `assignmentTarget`, `PermissionResourceLevel`, `PERMISSION_RESOURCE_LEVEL`, and `resourceLevel`.
+- “Assignment target” describes the eligible membership destination. “Permission resource level” describes the Organization/Branch level at which the Permission is evaluated.
+- Historical old names may appear only when explicitly explaining the rename, compatibility identifiers, or immutable migration history.
