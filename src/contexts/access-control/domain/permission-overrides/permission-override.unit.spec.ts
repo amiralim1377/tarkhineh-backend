@@ -106,7 +106,7 @@ describe('PermissionOverride', () => {
         }),
       ).toThrowError(
         expect.objectContaining({
-          code: PERMISSION_OVERRIDE_ERROR_CODE.PERMISSION_SCOPE_INVALID,
+          code: PERMISSION_OVERRIDE_ERROR_CODE.PERMISSION_RESOURCE_LEVEL_INVALID,
         }),
       );
     });
