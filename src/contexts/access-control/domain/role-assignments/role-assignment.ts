@@ -245,7 +245,6 @@ export class RoleAssignment extends Entity<UniqueId> {
     }
 
     const targetId = target.id.trim();
-    const targetOrganizationId = target.organizationId.trim();
 
     if (!targetId) {
       throw new InvalidRoleAssignmentError(
@@ -253,6 +252,8 @@ export class RoleAssignment extends Entity<UniqueId> {
         'Role assignment membership ID is required.',
       );
     }
+
+    const targetOrganizationId = target.organizationId.trim();
 
     if (!targetOrganizationId) {
       throw new InvalidRoleAssignmentError(
