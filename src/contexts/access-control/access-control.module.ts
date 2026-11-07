@@ -17,9 +17,11 @@ import { GetEffectivePermissionsHandler } from './application/queries/get-effect
 import { ListAvailablePermissionsHandler } from './application/queries/list-available-permissions/list-available-permissions.handler.js';
 import { PrismaDefaultAuthorizationSnapshotReader } from './infrastructure/persistence/prisma-authorization-snapshot.reader.js';
 import { PrismaAccessControlUnitOfWork } from './infrastructure/persistence/prisma-access-control.unit-of-work.js';
+import { AccessControlController } from './presentation/http/controllers/access-control.controller.js';
 
 @Module({
   imports: [CqrsModule, PrismaModule, SharedModule],
+  controllers: [AccessControlController],
   providers: [
     // Application services
     AuthorizationApplicationService,
