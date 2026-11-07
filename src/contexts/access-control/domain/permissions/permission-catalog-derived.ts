@@ -1,13 +1,16 @@
-// ============================================================
-// PERMISSION DEFINITIONS
-// ============================================================
-
 import {
   PERMISSION_CATALOG,
   PERMISSION_RESOURCE_LEVEL,
+} from './permission-catalog.js';
+
+import type {
   PermissionCode,
   PermissionDefinition,
 } from './permission-catalog.js';
+
+// ============================================================
+// PERMISSION DEFINITIONS
+// ============================================================
 
 export const PERMISSION_DEFINITIONS: readonly PermissionDefinition[] = (
   Object.keys(PERMISSION_CATALOG) as PermissionCode[]
@@ -31,7 +34,7 @@ export const NON_DELEGABLE_PERMISSIONS: readonly PermissionCode[] =
   );
 
 // ============================================================
-// TARGET SCOPE HELPERS
+// PERMISSION RESOURCE LEVEL HELPERS
 // ============================================================
 
 export const ORGANIZATION_RESOURCE_LEVEL_PERMISSIONS: readonly PermissionCode[] =
