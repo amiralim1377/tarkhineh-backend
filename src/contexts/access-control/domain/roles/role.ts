@@ -1,16 +1,13 @@
 import { Entity } from '../../../../shared/domain/entities/entity.js';
 import { UniqueId } from '../../../../shared/domain/value-objects/unique-id.vo.js';
-
 import {
   InvalidRoleDataError,
   ROLE_DATA_ERROR_CODE,
 } from '../errors/invalid-role-data.error.js';
-
 import {
   isKnownPermissionCode,
   isPermissionCompatibleWithRoleAssignmentTarget,
 } from '../rules/role-permission-scope.rule.js';
-
 import {
   ROLE_ASSIGNMENT_TARGET,
   ROLE_DEFINITION_SOURCE,
@@ -19,18 +16,15 @@ import {
   type RoleDefinitionSource,
   type RoleStatus,
 } from './role.types.js';
-
 import {
   getSystemRoleDefinition,
   isSystemRoleCode,
 } from './system-role-catalog.js';
-
 import type { PermissionCode } from '../permissions/permission-catalog.js';
 
 // ============================================================
 // ROLE PROPS
 // ============================================================
-
 export interface CreateRoleProps {
   readonly id?: string;
   readonly code: string;
@@ -47,7 +41,6 @@ export interface CreateRoleProps {
 // ============================================================
 // ROLE ENTITY
 // ============================================================
-
 export class Role extends Entity<UniqueId> {
   private permissionCodes: readonly PermissionCode[];
 
@@ -77,7 +70,6 @@ export class Role extends Entity<UniqueId> {
     const name = props.name.trim();
     const organizationId = props.organizationId?.trim() || null;
     const description = props.description?.trim() || null;
-
     const status = props.status ?? ROLE_STATUS.ACTIVE;
     const permissionCodes = props.permissionCodes ?? [];
 
