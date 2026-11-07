@@ -114,7 +114,9 @@ export interface PermissionDefinition {
   readonly code: PermissionCode;
   readonly name: LocalizedText;
   readonly description: LocalizedText;
+  //organization or branch در چه سطحی؟
   readonly resourceLevel: PermissionResourceLevel;
+  //  مربوط به چه چیزی؟  کارکنان، داشبورد، نقش‌ها، اعضا
   readonly resource: PermissionResource;
   readonly action: PermissionAction;
   readonly delegable: boolean;
