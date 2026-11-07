@@ -11,8 +11,6 @@ import {
 export const SYSTEM_ROLE_CODE = {
   ORGANIZATION_OWNER: 'ORGANIZATION_OWNER',
   BRANCH_MANAGER: 'BRANCH_MANAGER',
-  ORGANIZATION_ACCOUNTANT: 'ORGANIZATION_ACCOUNTANT',
-  BRANCH_ACCOUNTANT: 'BRANCH_ACCOUNTANT',
 } as const;
 
 export type SystemRoleCode =
@@ -44,17 +42,6 @@ export const SYSTEM_ROLE_CATALOG = {
   },
 
   [SYSTEM_ROLE_CODE.BRANCH_MANAGER]: {
-    definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-    assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
-    isAssignable: true,
-  },
-
-  [SYSTEM_ROLE_CODE.ORGANIZATION_ACCOUNTANT]: {
-    definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
-    assignmentTarget: ROLE_ASSIGNMENT_TARGET.ORGANIZATION,
-    isAssignable: true,
-  },
-  [SYSTEM_ROLE_CODE.BRANCH_ACCOUNTANT]: {
     definitionSource: ROLE_DEFINITION_SOURCE.SYSTEM,
     assignmentTarget: ROLE_ASSIGNMENT_TARGET.BRANCH,
     isAssignable: true,
