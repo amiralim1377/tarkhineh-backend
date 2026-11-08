@@ -9,10 +9,15 @@ export class OrganizationSlug {
   private constructor(private readonly value: string) {}
 
   static create(value: string): OrganizationSlug {
-    // Normalize the slug.
+    if (typeof value !== 'string') {
+      throw new InvalidOrganizationDataError(
+        ORGANIZATION_MANAGEMENT_ERROR_CODE.ORGANIZATION.SLUG_INVALID,
+        'Organization slug must be a string.',
+      );
+    }
+
     const normalized = value.trim().toLowerCase().replace(/\s+/g, '-');
 
-    // Validate the normalized slug.
     if (!OrganizationSlug.SLUG_PATTERN.test(normalized)) {
       throw new InvalidOrganizationDataError(
         ORGANIZATION_MANAGEMENT_ERROR_CODE.ORGANIZATION.SLUG_INVALID,
