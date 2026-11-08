@@ -4,6 +4,7 @@ import {
   Get,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -42,6 +43,9 @@ import { PERMISSION_CODE } from '../../../domain/permissions/permission-catalog.
 import { CreateRoleDto } from '../dto/create-role.dto.js';
 import { CreateRoleResponseDto } from '../dto/create-role-response.dto.js';
 import { CreateRoleCommand } from '../../../application/commands/create-role/create-role.command.js';
+import { UpdateRoleDto } from '../dto/update-role.dto.js';
+import { UpdateRoleCommand } from '../../../application/commands/update-role/update-role.command.js';
+import { UpdateRoleResponseDto } from '../dto/update-role-response.dto.js';
 
 @ApiTags('Access Control')
 @Controller('organizations/:organizationId/access-control')
@@ -259,5 +263,70 @@ export class AccessControlController {
     );
 
     return CreateRoleResponseDto.from(result);
+  }
+
+  @Auth(AuthType.Bearer, AuthType.Cookie)
+  @Patch('roles/:roleId')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update an Organization-defined Role',
+    description:
+      'Updates the details or complete Permission set of an existing Organization-defined Role.',
+  })
+  @ApiParam({
+    name: 'organizationId',
+    description: 'The Organization identifier.',
+  })
+  @ApiParam({
+    name: 'roleId',
+    description: 'The Role identifier.',
+  })
+  @ApiBody({
+    type: UpdateRoleDto,
+  })
+  @ApiOkResponse({
+    description: 'Role updated successfully.',
+    type: UpdateRoleResponseDto,
+  })
+  @ApiProblemBadRequestResponse({
+    description: 'The request body is invalid.',
+  })
+  @ApiProblemUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiProblemResponse(HttpStatus.FORBIDDEN, {
+    description:
+      'The authenticated actor is not authorized to update this Role.',
+  })
+  @ApiProblemResponse(HttpStatus.NOT_FOUND, {
+    description: 'The requested Role was not found in this Organization.',
+  })
+  @ApiProblemResponse(HttpStatus.UNPROCESSABLE_ENTITY, {
+    description: 'The Role update violates a business rule.',
+  })
+  @ApiProblemServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+  })
+  async updateRole(
+    @Param('organizationId') organizationId: string,
+    @Param('roleId') roleId: string,
+    @Body() body: UpdateRoleDto,
+    @CurrentUser() principal: AuthenticatedPrincipal,
+  ): Promise<UpdateRoleResponseDto> {
+    const result = await this.commandBus.execute(
+      new UpdateRoleCommand(principal.userId, {
+        organizationId,
+        roleId,
+        ...(body.name === undefined ? {} : { name: body.name }),
+        ...(body.description === undefined
+          ? {}
+          : { description: body.description }),
+        ...(body.permissionCodes === undefined
+          ? {}
+          : { permissionCodes: body.permissionCodes }),
+      }),
+    );
+
+    return UpdateRoleResponseDto.from(result);
   }
 }
