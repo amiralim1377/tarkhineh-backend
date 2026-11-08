@@ -4,20 +4,20 @@ import {
   BRANCH_ERROR_CODE,
   InvalidBranchDataError,
 } from '../errors/invalid-branch-data.error.js';
-import { BranchSlug } from '../value-objects/branch-slug.vo.js';
-import { BranchName } from '../value-objects/branch-name.vo.js';
+import { BRANCH_STATUS, type BranchStatus } from '../types/lifecycle-status.js';
 import {
   BranchAddress,
   type BranchAddressInput,
 } from '../value-objects/branch-address.vo.js';
 import { BranchLocation } from '../value-objects/branch-location.vo.js';
+import { BranchName } from '../value-objects/branch-name.vo.js';
 import { BranchPhoneNumber } from '../value-objects/branch-phone-number.vo.js';
+import { BranchSlug } from '../value-objects/branch-slug.vo.js';
 import { BranchTimeZone } from '../value-objects/branch-time-zone.vo.js';
 
-// BRANCH TYPES
+export type { BranchStatus } from '../types/lifecycle-status.js';
 
-export type BranchStatus = 'ACTIVE' | 'INACTIVE';
-
+// Input required to create a new branch.
 export interface CreateBranchInput extends BranchAddressInput {
   readonly id?: string;
   readonly organizationId: string;
@@ -68,9 +68,7 @@ interface BranchState {
   readonly updatedAt: Date;
 }
 
-// BRANCH ENTITY
 export class Branch extends Entity<UniqueId> {
-  private readonly _id: UniqueId;
   private readonly _organizationId: string;
   private _name: BranchName;
   private readonly _slug: BranchSlug;
@@ -84,7 +82,7 @@ export class Branch extends Entity<UniqueId> {
 
   private constructor(props: BranchState) {
     super(props.id);
-    this._id = props.id;
+
     this._organizationId = props.organizationId;
     this._name = props.name;
     this._slug = props.slug;
@@ -97,7 +95,6 @@ export class Branch extends Entity<UniqueId> {
     this._updatedAt = new Date(props.updatedAt);
   }
 
-  // CREATE
   static create(input: CreateBranchInput): Branch {
     const organizationId = input.organizationId.trim();
 
@@ -117,9 +114,9 @@ export class Branch extends Entity<UniqueId> {
       );
     }
 
-    const status = input.status ?? 'ACTIVE';
+    const status = input.status ?? BRANCH_STATUS.ACTIVE;
 
-    if (status !== 'ACTIVE' && status !== 'INACTIVE') {
+    if (status !== BRANCH_STATUS.ACTIVE && status !== BRANCH_STATUS.INACTIVE) {
       throw new InvalidBranchDataError(
         BRANCH_ERROR_CODE.STATUS_INVALID,
         'Branch status is invalid.',
@@ -127,10 +124,9 @@ export class Branch extends Entity<UniqueId> {
     }
 
     const now = new Date();
-    const branchId = new UniqueId(id);
 
     return new Branch({
-      id: branchId,
+      id: new UniqueId(id),
       organizationId,
       name: BranchName.create(input.nameFa, input.nameEn),
       slug: BranchSlug.create(input.slug),
@@ -151,7 +147,6 @@ export class Branch extends Entity<UniqueId> {
     });
   }
 
-  // RECONSTITUTE
   static reconstitute(props: BranchProps): Branch {
     const id = props.id.trim();
 
@@ -171,7 +166,10 @@ export class Branch extends Entity<UniqueId> {
       );
     }
 
-    if (props.status !== 'ACTIVE' && props.status !== 'INACTIVE') {
+    if (
+      props.status !== BRANCH_STATUS.ACTIVE &&
+      props.status !== BRANCH_STATUS.INACTIVE
+    ) {
       throw new InvalidBranchDataError(
         BRANCH_ERROR_CODE.STATUS_INVALID,
         'Branch status is invalid.',
@@ -187,14 +185,9 @@ export class Branch extends Entity<UniqueId> {
       );
     }
 
-    if (
-      !(props.createdAt instanceof Date) ||
-      Number.isNaN(props.createdAt.getTime()) ||
-      !(props.updatedAt instanceof Date) ||
-      Number.isNaN(props.updatedAt.getTime())
-    ) {
+    if (!this.hasValidTimestamps(props.createdAt, props.updatedAt)) {
       throw new InvalidBranchDataError(
-        BRANCH_ERROR_CODE.STATUS_INVALID,
+        BRANCH_ERROR_CODE.TIMESTAMPS_INVALID,
         'Branch timestamps are invalid.',
       );
     }
@@ -216,15 +209,28 @@ export class Branch extends Entity<UniqueId> {
       phoneNumber: BranchPhoneNumber.create(props.phoneNumber),
       timeZone: BranchTimeZone.create(props.timeZoneId),
       status: props.status,
-
       createdAt: props.createdAt,
       updatedAt: props.updatedAt,
     });
   }
 
+  private static hasValidTimestamps(createdAt: Date, updatedAt: Date): boolean {
+    if (
+      !(createdAt instanceof Date) ||
+      Number.isNaN(createdAt.getTime()) ||
+      !(updatedAt instanceof Date) ||
+      Number.isNaN(updatedAt.getTime())
+    ) {
+      return false;
+    }
+
+    return createdAt.getTime() <= updatedAt.getTime();
+  }
+
   // GETTERS
+
   get id(): string {
-    return this._id.getValue();
+    return this.getId().getValue();
   }
 
   get organizationId(): string {
@@ -325,7 +331,7 @@ export class Branch extends Entity<UniqueId> {
   updateLocation(latitude: number | null, longitude: number | null): void {
     const nextLocation = BranchLocation.create(latitude, longitude);
 
-    if (this._areLocationsEqual(this._location, nextLocation)) {
+    if (this.areLocationsEqual(this._location, nextLocation)) {
       return;
     }
 
@@ -336,7 +342,7 @@ export class Branch extends Entity<UniqueId> {
   updatePhoneNumber(phoneNumber: string | null): void {
     const nextPhoneNumber = BranchPhoneNumber.create(phoneNumber);
 
-    if (this._arePhoneNumbersEqual(this._phoneNumber, nextPhoneNumber)) {
+    if (this.arePhoneNumbersEqual(this._phoneNumber, nextPhoneNumber)) {
       return;
     }
 
@@ -356,29 +362,29 @@ export class Branch extends Entity<UniqueId> {
   }
 
   activate(): boolean {
-    if (this._status === 'ACTIVE') {
+    if (this._status === BRANCH_STATUS.ACTIVE) {
       return false;
     }
 
-    this._status = 'ACTIVE';
+    this._status = BRANCH_STATUS.ACTIVE;
     this.touch();
 
     return true;
   }
 
   deactivate(): boolean {
-    if (this._status === 'INACTIVE') {
+    if (this._status === BRANCH_STATUS.INACTIVE) {
       return false;
     }
 
-    this._status = 'INACTIVE';
+    this._status = BRANCH_STATUS.INACTIVE;
     this.touch();
 
     return true;
   }
 
   isActive(): boolean {
-    return this._status === 'ACTIVE';
+    return this._status === BRANCH_STATUS.ACTIVE;
   }
 
   // PRIVATE METHODS
@@ -387,7 +393,7 @@ export class Branch extends Entity<UniqueId> {
     this._updatedAt = new Date();
   }
 
-  private _areLocationsEqual(
+  private areLocationsEqual(
     first: BranchLocation | null,
     second: BranchLocation | null,
   ): boolean {
@@ -398,7 +404,7 @@ export class Branch extends Entity<UniqueId> {
     return first.equals(second);
   }
 
-  private _arePhoneNumbersEqual(
+  private arePhoneNumbersEqual(
     first: BranchPhoneNumber | null,
     second: BranchPhoneNumber | null,
   ): boolean {
