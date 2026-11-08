@@ -552,7 +552,7 @@ describe('Branch', () => {
               createdAt: new Date(Number.NaN),
             }),
           ),
-        BRANCH_ERROR_CODE.STATUS_INVALID,
+        BRANCH_ERROR_CODE.TIMESTAMPS_INVALID,
       );
     });
 
@@ -564,7 +564,7 @@ describe('Branch', () => {
               updatedAt: new Date(Number.NaN),
             }),
           ),
-        BRANCH_ERROR_CODE.STATUS_INVALID,
+        BRANCH_ERROR_CODE.TIMESTAMPS_INVALID,
       );
     });
 
@@ -576,7 +576,7 @@ describe('Branch', () => {
               createdAt: 'invalid-date' as unknown as Date,
             }),
           ),
-        BRANCH_ERROR_CODE.STATUS_INVALID,
+        BRANCH_ERROR_CODE.TIMESTAMPS_INVALID,
       );
     });
   });
