@@ -1,9 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../../../../generated/prisma/client.js';
-
 import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
-
 import type { BranchRepository } from '../../application/ports/branch.repository.js';
 import { BranchSlugAlreadyExistsError } from '../../application/errors/branch-slug-already-exists.error.js';
 import type { Branch } from '../../domain/entities/branch.js';
@@ -52,6 +50,8 @@ export class PrismaBranchRepository implements BranchRepository {
           latitude: branch.latitude,
           longitude: branch.longitude,
           timeZoneId: branch.timeZoneId,
+          createdAt: branch.createdAt,
+          updatedAt: branch.updatedAt,
         },
       });
     } catch (error: unknown) {
