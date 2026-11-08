@@ -13,18 +13,15 @@ import {
   PermissionEvaluator,
   type AuthorizationSnapshot,
 } from '../../domain/authorization/permission-evaluator.js';
-import type { CheckPermissionInput } from '../../domain/authorization/authorization.types.js';
+import type {
+  AuthorizationContextInput,
+  CheckPermissionInput,
+} from '../../domain/authorization/authorization.types.js';
 import {
   AUTHORIZATION_SNAPSHOT_READER,
   type AuthorizationSnapshotReader,
 } from '../ports/authorization-snapshot-reader.port.js';
 import { PERMISSION_DEFINITIONS } from '../../domain/permissions/permission-catalog-derived.js';
-
-export interface EffectiveAuthorizationContextInput {
-  readonly userId: string;
-  readonly organizationId: string;
-  readonly branchId?: string;
-}
 
 export interface EffectiveAuthorizationContext {
   readonly snapshot: AuthorizationSnapshot;
@@ -110,7 +107,7 @@ export class AuthorizationApplicationService {
    * the exact context from which actor permissions were derived.
    */
   async getEffectiveAuthorizationContext(
-    input: EffectiveAuthorizationContextInput,
+    input: AuthorizationContextInput,
     snapshotReader: AuthorizationSnapshotReader = this.snapshotReader,
   ): Promise<EffectiveAuthorizationContext> {
     const userId = input.userId.trim();
