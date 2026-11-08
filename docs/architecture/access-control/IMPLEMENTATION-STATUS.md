@@ -3,12 +3,12 @@
 | Attribute              | Value                                                                                                                                                                |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Project                | `tarkhineh-backend`                                                                                                                                                  |
-| Document version       | 2.9                                                                                                                                                                  |
-| Last updated           | 2026-11-04                                                                                                                                                           |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.16                                                                                                                                       |
-| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.14                                                                                                                                   |
+| Document version       | 3.0                                                                                                                                                                  |
+| Last updated           | 2026-11-08                                                                                                                                                           |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.17                                                                                                                                       |
+| Decision log           | `ARCHITECTURAL-DECISIONS.md` v1.15                                                                                                                                   |
 | Current phase          | PHASE 7 — Audit Logging                                                                                                                                              |
-| Current phase status   | **IN PROGRESS — PHASE 7.1 POLICY APPROVED; AUDIT AND ROLE ASSIGNMENT-TARGET MIGRATIONS APPLIED TO DEVELOPMENT/TEST DATABASES; AUDIT RUNTIME IMPLEMENTATION PENDING** |
+| Current phase status   | **IN PROGRESS — PHASE 7.1 APPROVED; DOMAIN AUDIT EVENT CONTRACT AND PRISMA MODEL/MIGRATION IMPLEMENTED; APPLICATION/INFRASTRUCTURE WRITER, MUTATION/DENIAL INTEGRATION, AUDIT READERS, AND RUNTIME VERIFICATION PENDING. PHASE 9 HTTP ADAPTERS ARE PARTIALLY PRESENT AHEAD OF SEQUENCE.** |
 
 > This document records repository state and command results actually observed during the project. “Implementation complete” does not mean a phase is formally closed. Formal closure requires project-owner review and approval. Unverified work and known limitations are identified explicitly.
 
@@ -18,25 +18,25 @@
 
 ### Phase summary
 
-| Phase | Name                                            | Status                                                                                                                                     |
-| ----: | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-|     0 | Repository Audit and Baseline                   | COMPLETED                                                                                                                                  |
-|     1 | Requirements and Architecture Design            | COMPLETED — approved by project owner                                                                                                      |
-|     2 | Database Schema and Migration Design            | COMPLETED — approved by project owner on 2026-11-01                                                                                        |
-|     3 | Permission Registry and Seed                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)                                                                                         |
-|     4 | Domain Model                                    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)                                                                                         |
-|     5 | Application Layer and Use Cases                 | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-01)                                                                                         |
-|     6 | Infrastructure and Authorization Persistence    | COMPLETED — APPROVED BY PROJECT OWNER (2026-11-02; deferred verification accepted)                                                         |
-|     7 | Audit Logging                                   | IN PROGRESS — 7.1 policy approved; Audit and Role assignment-target migrations applied on 2026-11-03; Audit runtime implementation pending |
-|     8 | Cross-Context Integration                       | NOT STARTED                                                                                                                                |
-|     9 | HTTP Layer                                      | NOT STARTED                                                                                                                                |
-|    10 | Security, Performance, and Production Readiness | NOT STARTED                                                                                                                                |
+| Phase | Name                                            | Status as of 2026-11-08 |
+| ----: | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+|     0 | Repository Audit and Baseline                   | COMPLETED |
+|     1 | Requirements and Architecture Design            | COMPLETED — approved by project owner |
+|     2 | Database Schema and Migration Design            | COMPLETED — approved by project owner on 2026-11-01 |
+|     3 | Permission Registry and Seed                    | COMPLETED — approved by project owner on 2026-11-01 |
+|     4 | Domain Model                                    | COMPLETED — approved by project owner on 2026-11-01 |
+|     5 | Application Layer and Use Cases                 | COMPLETED — approved by project owner on 2026-11-01 |
+|     6 | Infrastructure and Authorization Persistence    | COMPLETED — approved by project owner on 2026-11-02; documented deferrals remain |
+|     7 | Audit Logging                                   | IN PROGRESS — Domain event contract and Prisma schema/migration exist; Application/Infrastructure writer, mutation integration, denial writer, readers, and runtime verification remain |
+|     8 | Cross-Context Integration                       | NOT STARTED AS A FORMAL PHASE — shared-database snapshots exist; User.status and Branch-creation authorization integration remain |
+|     9 | HTTP Layer                                      | IN PROGRESS — four Controllers and core routes exist ahead of sequence; API tests and missing read/Audit routes remain |
+|    10 | Security, Performance, and Production Readiness | NOT STARTED |
 
 ### Latest implementation checkpoint
 
 PHASE 5 — Application Layer and Use Cases was formally approved by the project owner on 2026-11-01 and is closed. PHASE 6 — Infrastructure and Authorization Persistence was implemented, its expanded PostgreSQL acceptance coverage was committed in `7e0b267`, and a GitHub source review on 2026-11-01 found no blocking defect in the inspected transaction boundary, tenant-scoped persistence paths, database guards, authorization snapshot assembly, or NestJS provider wiring. The recorded focused checkpoint contains 322 passing Access Control Unit tests and 16 passing Access Control Integration tests (338 total), with successful TypeScript, Access Control lint, Prettier, diff, and production build checks. The project owner formally approved PHASE 6 on 2026-11-02, accepting the explicitly documented deferred verification items in section 8.10. PHASE 6 is closed; this approval does not claim that the full application boot, full-project Integration suite, or production-scale benchmark has been completed.
 
-PHASE 7 — Audit Logging started on 2026-11-02. The dedicated Prisma Audit model and forward Migration exist. No Domain/Application Audit contract, transaction-bound writer, Infrastructure adapter, or reader implementation exists yet. The seven existing mutation Handlers use the transaction-owning Access Control Unit of Work; its four current adapters are bound to the same Prisma transaction client. Successful-mutation Audit writes must be integrated into this same transaction, while selected authorization-denial events require separate handling because the business transaction is rolled back on denial.
+PHASE 7 — Audit Logging started on 2026-11-02. The dedicated Prisma Audit model and forward Migration exist. At the initial PHASE 7 baseline, no Domain/Application Audit contract, transaction-bound writer, Infrastructure adapter, or reader implementation existed. In the 2026-11-08 branch snapshot, the Domain event contract now exists; the Application write port, transaction-bound writer, and reader implementation remain pending. The seven existing mutation Handlers use the transaction-owning Access Control Unit of Work; its four current adapters are bound to the same Prisma transaction client. Successful-mutation Audit writes must be integrated into this same transaction, while selected authorization-denial events require separate handling because the business transaction is rolled back on denial.
 
 The project owner approved ADR-022 on 2026-11-02: Audit records are retained as ordinary database records indefinitely under the current policy, with no TTL, automatic deletion, scheduled purge, or cleanup. The historical reference strategy was selected and recorded in ADR-023: Actor, Organization, Branch, Membership, and Resource IDs are stored as scalar historical identifiers with no foreign keys; `organizationId` is required as the tenant scope key, and tenant ownership is enforced by Application validation and tenant-scoped reads. Selected denial events are stored only when the actor is authenticated and the Organization context is validated. The first Prisma/Migration implementation is committed: the root Prisma 7 configuration, `prisma/models/access-control-audit.prisma`, and forward-only migration `20261102110000_access_control_audit_events`. The model uses scalar historical references only, the approved event vocabulary, allow-listed JSON state projections, a versioned payload contract, tenant/time indexes, database checks, and UPDATE/DELETE/TRUNCATE rejection triggers. ADR-024 records these technical choices. The project owner then approved all four PHASE 7.1 policy decisions on 2026-11-02. ADR-025 records the approved Organization Owner and Branch Manager reader scopes, selective best-effort `AUTHORIZATION_DENIED` policy, single `ROLE_CREATED` event for initial Permission links, and optional `correlationId` propagation through Application Command metadata from the trusted HTTP `request.id`. A local `npx prisma validate` run with Prisma 7.10.1 reported that the schemas are valid. The Audit Migration and the Role assignment-target rename Migration were applied to `tarkhineh_db` and `tarkhineh_test` on 2026-11-03; the subsequent migration-status check reported the schemas up to date. A separately documented schema-to-Migration diff review, writer/reader implementation, Audit Integration tests, and runtime database-role privilege hardening remain unverified. Migration application does not claim that Audit event records or runtime Audit behavior exist.
 
@@ -1007,8 +1007,8 @@ For Branch Manager visibility, `ROLE_ASSIGNED` after-state must preserve the Per
 
 - Prisma schema validation was run locally with Prisma CLI 7.10.1 and returned: `The schemas at prisma are valid`.
 - The Audit Prisma model and forward Migration are committed. The Audit Migration was applied to `tarkhineh_db` and `tarkhineh_test` on 2026-11-03; the separate writer/reader runtime implementation remains pending.
-- A separately documented schema-to-Migration diff review is not present in this record, and Audit Persistence/immutability Integration tests remain pending; Migration application itself is complete.
-- The Domain/Application Audit contract, transaction-bound append-only writer, selected-denial writer, Audit reader authorization/query, Permission Registry additions, and explicit System Role Seed updates are not implemented yet.
+- The Migration application to `tarkhineh_db` and `tarkhineh_test` was recorded on 2026-11-03. A separately documented schema-to-Migration diff review and Audit Persistence/immutability Integration tests remain pending; this documentation audit did not re-run migration status against either database.
+- The Domain Audit contract is now implemented as `AccessControlAuditEvent`, its 11-value event type catalogue, `AuditResourceReference` and `AuditSubjectReference` Value Objects, and validation/immutability Unit tests. The Application append-only write port, transaction-bound Infrastructure writer, successful-mutation Handler integration, selected-denial writer, Audit reader authorization/query, Audit reader Permissions, and corresponding Seed updates are not implemented.
 - The seven successful-mutation paths must append Audit events inside the same transaction-bound Unit of Work. Selected denial events use their separately approved best-effort boundary.
 - Runtime database-role privilege restrictions and production-scale query/index review remain unverified.
 
@@ -1016,7 +1016,7 @@ For Branch Manager visibility, `ROLE_ASSIGNED` after-state must preserve the Per
 
 ### 9.3 Next implementation step
 
-Proceed to PHASE 7.2 — Domain and Application contracts. Define the typed Audit event contract and append-only Application port, then add the transaction-bound writer to the existing Unit of Work context. Keep Prisma and NestJS dependencies out of Domain and Application.
+Proceed to the remaining PHASE 7.2 work: define the append-only Application Audit writer port, add it to `AccessControlUnitOfWorkContext`, and provide a transaction-bound Prisma writer using the same Prisma transaction client as the existing repositories and authorization snapshot reader. Then integrate the seven mutation Handlers and selected-denial path according to ADR-025. Do not recreate the Domain event contract; it already exists. Keep Prisma and NestJS dependencies out of Domain and Application.
 
 ### 9.4 Naming alignment implemented — 2026-11-03
 
@@ -1041,16 +1041,76 @@ Do not treat Migration application as proof that the Audit runtime feature is co
 
 ---
 
+### 9.5 Current branch implementation audit — 2026-11-08
+
+**Source snapshot:** branch `access-control`, commit `5fb3f59c6ab522a579a7bfd8ee13a54a4b6095b2` (the parent of the documentation-only commit created for this audit).
+
+This section records static source inspection. The documentation audit did not execute TypeScript, Unit, Integration, Build, Lint, Prisma validation, or database commands. Previously observed command output is explicitly identified as historical evidence.
+
+#### Current Access Control inventory
+
+- **Commands/Handlers:** seven mutation pairs — `CreateRole`, `UpdateRole`, `ArchiveRole`, `AssignRole`, `RevokeRole`, `SetPermissionOverride`, and `RemovePermissionOverride`. Each has a focused Handler Unit spec.
+- **Queries:** `CheckPermission`, `GetEffectivePermissions`, and `ListAvailablePermissions`. The current tree contains a dedicated Handler spec for `ListAvailablePermissions`; Check/Get behavior is covered through the evaluator and `AuthorizationApplicationService` tests, not dedicated Handler spec files.
+- **Domain:** Role, RoleAssignment, PermissionOverride, the source-controlled 23-code Permission Registry, delegation policy, pure permission evaluator, authorization decision/context types, and Audit event Entity/Value Objects.
+- **Infrastructure:** Prisma mapper, Role/RoleAssignment/PermissionOverride repositories, transaction-bound authorization snapshot reader, standalone RepeatableRead reader, and Serializable Unit of Work.
+- **Composition:** `AccessControlModule` registers all seven mutation Handlers, all three Query Handlers, the AuthorizationApplicationService, Unit of Work and snapshot reader adapters, and all four HTTP Controllers.
+- **Tests found in the source tree:** Domain/Application/Infrastructure/Seed Unit spec files and two Access Control Integration spec files. The persistence Integration file declares 14 scenarios; the Registry Seed Integration file declares 2. These are source-tree counts, not a claim that the tests were executed during this documentation audit. The last formally recorded PHASE 6 run remains 322 Access Control Unit tests and 16 Access Control Integration tests passing, as recorded in section 8; later-added Audit Domain specs are present in the current tree but have not been executed as part of this audit.
+- **HTTP test coverage:** no dedicated Access Control Controller/HTTP Integration or E2E spec was found in the inspected Access Control source/test tree.
+
+#### Current HTTP route inventory
+
+All routes use the base path `/organizations/:organizationId/access-control`. They are protected by the existing global Identity Access guard and the controller-level `@Auth(AuthType.Bearer, AuthType.Cookie)` metadata; the actor is read from `@CurrentUser()` and never supplied as a body field.
+
+| Controller | Method and route | Purpose |
+| ----------- | ---------------- | ------- |
+| `AccessControlPermissionsController` | `GET /available-permissions?assignmentTarget=ORGANIZATION\|BRANCH` | Lists actor-delegable Registry permissions for the selected Role target. |
+| `AccessControlPermissionsController` | `GET /effective-permissions[?branchId=...]` | Returns Organization-only effective permissions without a Branch, and Organization + Branch permissions with a Branch context. |
+| `AccessControlPermissionsController` | `GET /check-permission?permissionCode=... [&branchId=...]` | Evaluates one registered Permission in the requested context. |
+| `AccessControlRolesController` | `POST /roles` | Creates an Organization-defined Role. |
+| `AccessControlRolesController` | `PATCH /roles/:roleId` | Updates Role details and/or replaces its complete Permission set. |
+| `AccessControlRolesController` | `PATCH /roles/:roleId/archive` | Archives an Organization-defined Role. |
+| `RoleAssignmentsController` | `POST /roles/:roleId/assignments` | Assigns a Role to exactly one OrganizationMembership or BranchMembership target. |
+| `RoleAssignmentsController` | `PATCH /assignments/:assignmentId/revoke[?branchId=...]` | Revokes an Organization or exact-Branch assignment without deleting history. |
+| `PermissionOverridesController` | `PUT /permission-overrides` | Creates a Branch-specific ALLOW/DENY override or changes its effect. |
+| `PermissionOverridesController` | `DELETE /permission-overrides/:organizationMembershipId/branches/:branchId/permissions/:permissionCode` | Removes the exact Branch-specific override. |
+
+The HTTP DTOs use the global ValidationPipe (`whitelist`, `forbidNonWhitelisted`, `transform`). Error and Swagger decorators exist on the current routes. No dedicated route-level test suite was found. No Role list/detail route, RoleAssignment list route, PermissionOverride list/detail route, or Audit reader route is currently implemented. Those omissions are not evidence that a Query/Handler exists.
+
+#### Authorization and cross-context observations
+
+- `PermissionEvaluator` validates the requested Permission, Organization, OrganizationMembership, and active Branch where required. It enforces DENY-before-ALLOW-before-Role grants, Organization-to-Branch inheritance, active BranchMembership semantics, archived Role exclusion, and revoked assignment exclusion.
+- The current `AuthorizationSnapshot` includes Organization, OrganizationMembership, Branch, BranchMembership, Roles, RoleAssignments, and PermissionOverrides. It does not contain Identity Access `User.status`; explicit account-status integration remains open for PHASE 8.
+- `OrganizationManagementModule` currently registers `CreateBranchHandler` and `PrismaBranchRepository`, but the `BRANCH_CREATION_AUTHORIZATION_PORT` binding is a fail-closed `canCreateBranch: async () => false` stub. No Branch controller or Branch-list Query/endpoint was found in that context. Branch lifecycle remains owned by Organization Management.
+- The manual API test Organization used during the 2026-11-08 development session had no Branch row, so Set/Remove Permission Override could not be smoke-tested there. The handlers and repository specs exist, but a live Branch-target API test remains deferred until Organization Management provides an active Branch.
+
+#### Owner-reported manual API verification (not re-executed by this documentation audit)
+
+| Capability | Evidence supplied during the development conversation | Status recorded here |
+| ---------- | -------------------------------------------------------- | -------------------- |
+| Create/Update/Archive Role | User-reported successful API operations during the HTTP work. | Manual smoke-tested; not independently re-run in this audit. |
+| Organization Role assignment | `AssignRole` returned an assignment ID; the persisted record showed an OrganizationMembership target and null Branch target. | Manual smoke-tested; not independently re-run in this audit. |
+| Effective permissions | The member received 16 Organization-level effective codes; the database showed the Owner Role plus a custom Role, and the result matched the union after duplicate elimination and omission of Branch-only permissions without `branchId`. | Manual smoke-tested and reconciled against supplied SQL output. |
+| Role revocation | `RevokeRole` returned the assignment ID; SQL showed a non-null `revokedAt`. A repeated request returned the same result, consistent with the Handler's idempotent path. | Manual smoke-tested and persisted result supplied by the owner. |
+| Set/Remove Permission Override | No active Branch existed in the target test Organization. | Not manually tested against a live Branch. |
+
+The above are user-supplied observations from the conversation, not automated test output and not independently reproduced by this documentation task.
+
+---
+
 ## 10. Open items and deferred work
 
 The following items are later-phase work, accepted deferred verification, or separate operational follow-ups. They do not reopen the formally approved PHASE 6 scope. Deferred verification is not represented as completed.
 
-1. **User account status — PHASE 8:** Identity Access owns `User.status`. Confirm how account status is enforced in authenticated and non-HTTP application operations without duplicating Identity lifecycle ownership.
-2. **Accepted PHASE 6 verification deferrals:** full application boot/complete module-graph runtime verification and a production-scale query benchmark remain open; see section 8.10. The small/synthetic-data query-plan review already recorded in PHASE 6 is not production-scale evidence.
-3. **Backup recovery drill:** restore the recorded database backup into an isolated database before claiming a full recovery test.
-4. **Deferred Outbound Email Integration failure:** investigate `schedules retry and releases the current lease after an enqueue failure` separately. Do not change Access Control code to mask this unrelated failure.
-5. **Production Seed execution:** perform only after an explicit operational decision, with the target database confirmed and the resulting data reviewed.
-6. **Mid-operation Seed failure test:** consider a safe, isolated integration strategy to prove rollback after a database statement fails partway through synchronization.
+1. **Audit runtime — PHASE 7:** add the append-only Application Audit writer port, transaction-bound Prisma adapter, correlation metadata, integration into all seven mutation Handlers, selected-denial best-effort persistence, Audit reader use cases/permissions, and reader authorization. Add atomicity, payload, no-op, denial-failure, tenant-isolation, and append-only Integration tests. The Domain event contract and Audit model/migration already exist.
+2. **Cross-context lifecycle — PHASE 8:** decide and implement enforcement of Identity Access `User.status` for authenticated and non-HTTP operations without transferring identity ownership to Access Control.
+3. **Branch management integration — PHASE 8 / Organization Management:** replace the fail-closed Branch creation authorization stub with an explicit Access Control integration, add the missing Branch HTTP/list workflow as required, and verify tenant/lifecycle behavior. Do not create duplicate Branch lifecycle ownership in Access Control.
+4. **HTTP completion — PHASE 9:** add HTTP/API Integration or E2E tests; complete and review missing Role, RoleAssignment, PermissionOverride, and Audit read routes where required by product requirements; verify Swagger/error contracts and route-level tenant isolation. Current Controllers exist but PHASE 9 is not closed.
+5. **Branch-target manual verification:** once an active Branch can be created in the test Organization, exercise Set and Remove Permission Override through HTTP and verify persistence/effective-permission outcomes. The current test Organization had no Branch during the manual session.
+6. **Role reactivation:** there is no ReactivateRole Command/Handler/endpoint. Treat reactivation as an optional product requirement requiring a reviewed lifecycle decision; do not mutate archived rows directly to bypass Application authorization.
+7. **Accepted PHASE 6 verification deferrals:** full application boot/complete module-graph runtime verification and a production-scale query benchmark remain open; see section 8.10. The small/synthetic-data query-plan review is not production-scale evidence.
+8. **Backup recovery drill:** restore the recorded database backup into an isolated database before claiming a full recovery test.
+9. **Deferred Outbound Email Integration failure:** investigate `schedules retry and releases the current lease after an enqueue failure` separately. Do not change Access Control code to mask this unrelated failure.
+10. **Production Seed execution and mid-operation failure injection:** execute the CLI Seed only after an explicit operational decision, and consider a safe isolated integration test that fails during synchronization to prove transaction rollback.
 
 ---
 
@@ -1077,4 +1137,4 @@ The repository documents and Git history are the project source of truth. Conver
 
 ## 12. Exact next step
 
-PHASES 0–6 are formally closed. PHASE 6 was approved by the project owner on 2026-11-02, with the full application boot, full-project Integration suite review, and production-scale query benchmark explicitly accepted as deferred verification rather than completed checks. PHASE 7 — Audit Logging is active on the dedicated `access-control-phase-7-audit` branch. ADR-022 records the owner-approved no-automatic-deletion policy, ADR-023 records historical scalar references without operational foreign keys, ADR-024 records the initial append-only Prisma schema design, and ADR-025 records all approved PHASE 7.1 event, reader, denial, and correlation policies. Local Prisma schema validation has passed. Immediate next step: begin PHASE 7.2 — Domain and Application contracts; keep migration review/application to an isolated, explicitly confirmed PostgreSQL test database as a separate later verification step. Do not run the Audit Migration against an unconfirmed development or production database. The production CLI Seed run remains a separate operational decision recorded in the PHASE 3 limitations.
+PHASES 0–6 remain formally closed. PHASE 6 was approved by the project owner on 2026-11-02 with full application boot, full-project Integration review, and production-scale query benchmark explicitly accepted as deferred verification. PHASE 7 — Audit Logging is active on branch `access-control`; the Domain event contract and Prisma model/migration are present, and the migration application to `tarkhineh_db` and `tarkhineh_test` was recorded on 2026-11-03. Immediate next step: implement the append-only Application Audit write port and transaction-bound writer (PHASE 7.2), using the existing Unit of Work transaction. Then integrate mutation and selected-denial events, implement Audit readers, and complete Phase 7 verification. The HTTP Controllers already present are ahead-of-sequence implementation and do not close PHASE 9. Do not repeat or edit historical migrations, run new migrations, or execute the production CLI Seed as part of this documentation checkpoint. The production Seed remains a separate operational decision recorded in the PHASE 3 limitations.

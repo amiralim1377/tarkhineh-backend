@@ -3,9 +3,9 @@
 | Attribute              | Value                          |
 | ---------------------- | ------------------------------ |
 | Project                | `tarkhineh-backend`            |
-| Document version       | 1.14                           |
-| Last updated           | 2026-11-04                     |
-| Architecture reference | `MASTER-ARCHITECTURE.md` v1.16 |
+| Document version       | 1.15                           |
+| Last updated           | 2026-11-08                     |
+| Architecture reference | `MASTER-ARCHITECTURE.md` v1.17 |
 
 This document is the decision log for the Access Control bounded context. Each ADR records the context, the decision, and its consequences. Accepted decisions are binding implementation constraints. They must not be silently changed. If later evidence or a product requirement requires a change, add a new ADR that explicitly supersedes the affected decision and obtain project-owner approval before implementing the change.
 
@@ -767,7 +767,7 @@ ADR-014, ADR-022, and ADR-023 require a durable Access Control security history 
 - The JSON projection contract must be constructed explicitly by Application mappers. ADR-025 resolves Role-creation event cardinality: the initial Permission set is captured in `ROLE_CREATED.afterState` without duplicate per-Permission events.
 - Selected denial events require a separate best-effort persistence boundary because the denied business Unit of Work rolls back. ADR-025 defines the event-selection rule and Audit-reader authorization.
 - The two indexes are an initial minimum, not a production performance claim. Additional indexes require query evidence and review of write amplification.
-- The schema and migration draft are committed. Prisma schema validation passed locally on 2026-11-02; schema-to-Migration review, isolated PostgreSQL migration application, and Integration tests remain pending. Database runtime-role privilege restrictions remain a separate production-readiness verification item.
+- The schema and migration are committed. The Audit Migration application to `tarkhineh_db` and `tarkhineh_test` was recorded on 2026-11-03; a separately documented schema-to-Migration diff review and Audit writer/immutability Integration tests remain pending. Database runtime-role privilege restrictions remain a separate production-readiness verification item.
 
 ---
 
@@ -882,6 +882,18 @@ Observed verification on 2026-11-01:
 - Prettier check passed for the Domain TypeScript files.
 
 No Prisma schema, migration, database, Application, Infrastructure, or HTTP changes were part of PHASE 4. The project owner formally approved PHASE 4 on 2026-11-01.
+
+### PHASE 7 and HTTP implementation notes — 2026-11-08
+
+These are implementation observations, not new architectural decisions and not changes to any accepted ADR:
+
+1. The Domain Audit contract is now present in code: `AccessControlAuditEvent`, the approved event-type catalogue, and typed Audit resource/subject references. The Application append-only writer port, transaction-bound Prisma writer, mutation Handler integration, correlation metadata, selected-denial writer, Audit read use cases, and Audit reader Permissions remain unimplemented.
+2. The dedicated `AccessControlAuditEvent` Prisma model and forward migration `20261102110000_access_control_audit_events` are present. Migration application to the development and test databases was recorded on 2026-11-03. Schema application does not claim that runtime Audit events are written, immutability has been integration-tested, or reader authorization exists.
+3. The Access Control HTTP adapter is grouped into four Controllers: `AccessControlPermissionsController`, `AccessControlRolesController`, `RoleAssignmentsController`, and `PermissionOverridesController`. All are registered in `AccessControlModule` under the common organization/access-control route prefix. This is a presentation-layer organization choice under the existing separation-of-concerns decision, not a new bounded context or authorization model.
+4. The current HTTP routes cover the three Permission queries, Role create/update/archive, Role assign/revoke, and Permission Override set/remove. No dedicated Access Control HTTP Controller/route Integration or E2E tests were found in the audited tree; missing Role/Assignment/Override read routes and Audit read routes remain open.
+5. The global Identity Access AuthenticationGuard and application ValidationPipe are reused. Actor identity is supplied by the trusted authenticated principal. The HTTP implementation was added before PHASE 7 closure; it does not reorder phase acceptance criteria or authorize skipping the remaining Audit and cross-context work.
+6. The current AuthorizationSnapshot includes Organization, OrganizationMembership, Branch, and BranchMembership status, but not Identity Access `User.status`. The current Organization Management Branch creation authorization port remains fail-closed (`canCreateBranch` returns false) pending an explicit cross-context adapter.
+7. No accepted architectural decision was changed by the 2026-11-08 implementation snapshot. The current source and exact implementation limits are recorded in `IMPLEMENTATION-STATUS.md`.
 
 ### Decisions deferred to later phases
 
