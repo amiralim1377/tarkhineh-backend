@@ -4,9 +4,8 @@ import {
   ORGANIZATION_MANAGEMENT_ERROR_CODE,
   InvalidOrganizationDataError,
 } from '../errors/invalid-organization-data.error.js';
+import { OrganizationStatus } from '../types/lifecycle-status.js';
 import { OrganizationSlug } from '../value-objects/organization-slug.vo.js';
-
-export type OrganizationStatus = 'ACTIVE' | 'SUSPENDED';
 
 // Input required to create a new organization.
 export interface CreateOrganizationInput {
