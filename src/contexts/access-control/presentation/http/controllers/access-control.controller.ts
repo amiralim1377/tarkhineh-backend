@@ -48,6 +48,9 @@ import { UpdateRoleCommand } from '../../../application/commands/update-role/upd
 import { UpdateRoleResponseDto } from '../dto/update-role-response.dto.js';
 import { ArchiveRoleResponseDto } from '../dto/archive-role-response.dto.js';
 import { ArchiveRoleCommand } from '../../../application/commands/archive-role/archive-role.command.js';
+import { AssignRoleDto } from '../dto/assign-role.dto.js';
+import { AssignRoleResponseDto } from '../dto/assign-role-response.dto.js';
+import { AssignRoleCommand } from '../../../application/commands/assign-role/assign-role.command.js';
 
 @ApiTags('Access Control')
 @Controller('organizations/:organizationId/access-control')
@@ -381,5 +384,74 @@ export class AccessControlController {
     );
 
     return ArchiveRoleResponseDto.from(result);
+  }
+
+  @Auth(AuthType.Bearer, AuthType.Cookie)
+  @Post('roles/:roleId/assignments')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Assign a Role to an Organization or Branch membership',
+    description:
+      'Assigns an active, assignable Role to an active Organization or Branch membership after validating authorization and delegation rules.',
+  })
+  @ApiParam({
+    name: 'organizationId',
+    description: 'The Organization identifier.',
+  })
+  @ApiParam({
+    name: 'roleId',
+    description: 'The Role identifier.',
+  })
+  @ApiBody({
+    type: AssignRoleDto,
+  })
+  @ApiCreatedResponse({
+    description: 'Role assigned successfully.',
+    type: AssignRoleResponseDto,
+  })
+  @ApiProblemBadRequestResponse({
+    description: 'The request body is invalid.',
+  })
+  @ApiProblemUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiProblemResponse(HttpStatus.FORBIDDEN, {
+    description:
+      'The authenticated actor is not authorized to assign this Role.',
+  })
+  @ApiProblemResponse(HttpStatus.NOT_FOUND, {
+    description:
+      'The Role or target membership was not found in this Organization.',
+  })
+  @ApiProblemResponse(HttpStatus.CONFLICT, {
+    description: 'This Role is already assigned to the target membership.',
+  })
+  @ApiProblemResponse(HttpStatus.UNPROCESSABLE_ENTITY, {
+    description: 'The Role assignment violates a business rule.',
+  })
+  @ApiProblemServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+  })
+  async assignRole(
+    @Param('organizationId') organizationId: string,
+    @Param('roleId') roleId: string,
+    @Body() body: AssignRoleDto,
+    @CurrentUser() principal: AuthenticatedPrincipal,
+  ): Promise<AssignRoleResponseDto> {
+    const result = await this.commandBus.execute(
+      new AssignRoleCommand(principal.userId, {
+        organizationId,
+        roleId,
+        ...(body.organizationMembershipId === undefined
+          ? {}
+          : { organizationMembershipId: body.organizationMembershipId }),
+        ...(body.branchMembershipId === undefined
+          ? {}
+          : { branchMembershipId: body.branchMembershipId }),
+        ...(body.branchId === undefined ? {} : { branchId: body.branchId }),
+      }),
+    );
+
+    return AssignRoleResponseDto.from(result);
   }
 }
