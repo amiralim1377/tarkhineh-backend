@@ -1,7 +1,17 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
-import { QueryBus } from '@nestjs/cqrs';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
@@ -16,6 +26,7 @@ import { ListAvailablePermissionsQuery } from '../../../application/queries/list
 import { ROLE_ASSIGNMENT_TARGET } from '../../../domain/roles/role.types.js';
 import {
   ApiProblemBadRequestResponse,
+  ApiProblemResponse,
   ApiProblemServiceUnavailableResponse,
   ApiProblemUnauthorizedResponse,
 } from '../../../../../shared/presentation/http/api-problem-response.decorator.js';
@@ -28,11 +39,17 @@ import { CheckPermissionDto } from '../dto/check-permission.dto.js';
 import { CheckPermissionResponseDto } from '../dto/check-permission-response.dto.js';
 import { CheckPermissionQuery } from '../../../application/queries/check-permission/check-permission.query.js';
 import { PERMISSION_CODE } from '../../../domain/permissions/permission-catalog.js';
+import { CreateRoleDto } from '../dto/create-role.dto.js';
+import { CreateRoleResponseDto } from '../dto/create-role-response.dto.js';
+import { CreateRoleCommand } from '../../../application/commands/create-role/create-role.command.js';
 
 @ApiTags('Access Control')
 @Controller('organizations/:organizationId/access-control')
 export class AccessControlController {
-  constructor(private readonly queryBus: QueryBus) {}
+  constructor(
+    private readonly queryBus: QueryBus,
+    private readonly commandBus: CommandBus,
+  ) {}
 
   @Auth(AuthType.Bearer, AuthType.Cookie)
   @Get('available-permissions')
@@ -183,5 +200,64 @@ export class AccessControlController {
     );
 
     return CheckPermissionResponseDto.from(query.permissionCode, decision);
+  }
+
+  @Auth(AuthType.Bearer, AuthType.Cookie)
+  @Post('roles')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Create an Organization-defined Role',
+    description:
+      'Creates a custom Role within the specified Organization after validating the actor authority and permission delegation rules.',
+  })
+  @ApiParam({
+    name: 'organizationId',
+    description: 'The Organization identifier.',
+  })
+  @ApiBody({
+    type: CreateRoleDto,
+  })
+  @ApiCreatedResponse({
+    description: 'Role created successfully.',
+    type: CreateRoleResponseDto,
+  })
+  @ApiProblemBadRequestResponse({
+    description: 'The request body is invalid.',
+  })
+  @ApiProblemUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiProblemResponse(HttpStatus.FORBIDDEN, {
+    description:
+      'The authenticated actor is not authorized to create this Role.',
+  })
+  @ApiProblemResponse(HttpStatus.CONFLICT, {
+    description: 'A Role with the supplied code already exists.',
+  })
+  @ApiProblemResponse(HttpStatus.UNPROCESSABLE_ENTITY, {
+    description: 'The Role configuration violates a business rule.',
+  })
+  @ApiProblemServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+  })
+  async createRole(
+    @Param('organizationId') organizationId: string,
+    @Body() body: CreateRoleDto,
+    @CurrentUser() principal: AuthenticatedPrincipal,
+  ): Promise<CreateRoleResponseDto> {
+    const result = await this.commandBus.execute(
+      new CreateRoleCommand(principal.userId, {
+        organizationId,
+        code: body.code,
+        name: body.name,
+        ...(body.description === undefined
+          ? {}
+          : { description: body.description }),
+        assignmentTarget: body.assignmentTarget,
+        permissionCodes: body.permissionCodes,
+      }),
+    );
+
+    return CreateRoleResponseDto.from(result);
   }
 }
