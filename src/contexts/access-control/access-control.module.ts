@@ -25,7 +25,6 @@ import { AccessControlController } from './presentation/http/controllers/access-
   providers: [
     // Application services
     AuthorizationApplicationService,
-
     // Command handlers
     CreateRoleHandler,
     UpdateRoleHandler,
@@ -34,16 +33,13 @@ import { AccessControlController } from './presentation/http/controllers/access-
     RevokeRoleHandler,
     SetPermissionOverrideHandler,
     RemovePermissionOverrideHandler,
-
     // Query handlers
     CheckPermissionHandler,
     GetEffectivePermissionsHandler,
     ListAvailablePermissionsHandler,
-
     // Infrastructure adapters
     PrismaDefaultAuthorizationSnapshotReader,
     PrismaAccessControlUnitOfWork,
-
     // Application ports
     {
       provide: AUTHORIZATION_SNAPSHOT_READER,
