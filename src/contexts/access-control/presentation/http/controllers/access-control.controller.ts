@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
@@ -51,6 +52,12 @@ import { ArchiveRoleCommand } from '../../../application/commands/archive-role/a
 import { AssignRoleDto } from '../dto/assign-role.dto.js';
 import { AssignRoleResponseDto } from '../dto/assign-role-response.dto.js';
 import { AssignRoleCommand } from '../../../application/commands/assign-role/assign-role.command.js';
+import { RevokeRoleQueryDto } from '../dto/revoke-role-query.dto.js';
+import { RevokeRoleResponseDto } from '../dto/revoke-role-response.dto.js';
+import { RevokeRoleCommand } from '../../../application/commands/revoke-role/revoke-role.command.js';
+import { SetPermissionOverrideDto } from '../dto/set-permission-override.dto.js';
+import { SetPermissionOverrideResponseDto } from '../dto/set-permission-override-response.dto.js';
+import { SetPermissionOverrideCommand } from '../../../application/commands/set-permission-override/set-permission-override.command.js';
 
 @ApiTags('Access Control')
 @Controller('organizations/:organizationId/access-control')
@@ -453,5 +460,125 @@ export class AccessControlController {
     );
 
     return AssignRoleResponseDto.from(result);
+  }
+
+  @Auth(AuthType.Bearer, AuthType.Cookie)
+  @Patch('assignments/:assignmentId/revoke')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Revoke a Role assignment',
+    description:
+      'Revokes an existing Role assignment from an Organization or Branch membership without deleting its historical record.',
+  })
+  @ApiParam({
+    name: 'organizationId',
+    description: 'The Organization identifier.',
+  })
+  @ApiParam({
+    name: 'assignmentId',
+    description: 'The Role assignment identifier.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: false,
+    description:
+      'Required when revoking a Branch-level assignment. Omit for an Organization-level assignment.',
+  })
+  @ApiOkResponse({
+    description: 'Role assignment revoked successfully.',
+    type: RevokeRoleResponseDto,
+  })
+  @ApiProblemBadRequestResponse({
+    description: 'The request parameters are invalid.',
+  })
+  @ApiProblemUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiProblemResponse(HttpStatus.FORBIDDEN, {
+    description:
+      'The authenticated actor does not have authority to revoke this assignment.',
+  })
+  @ApiProblemResponse(HttpStatus.NOT_FOUND, {
+    description:
+      'The requested Role assignment was not found in the specified target.',
+  })
+  @ApiProblemResponse(HttpStatus.UNPROCESSABLE_ENTITY, {
+    description: 'The Role assignment revocation violates a business rule.',
+  })
+  @ApiProblemServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+  })
+  async revokeRole(
+    @Param('organizationId') organizationId: string,
+    @Param('assignmentId') assignmentId: string,
+    @Query() query: RevokeRoleQueryDto,
+    @CurrentUser() principal: AuthenticatedPrincipal,
+  ): Promise<RevokeRoleResponseDto> {
+    const result = await this.commandBus.execute(
+      new RevokeRoleCommand(principal.userId, {
+        organizationId,
+        assignmentId,
+        ...(query.branchId === undefined ? {} : { branchId: query.branchId }),
+      }),
+    );
+
+    return RevokeRoleResponseDto.from(result);
+  }
+
+  @Auth(AuthType.Bearer, AuthType.Cookie)
+  @Put('permission-overrides')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Set a Permission Override for an Organization member',
+    description:
+      'Creates a Branch-specific Permission Override or updates the effect of an existing one.',
+  })
+  @ApiParam({
+    name: 'organizationId',
+    description: 'The Organization identifier.',
+  })
+  @ApiBody({
+    type: SetPermissionOverrideDto,
+  })
+  @ApiOkResponse({
+    description: 'Permission Override successfully set.',
+    type: SetPermissionOverrideResponseDto,
+  })
+  @ApiProblemBadRequestResponse({
+    description: 'The request body is invalid.',
+  })
+  @ApiProblemUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiProblemResponse(HttpStatus.FORBIDDEN, {
+    description:
+      'The authenticated actor is not authorized to set this Permission Override.',
+  })
+  @ApiProblemResponse(HttpStatus.NOT_FOUND, {
+    description:
+      'The Organization, membership, or Branch target was not found or is inactive.',
+  })
+  @ApiProblemResponse(HttpStatus.UNPROCESSABLE_ENTITY, {
+    description: 'The Permission Override violates a business rule.',
+  })
+  @ApiProblemServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+  })
+  async setPermissionOverride(
+    @Param('organizationId') organizationId: string,
+    @Body() body: SetPermissionOverrideDto,
+    @CurrentUser() principal: AuthenticatedPrincipal,
+  ): Promise<SetPermissionOverrideResponseDto> {
+    const result = await this.commandBus.execute(
+      new SetPermissionOverrideCommand(principal.userId, {
+        organizationId,
+        organizationMembershipId: body.organizationMembershipId,
+        branchId: body.branchId,
+        permissionCode: body.permissionCode,
+        effect: body.effect,
+      }),
+    );
+
+    return SetPermissionOverrideResponseDto.from(result);
   }
 }
