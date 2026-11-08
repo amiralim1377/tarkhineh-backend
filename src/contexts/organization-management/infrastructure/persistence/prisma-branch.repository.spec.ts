@@ -197,6 +197,41 @@ describe('PrismaBranchRepository', () => {
       );
     });
 
+    it('should preserve the original error when another unique constraint is violated and target is a string', async () => {
+      // Arrange
+      // Arrange
+      const validBranch = Branch.create({
+        id: 'f19524df-8a26-4115-9731-e32a03ad83a5',
+        organizationId: 'organization-id',
+        nameFa: 'شعبه تستی',
+        nameEn: 'Test Branch',
+        slug: 'test-branch',
+        phoneNumber: '+982188658548',
+        addressFa: 'تهران، میدان ونک',
+        addressEn: 'Vanak Square, Tehran',
+        cityFa: 'تهران',
+        cityEn: 'Tehran',
+        postalCode: '145888',
+        countryCode: 'IR',
+        latitude: 35.6892,
+        longitude: 51.389,
+        timeZoneId: 'Asia/Tehran',
+      });
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        {
+          code: 'P2002',
+          clientVersion: 'test',
+          meta: {
+            target: 'Branch_id_organizationId_key',
+          },
+        },
+      );
+      prisma.branch.create.mockRejectedValue(prismaError);
+      // Act & Assert
+      // act & assert
+      await expect(repository.save(validBranch)).rejects.toBe(prismaError);
+    });
     it('should preserve the orginal error when another unique constraint is violated', async () => {
       // Arrange
       const validBranch = Branch.create({
