@@ -1,3 +1,9 @@
+import type {
+  OrganizationStatus,
+  BranchStatus,
+  MembershipStatus,
+} from '../../../organization-management/contracts/lifecycle-status.contract.js';
+
 export interface AuthorizationContextInput {
   readonly userId: string;
   readonly organizationId: string;
@@ -8,29 +14,22 @@ export interface CheckPermissionInput extends AuthorizationContextInput {
   readonly permissionCode: string;
 }
 
-export type AuthorizationOrganizationStatus = 'ACTIVE' | 'SUSPENDED';
-
-export type AuthorizationMembershipStatus =
-  'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'REMOVED';
-
-export type AuthorizationBranchStatus = 'ACTIVE' | 'INACTIVE';
-
 export interface AuthorizationOrganizationSnapshot {
   readonly id: string;
-  readonly status: AuthorizationOrganizationStatus;
+  readonly status: OrganizationStatus;
 }
 
 export interface AuthorizationOrganizationMembershipSnapshot {
   readonly id: string;
   readonly userId: string;
   readonly organizationId: string;
-  readonly status: AuthorizationMembershipStatus;
+  readonly status: MembershipStatus;
 }
 
 export interface AuthorizationBranchSnapshot {
   readonly id: string;
   readonly organizationId: string;
-  readonly status: AuthorizationBranchStatus;
+  readonly status: BranchStatus;
 }
 
 export interface AuthorizationBranchMembershipSnapshot {
@@ -38,5 +37,5 @@ export interface AuthorizationBranchMembershipSnapshot {
   readonly organizationMembershipId: string;
   readonly branchId: string;
   readonly organizationId: string;
-  readonly status: AuthorizationMembershipStatus;
+  readonly status: MembershipStatus;
 }

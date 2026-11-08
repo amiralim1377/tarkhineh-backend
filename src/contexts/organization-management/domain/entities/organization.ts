@@ -1,6 +1,5 @@
 import { Entity } from '../../../../shared/domain/entities/entity.js';
 import { UniqueId } from '../../../../shared/domain/value-objects/unique-id.vo.js';
-
 import {
   ORGANIZATION_MANAGEMENT_ERROR_CODE,
   InvalidOrganizationDataError,
