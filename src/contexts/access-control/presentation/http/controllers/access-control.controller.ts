@@ -46,6 +46,8 @@ import { CreateRoleCommand } from '../../../application/commands/create-role/cre
 import { UpdateRoleDto } from '../dto/update-role.dto.js';
 import { UpdateRoleCommand } from '../../../application/commands/update-role/update-role.command.js';
 import { UpdateRoleResponseDto } from '../dto/update-role-response.dto.js';
+import { ArchiveRoleResponseDto } from '../dto/archive-role-response.dto.js';
+import { ArchiveRoleCommand } from '../../../application/commands/archive-role/archive-role.command.js';
 
 @ApiTags('Access Control')
 @Controller('organizations/:organizationId/access-control')
@@ -328,5 +330,56 @@ export class AccessControlController {
     );
 
     return UpdateRoleResponseDto.from(result);
+  }
+
+  @Auth(AuthType.Bearer, AuthType.Cookie)
+  @Patch('roles/:roleId/archive')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Archive an Organization-defined Role',
+    description:
+      'Archives an existing Organization-defined Role without deleting its record or historical assignments.',
+  })
+  @ApiParam({
+    name: 'organizationId',
+    description: 'The Organization identifier.',
+  })
+  @ApiParam({
+    name: 'roleId',
+    description: 'The Role identifier.',
+  })
+  @ApiOkResponse({
+    description: 'Role archived successfully.',
+    type: ArchiveRoleResponseDto,
+  })
+  @ApiProblemBadRequestResponse({
+    description: 'The request parameters are invalid.',
+  })
+  @ApiProblemUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiProblemResponse(HttpStatus.FORBIDDEN, {
+    description:
+      'The authenticated actor is not authorized to archive this Role.',
+  })
+  @ApiProblemResponse(HttpStatus.NOT_FOUND, {
+    description: 'The requested Organization-defined Role was not found.',
+  })
+  @ApiProblemServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+  })
+  async archiveRole(
+    @Param('organizationId') organizationId: string,
+    @Param('roleId') roleId: string,
+    @CurrentUser() principal: AuthenticatedPrincipal,
+  ): Promise<ArchiveRoleResponseDto> {
+    const result = await this.commandBus.execute(
+      new ArchiveRoleCommand(principal.userId, {
+        organizationId,
+        roleId,
+      }),
+    );
+
+    return ArchiveRoleResponseDto.from(result);
   }
 }
