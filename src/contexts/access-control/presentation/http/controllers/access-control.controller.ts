@@ -24,6 +24,10 @@ import { ListAvailablePermissionsDto } from '../dto/list-available-permissions.d
 import { GetEffectivePermissionsDto } from '../dto/get-effective-permissions.dto.js';
 import { GetEffectivePermissionsResponseDto } from '../dto/get-effective-permissions-response.dto.js';
 import { GetEffectivePermissionsQuery } from '../../../application/queries/get-effective-permissions/get-effective-permissions.query.js';
+import { CheckPermissionDto } from '../dto/check-permission.dto.js';
+import { CheckPermissionResponseDto } from '../dto/check-permission-response.dto.js';
+import { CheckPermissionQuery } from '../../../application/queries/check-permission/check-permission.query.js';
+import { PERMISSION_CODE } from '../../../domain/permissions/permission-catalog.js';
 
 @ApiTags('Access Control')
 @Controller('organizations/:organizationId/access-control')
@@ -124,5 +128,60 @@ export class AccessControlController {
     );
 
     return GetEffectivePermissionsResponseDto.from(permissionCodes);
+  }
+
+  @Auth(AuthType.Bearer, AuthType.Cookie)
+  @Get('check-permission')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Check a specific permission of the authenticated user',
+    description:
+      'Evaluates whether the authenticated user has a specific permission within an Organization or an optional Branch context.',
+  })
+  @ApiParam({
+    name: 'organizationId',
+    description: 'The Organization identifier.',
+  })
+  @ApiQuery({
+    name: 'permissionCode',
+    required: true,
+    enum: Object.values(PERMISSION_CODE),
+    enumName: 'PermissionCode',
+    description: 'The permission code to evaluate.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: false,
+    description:
+      'Optional Branch identifier. Required when evaluating a Branch-level permission.',
+  })
+  @ApiOkResponse({
+    description: 'Permission evaluation completed successfully.',
+    type: CheckPermissionResponseDto,
+  })
+  @ApiProblemBadRequestResponse({
+    description: 'The request parameters are invalid.',
+  })
+  @ApiProblemUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiProblemServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+  })
+  async checkPermission(
+    @Param('organizationId') organizationId: string,
+    @Query() query: CheckPermissionDto,
+    @CurrentUser() principal: AuthenticatedPrincipal,
+  ): Promise<CheckPermissionResponseDto> {
+    const decision = await this.queryBus.execute(
+      new CheckPermissionQuery({
+        userId: principal.userId,
+        organizationId,
+        permissionCode: query.permissionCode,
+        ...(query.branchId === undefined ? {} : { branchId: query.branchId }),
+      }),
+    );
+
+    return CheckPermissionResponseDto.from(query.permissionCode, decision);
   }
 }
