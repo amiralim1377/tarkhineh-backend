@@ -579,6 +579,18 @@ describe('Branch', () => {
         BRANCH_ERROR_CODE.TIMESTAMPS_INVALID,
       );
     });
+    it('should reject createdAt later than updatedAt', () => {
+      expectBranchDataError(
+        () =>
+          Branch.reconstitute(
+            createBranchProps({
+              createdAt: new Date('2026-01-01T12:00:00.000Z'),
+              updatedAt: new Date('2026-01-01T09:00:00.000Z'),
+            }),
+          ),
+        BRANCH_ERROR_CODE.TIMESTAMPS_INVALID,
+      );
+    });
   });
 
   // ==========================================================
