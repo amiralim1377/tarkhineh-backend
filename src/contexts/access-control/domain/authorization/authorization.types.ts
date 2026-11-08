@@ -1,8 +1,11 @@
-export interface CheckPermissionInput {
+export interface AuthorizationContextInput {
   readonly userId: string;
   readonly organizationId: string;
-  readonly permissionCode: string;
   readonly branchId?: string;
+}
+
+export interface CheckPermissionInput extends AuthorizationContextInput {
+  readonly permissionCode: string;
 }
 
 export type AuthorizationOrganizationStatus = 'ACTIVE' | 'SUSPENDED';
