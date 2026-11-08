@@ -21,6 +21,9 @@ import {
 } from '../../../../../shared/presentation/http/api-problem-response.decorator.js';
 import { AvailablePermissionResponseDto } from '../dto/available-permission-response.dto.js';
 import { ListAvailablePermissionsDto } from '../dto/list-available-permissions.dto.js';
+import { GetEffectivePermissionsDto } from '../dto/get-effective-permissions.dto.js';
+import { GetEffectivePermissionsResponseDto } from '../dto/get-effective-permissions-response.dto.js';
+import { GetEffectivePermissionsQuery } from '../../../application/queries/get-effective-permissions/get-effective-permissions.query.js';
 
 @ApiTags('Access Control')
 @Controller('organizations/:organizationId/access-control')
@@ -74,5 +77,52 @@ export class AccessControlController {
     return permissions.map((permission) =>
       AvailablePermissionResponseDto.from(permission),
     );
+  }
+
+  @Auth(AuthType.Bearer, AuthType.Cookie)
+  @Get('effective-permissions')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get effective permissions of the authenticated user',
+    description:
+      'Returns the permissions effectively granted to the authenticated user within an Organization or an optional Branch context.',
+  })
+  @ApiParam({
+    name: 'organizationId',
+    description: 'The Organization identifier.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: false,
+    description:
+      'Optional Branch identifier. When provided, Organization-level and Branch-level permissions are evaluated within this Branch context.',
+  })
+  @ApiOkResponse({
+    description: 'Effective permissions returned successfully.',
+    type: GetEffectivePermissionsResponseDto,
+  })
+  @ApiProblemBadRequestResponse({
+    description: 'The request parameters are invalid.',
+  })
+  @ApiProblemUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiProblemServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+  })
+  async getEffectivePermissions(
+    @Param('organizationId') organizationId: string,
+    @Query() query: GetEffectivePermissionsDto,
+    @CurrentUser() principal: AuthenticatedPrincipal,
+  ): Promise<GetEffectivePermissionsResponseDto> {
+    const permissionCodes = await this.queryBus.execute(
+      new GetEffectivePermissionsQuery({
+        userId: principal.userId,
+        organizationId,
+        ...(query.branchId === undefined ? {} : { branchId: query.branchId }),
+      }),
+    );
+
+    return GetEffectivePermissionsResponseDto.from(permissionCodes);
   }
 }
