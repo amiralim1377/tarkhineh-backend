@@ -4,13 +4,13 @@
 
 | ویژگی | مقدار |
 |---|---|
-| پروژه | \`tarkhineh-backend\` |
+| پروژه | `tarkhineh-backend` |
 | سند | معماری کلان و مشخصات اجرایی |
 | نسخه | ۱.۰ |
 | آخرین بازبینی | ۱۴۰۵/۰۸/۱۷ |
 | معماری | Clean Architecture + DDD |
 | وضعیت | خط مبنای پیشنهادی؛ در انتظار بازبینی و تأیید مالک پروژه |
-| اسناد مکمل | \`ARCHITECTURAL-DECISIONS.md\` و \`IMPLEMENTATION-STATUS.md\` |
+| اسناد مکمل | `ARCHITECTURAL-DECISIONS.md` و `IMPLEMENTATION-STATUS.md` |
 
 > این سند معماری هدف و قواعد اجرایی پیشنهادی را تعریف می‌کند؛ وجود هر قابلیت در کد باید جداگانه در سند وضعیت پیاده‌سازی تأیید شده باشد. تصمیم‌های جدید این سند تا زمان ثبت وضعیت «پذیرفته‌شده» در دفتر تصمیم‌ها، مجوز تغییر کد یا پایگاه داده محسوب نمی‌شوند.
 
@@ -35,7 +35,7 @@
 ## ۲. اصول غیرقابل مذاکره
 
 - **مالکیت صریح داده:** فقط این Context مجاز است چرخهٔ حیات Organization، Branch، OrganizationMembership و BranchMembership را تغییر دهد.
-- **جداسازی مستأجرها (Tenant Isolation):** هر عملیات سازمانی باید با \`organizationId\` مشخص و اعتبارسنجی شود. شناسهٔ ارسال‌شده از HTTP به‌تنهایی اثبات مالکیت نیست.
+- **جداسازی مستأجرها (Tenant Isolation):** هر عملیات سازمانی باید با `organizationId` مشخص و اعتبارسنجی شود. شناسهٔ ارسال‌شده از HTTP به‌تنهایی اثبات مالکیت نیست.
 - **حداقل اختیار و رد پیش‌فرض:** تغییرات فقط پس از مجوزدهی صریح انجام می‌شوند؛ خطا یا در دسترس نبودن سرویس مجوزدهی نباید به اجازه تبدیل شود.
 - **Clean Architecture:** Domain مستقل از NestJS، Prisma، HTTP، Redis و سرویس ایمیل باقی می‌ماند.
 - **DDD متناسب با مسئله:** Aggregate و Port فقط در جایی تعریف می‌شوند که مرز consistency یا وابستگی واقعی وجود دارد؛ از لایه‌ها و Abstractionهای نمایشی پرهیز می‌شود.
@@ -72,12 +72,12 @@
 
 فیلدهای مفهومی موجود در مدل:
 
-- \`id\`
-- \`name\`
-- \`slug\`
-- \`status\`: \`ACTIVE | SUSPENDED\`
-- \`ownerUserId\`: شناسهٔ User متعلق به Identity Access
-- \`createdAt\` و \`updatedAt\`
+- `id`
+- `name`
+- `slug`
+- `status`: `ACTIVE | SUSPENDED`
+- `ownerUserId`: شناسهٔ User متعلق به Identity Access
+- `createdAt` و `updatedAt`
 
 قواعد:
 
@@ -97,9 +97,9 @@
 قواعد:
 
 - هر شعبه دقیقاً به یک سازمان تعلق دارد.
-- \`organizationId\` پس از ایجاد تغییرپذیر نیست؛ انتقال شعبه بین سازمان‌ها در v1 پشتیبانی نمی‌شود.
+- `organizationId` پس از ایجاد تغییرپذیر نیست؛ انتقال شعبه بین سازمان‌ها در v1 پشتیبانی نمی‌شود.
 - Slug شعبه در محدودهٔ همان سازمان یکتا است، نه لزوماً در کل سامانه.
-- وضعیت شعبه \`ACTIVE | INACTIVE\` است.
+- وضعیت شعبه `ACTIVE | INACTIVE` است.
 - شعبهٔ غیرفعال در عملیات و دسترسی‌های Branch-level قابل استفاده نیست.
 - غیرفعال‌سازی شعبه عضویت‌ها یا تاریخچهٔ آن‌ها را حذف نمی‌کند.
 - تغییر نام، نشانی، موقعیت، تلفن و منطقهٔ زمانی باید از رفتارهای صریح Domain استفاده کند.
@@ -110,20 +110,20 @@
 
 فیلدهای مفهومی:
 
-- \`id\`
-- \`organizationId\`
-- \`userId\`
-- \`status\`: \`INVITED | ACTIVE | SUSPENDED | REMOVED\`
+- `id`
+- `organizationId`
+- `userId`
+- `status`: `INVITED | ACTIVE | SUSPENDED | REMOVED`
 - زمان‌های ایجاد و به‌روزرسانی
 
 قواعد:
 
 - یک User می‌تواند در چند Organization عضویت داشته باشد.
-- در مدل فعلی برای هر زوج \`(organizationId, userId)\` فقط یک رکورد وجود دارد.
+- در مدل فعلی برای هر زوج `(organizationId, userId)` فقط یک رکورد وجود دارد.
 - عضویت سازمانی با User Account یکی نیست؛ تغییر وضعیت عضویت نباید حساب User را Suspend یا حذف کند.
 - برای فعال شدن عضویت، وضعیت User باید طبق قرارداد Identity Access معتبر باشد.
 - عضویت مالک سازمان تابع محدودیت‌های ویژهٔ مالکیت است و نباید از مسیر عمومی حذف/تعلیق شود.
-- وضعیت \`REMOVED\` نباید با ویرایش عمومی به \`ACTIVE\` تبدیل شود. سیاست دعوت مجدد/فعال‌سازی دوباره باید قبل از پیاده‌سازی به‌صورت صریح تصویب شود.
+- وضعیت `REMOVED` نباید با ویرایش عمومی به `ACTIVE` تبدیل شود. سیاست دعوت مجدد/فعال‌سازی دوباره باید قبل از پیاده‌سازی به‌صورت صریح تصویب شود.
 
 ### ۴.۴ عضویت شعبه‌ای (BranchMembership)
 
@@ -131,42 +131,42 @@
 
 فیلدهای مفهومی:
 
-- \`id\`
-- \`organizationId\`
-- \`branchId\`
-- \`organizationMembershipId\`
-- \`status\`: \`INVITED | ACTIVE | SUSPENDED | REMOVED\`
+- `id`
+- `organizationId`
+- `branchId`
+- `organizationMembershipId`
+- `status`: `INVITED | ACTIVE | SUSPENDED | REMOVED`
 - زمان‌های ایجاد و به‌روزرسانی
 
 قواعد:
 
 - ایجاد BranchMembership بدون OrganizationMembership معتبر مجاز نیست.
-- Branch و OrganizationMembership باید به یک \`organizationId\` تعلق داشته باشند.
-- در مدل فعلی برای زوج \`(branchId, organizationMembershipId)\` یک رکورد مجاز است.
+- Branch و OrganizationMembership باید به یک `organizationId` تعلق داشته باشند.
+- در مدل فعلی برای زوج `(branchId, organizationMembershipId)` یک رکورد مجاز است.
 - عضویت شعبه‌ای، عضویت سازمانی جدید ایجاد نمی‌کند و مالکیت User را تغییر نمی‌دهد.
 - حذف/تعلیق عضویت شعبه‌ای نباید عضویت سازمانی را تغییر دهد.
 
 ### ۴.۵ اطلاعات تکمیلی شعبه
 
-مدل Prisma فعلی شامل \`BranchImage\`، \`BranchWorkingDay\` و \`BranchWorkingPeriod\` است. متادیتا و ارتباط این اطلاعات با Branch در محدودهٔ این Context قرار می‌گیرد؛ ذخیره‌سازی فایل واقعی باید پشت Storage Port باشد. قواعد هم‌پوشانی بازه‌ها، عبور از نیمه‌شب، روزهای هفته و منطقهٔ زمانی باید در Domain/Application روشن شوند. وجود جدول به معنی آماده بودن قابلیت نیست.
+مدل Prisma فعلی شامل `BranchImage`، `BranchWorkingDay` و `BranchWorkingPeriod` است. متادیتا و ارتباط این اطلاعات با Branch در محدودهٔ این Context قرار می‌گیرد؛ ذخیره‌سازی فایل واقعی باید پشت Storage Port باشد. قواعد هم‌پوشانی بازه‌ها، عبور از نیمه‌شب، روزهای هفته و منطقهٔ زمانی باید در Domain/Application روشن شوند. وجود جدول به معنی آماده بودن قابلیت نیست.
 
 ## ۵. قواعد چرخهٔ حیات و سازگاری
 
 ### ۵.۱ سازمان
 
-- \`ACTIVE → SUSPENDED\`: عملیات سازمانی جدید و تصمیم‌های دسترسی وابسته به سازمان باید رد شوند.
-- \`SUSPENDED → ACTIVE\`: سازمان دوباره قابل استفاده می‌شود؛ وضعیت‌های قبلی Branch و Membership حفظ می‌شوند.
+- `ACTIVE → SUSPENDED`: عملیات سازمانی جدید و تصمیم‌های دسترسی وابسته به سازمان باید رد شوند.
+- `SUSPENDED → ACTIVE`: سازمان دوباره قابل استفاده می‌شود؛ وضعیت‌های قبلی Branch و Membership حفظ می‌شوند.
 - تعلیق سازمان نباید با اجرای مجموعه‌ای از تغییرات مستقل روی تمام عضویت‌ها شبیه‌سازی شود.
 
 ### ۵.۲ شعبه
 
-- \`ACTIVE → INACTIVE\`: عملیات و دسترسی شعبه‌ای متوقف می‌شود.
-- \`INACTIVE → ACTIVE\`: شعبه در صورت فعال بودن سازمان دوباره قابل استفاده است.
+- `ACTIVE → INACTIVE`: عملیات و دسترسی شعبه‌ای متوقف می‌شود.
+- `INACTIVE → ACTIVE`: شعبه در صورت فعال بودن سازمان دوباره قابل استفاده است.
 - تعلیق/فعال‌سازی شعبه به‌تنهایی وضعیت Membershipها را تغییر نمی‌دهد.
 
 ### ۵.۳ عضویت‌ها
 
-ماشین حالت پایه از Enum موجود پیروی می‌کند: \`INVITED\`، \`ACTIVE\`، \`SUSPENDED\` و \`REMOVED\`. هر Transition باید Use Case مشخص، مجوز مناسب، نتیجهٔ قابل آزمون و کنترل وضعیت فعلی داشته باشد. \`REMOVED\` در عملیات عمومی وضعیت نهایی محسوب می‌شود؛ سیاست دعوت مجدد و نگهداری چند دورهٔ عضویت هنوز یک تصمیم محصولی باز است.
+ماشین حالت پایه از Enum موجود پیروی می‌کند: `INVITED`، `ACTIVE`، `SUSPENDED` و `REMOVED`. هر Transition باید Use Case مشخص، مجوز مناسب، نتیجهٔ قابل آزمون و کنترل وضعیت فعلی داشته باشد. `REMOVED` در عملیات عمومی وضعیت نهایی محسوب می‌شود؛ سیاست دعوت مجدد و نگهداری چند دورهٔ عضویت هنوز یک تصمیم محصولی باز است.
 
 ### ۵.۴ تعامل وضعیت‌ها با Access Control
 
@@ -182,11 +182,11 @@
 
 1. **Tenant scope اجباری:** خواندن، تغییر یا فهرست‌کردن Branch و Membership باید با سازمان مقصد Scope شود.
 2. **عدم اعتماد به شناسهٔ ورودی:** رابطهٔ Branch، Membership و Organization در سمت سرور دوباره بررسی می‌شود.
-3. **مالکیت شعبه تغییرناپذیر:** \`Branch.organizationId\` پس از ایجاد قابل تغییر نیست.
+3. **مالکیت شعبه تغییرناپذیر:** `Branch.organizationId` پس از ایجاد قابل تغییر نیست.
 4. **عضویت شعبه‌ای هم‌ساز:** Branch و OrganizationMembership باید سازمان یکسان داشته باشند؛ Composite Foreign Key فعلی بخشی از این تضمین را فراهم می‌کند.
 5. **جلوگیری از رکورد تکراری:** Unique Constraintهای دیتابیس مرجع نهایی هم‌زمانی برای Slug و Membership هستند؛ Check-then-create صرفاً به‌تنهایی کافی نیست.
-6. **مالک سازمان:** مالک نباید قبل از انتقال مالکیت از سازمان حذف یا غیرفعال شود. انتقال مالکیت باید Reference سازمان و Role اختصاصی \`ORGANIZATION_OWNER\` در Access Control را سازگار کند.
-7. **عدم حذف فیزیکی v1:** هیچ Endpoint عمومی برای حذف فیزیکی سازمان، شعبه یا Membership تعریف نشود. پیش از مجاز شدن حذف فیزیکی، رفتار FKهای فعلی با \`onDelete: Cascade\` باید بازبینی و سیاست Retention تصویب شود.
+6. **مالک سازمان:** مالک نباید قبل از انتقال مالکیت از سازمان حذف یا غیرفعال شود. انتقال مالکیت باید Reference سازمان و Role اختصاصی `ORGANIZATION_OWNER` در Access Control را سازگار کند.
+7. **عدم حذف فیزیکی v1:** هیچ Endpoint عمومی برای حذف فیزیکی سازمان، شعبه یا Membership تعریف نشود. پیش از مجاز شدن حذف فیزیکی، رفتار FKهای فعلی با `onDelete: Cascade` باید بازبینی و سیاست Retention تصویب شود.
 8. **User status:** اعتبار حساب User فقط از Identity Access دریافت می‌شود؛ این Context نباید وضعیت حساب را Cache دائمی کند یا تغییر دهد.
 9. **Fail closed:** در شکست ارتباط با Authorization Port، عملیات حساس موفق نشود.
 10. **خطاهای قابل تفکیک:** Not Found، Conflict، Invalid State و Forbidden در Application به‌صورت روشن مدل و در Presentation به پاسخ مناسب نگاشت شوند؛ جزئیات داخلی دیتابیس به کاربر افشا نشود.
@@ -201,7 +201,7 @@
 - دریافت وضعیت جاری User؛
 - در صورت نیاز، خواندن حداقلی اطلاعات نمایشی برای Queryهای اعضا.
 
-Application به Port وابسته است؛ Adapter می‌تواند در این Modular Monolith از Prisma مشترک استفاده کند. Import کردن \`User\` Domain یا دسترسی به Repository داخلی Identity Access مجاز نیست.
+Application به Port وابسته است؛ Adapter می‌تواند در این Modular Monolith از Prisma مشترک استفاده کند. Import کردن `User` Domain یا دسترسی به Repository داخلی Identity Access مجاز نیست.
 
 ### ۷.۲ Access Control
 
@@ -215,7 +215,7 @@ Application به Port وابسته است؛ Adapter می‌تواند در ای�
 
 ### ۷.۳ Workflow ایجاد سازمان و انتقال مالکیت
 
-\`Organization.ownerUserId\` در این Context نگهداری می‌شود، اما Role اختصاصی مالک متعلق به Access Control است. ایجاد سازمان باید عضویت مالک و تخصیص Role مالک را سازگار کند. انتقال مالکیت نیز باید مقدار مالک سازمان و تخصیص‌های متناظر را در یک Workflow هماهنگ انجام دهد.
+`Organization.ownerUserId` در این Context نگهداری می‌شود، اما Role اختصاصی مالک متعلق به Access Control است. ایجاد سازمان باید عضویت مالک و تخصیص Role مالک را سازگار کند. انتقال مالکیت نیز باید مقدار مالک سازمان و تخصیص‌های متناظر را در یک Workflow هماهنگ انجام دهد.
 
 این Workflow نباید به دو Command مستقل و بدون تضمین اتمی بودن تبدیل شود. مرز تراکنش بین Contextها باید صریح طراحی شود؛ از اشتراک مستقیم Prisma Client یا دور زدن Repositoryها برای ساده کردن کار پرهیز شود. اگر اتمی‌سازی در معماری فعلی ممکن نباشد، مدل سازگاری جبرانی باید قبل از انتشار تصویب شود.
 
@@ -244,7 +244,7 @@ Application به Port وابسته است؛ Adapter می‌تواند در ای�
 
 - پیاده‌سازی Portها با Prisma؛
 - Mapper صریح بین persistence record و Domain؛
-- نگاشت خطاهای Prisma با الگوی موجود \`normalizePrismaError\`؛
+- نگاشت خطاهای Prisma با الگوی موجود `normalizePrismaError`؛
 - Transaction از طریق PrismaService/Unit of Work موجود و متناسب با نیاز؛
 - عدم قراردادن قواعد کسب‌وکار در Repository.
 
@@ -253,11 +253,11 @@ Application به Port وابسته است؛ Adapter می‌تواند در ای�
 - Controller و DTO صرفاً برای HTTP؛
 - اعتبارسنجی شکل ورودی، استخراج Actor از principal احراز هویت‌شده و تبدیل نتیجه/خطا؛
 - عدم اجرای منطق مالکیت، عضویت یا Permission evaluation در Controller؛
-- دریافت \`organizationId\` و \`branchId\` از مسیر/Context، اما اعتبارسنجی مجدد آن‌ها در Application.
+- دریافت `organizationId` و `branchId` از مسیر/Context، اما اعتبارسنجی مجدد آن‌ها در Application.
 
 ساختار پیشنهادی با ساختار فعلی پروژه هماهنگ است؛ فقط هنگام وجود Use Case واقعی، پوشه و فایل اضافه شود:
 
-\`\`\`text
+```text
 src/contexts/organization-management/
 ├── domain/
 │   ├── entities/
@@ -273,7 +273,7 @@ src/contexts/organization-management/
 ├── presentation/
 │   └── http/
 └── organization-management.module.ts
-\`\`\`
+```
 
 ## ۹. کاتالوگ Use Caseهای نسخهٔ اول
 
@@ -290,12 +290,12 @@ src/contexts/organization-management/
 
 ## ۱۰. پایگاه داده و هم‌زمانی
 
-مدل فعلی Prisma شامل \`Organization\`، \`Branch\`، \`OrganizationMembership\` و \`BranchMembership\` است و قیود کلیدی زیر را دارد:
+مدل فعلی Prisma شامل `Organization`، `Branch`، `OrganizationMembership` و `BranchMembership` است و قیود کلیدی زیر را دارد:
 
 - یکتایی جهانی Organization.slug؛
-- یکتایی \`(organizationId, slug)\` برای Branch؛
-- یکتایی \`(organizationId, userId)\` برای OrganizationMembership؛
-- یکتایی \`(branchId, organizationMembershipId)\` برای BranchMembership؛
+- یکتایی `(organizationId, slug)` برای Branch؛
+- یکتایی `(organizationId, userId)` برای OrganizationMembership؛
+- یکتایی `(branchId, organizationMembershipId)` برای BranchMembership؛
 - کلیدهای مرکب برای سازگاری سازمان Branch و Membership.
 
 قواعد پیاده‌سازی:
@@ -312,7 +312,7 @@ src/contexts/organization-management/
 
 - خطاهای ورودی نامعتبر، وضعیت نامعتبر، عدم وجود منبع، Conflict یکتایی، Forbidden و عدم دسترس‌پذیری وابستگی باید از هم تفکیک شوند.
 - جزئیات SQL، دادهٔ حساس User، Token و اطلاعات احراز هویت در پاسخ یا Log قرار نگیرد.
-- برای عملیات حساس، شناسهٔ Actor، سازمان، منبع هدف، نتیجه و \`correlationId\` در لاگ ساختاریافته مفید است؛ ثبت Audit کسب‌وکاری باید با سیاست مستقل و بدون ثبت Secrets انجام شود.
+- برای عملیات حساس، شناسهٔ Actor، سازمان، منبع هدف، نتیجه و `correlationId` در لاگ ساختاریافته مفید است؛ ثبت Audit کسب‌وکاری باید با سیاست مستقل و بدون ثبت Secrets انجام شود.
 - شکست وابستگی Identity یا Access Control نباید به نتیجهٔ مجاز تبدیل شود.
 
 ## ۱۲. راهبرد آزمون و معیار پذیرش
@@ -327,7 +327,7 @@ src/contexts/organization-management/
 
 سناریوهای حداقلی امنیتی:
 
-1. عضو سازمان A با تغییر \`organizationId\` نتواند Branch سازمان B را بخواند یا تغییر دهد.
+1. عضو سازمان A با تغییر `organizationId` نتواند Branch سازمان B را بخواند یا تغییر دهد.
 2. BranchMembership متعلق به OrganizationMembership سازمان دیگر ساخته نشود.
 3. عضویت فعال در سازمان معلق به دسترسی مؤثر تبدیل نشود.
 4. Branch غیرفعال از مسیر مستقیم API یا Access Control قابل استفاده نباشد.
@@ -352,12 +352,12 @@ src/contexts/organization-management/
 این موارد باید در بازبینی مالک پروژه تعیین تکلیف شوند و نباید با حدس پیاده‌سازی شوند:
 
 - دعوت کاربری که هنوز در Identity Access حساب ندارد: آیا v1 فقط User موجود را می‌پذیرد یا موجودیت Invitation مستقل لازم است؟
-- پس از \`REMOVED\`، دعوت مجدد با فعال‌سازی همان رکورد انجام می‌شود یا دورهٔ عضویت جدید نیاز است؟
+- پس از `REMOVED`، دعوت مجدد با فعال‌سازی همان رکورد انجام می‌شود یا دورهٔ عضویت جدید نیاز است؟
 - آیا Organization.slug قابل تغییر است و در صورت تغییر، آدرس‌های قدیمی چگونه مدیریت می‌شوند؟
-- سیاست حذف فیزیکی و رفتار \`onDelete: Cascade\` برای داده‌های مالکیتی و تاریخچه چیست؟
+- سیاست حذف فیزیکی و رفتار `onDelete: Cascade` برای داده‌های مالکیتی و تاریخچه چیست؟
 - مرز تراکنش Workflow مالک اولیه/انتقال مالکیت میان Organization Management و Access Control دقیقاً کجا قرار می‌گیرد؟
 - قواعد قطعی ساعات کاری، بازهٔ عبوری از نیمه‌شب و مدیریت منطقهٔ زمانی چیست؟
 
 ---
 
-**قاعدهٔ نگهداری سند:** هر تغییر در مالکیت داده، چرخهٔ حیات، Invariant، مرز Context یا رفتار دسترسی باید ابتدا در \`ARCHITECTURAL-DECISIONS.md\` ثبت و پس از تأیید، در این سند منعکس شود. وضعیت واقعی کد فقط در \`IMPLEMENTATION-STATUS.md\` ثبت می‌شود.
+**قاعدهٔ نگهداری سند:** هر تغییر در مالکیت داده، چرخهٔ حیات، Invariant، مرز Context یا رفتار دسترسی باید ابتدا در `ARCHITECTURAL-DECISIONS.md` ثبت و پس از تأیید، در این سند منعکس شود. وضعیت واقعی کد فقط در `IMPLEMENTATION-STATUS.md` ثبت می‌شود.

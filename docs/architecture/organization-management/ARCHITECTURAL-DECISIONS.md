@@ -4,11 +4,11 @@
 
 | ویژگی | مقدار |
 |---|---|
-| پروژه | \`tarkhineh-backend\` |
+| پروژه | `tarkhineh-backend` |
 | سند | دفتر ثبت تصمیم‌های معماری |
 | نسخه | ۱.۰ |
 | آخرین بازبینی | ۱۴۰۵/۰۸/۱۷ |
-| مرجع معماری | \`MASTER-ARCHITECTURE.md\` نسخهٔ ۱.۰ |
+| مرجع معماری | `MASTER-ARCHITECTURE.md` نسخهٔ ۱.۰ |
 | وضعیت کلی | خط مبنای پیشنهادی؛ تصمیم‌های جدید نیازمند تأیید مالک پروژه |
 
 این سند تصمیم‌ها و دلیل آن‌ها را نگهداری می‌کند. تصمیم پذیرفته‌شده نباید بدون ADR جدید و تأیید مالک پروژه تغییر کند. وضعیت «پیشنهادی» به معنی تصمیم نهایی نیست و تا پیش از تأیید نباید به‌عنوان مجوز تغییر Schema یا رفتار محصول تفسیر شود.
@@ -34,10 +34,10 @@ Identity Access، Organization Management و Access Control مسئولیت‌ه�
 
 Organization Management مالک چرخهٔ حیات این مدل‌ها است:
 
-- \`Organization\`
-- \`Branch\`
-- \`OrganizationMembership\`
-- \`BranchMembership\`
+- `Organization`
+- `Branch`
+- `OrganizationMembership`
+- `BranchMembership`
 
 Identity Access مالک User و احراز هویت است. Access Control مالک Role، Permission، RoleAssignment، Override و ارزیابی دسترسی است.
 
@@ -61,13 +61,13 @@ Identity Access مالک User و احراز هویت است. Access Control ما
 
 ### تصمیم
 
-برای هر عضویت، یک \`OrganizationMembership\` مستقل میان User و Organization نگهداری می‌شود. هر عملیات و پرس‌وجوی سازمانی باید سازمان مقصد را صریح مشخص کند.
+برای هر عضویت، یک `OrganizationMembership` مستقل میان User و Organization نگهداری می‌شود. هر عملیات و پرس‌وجوی سازمانی باید سازمان مقصد را صریح مشخص کند.
 
 ### پیامدها
 
 - مجوز و دادهٔ یک سازمان نباید به سازمان دیگر نشت کند.
 - عضویت با User Account یکی نیست.
-- مدل فعلی برای زوج \`(organizationId, userId)\` قید یکتایی دارد.
+- مدل فعلی برای زوج `(organizationId, userId)` قید یکتایی دارد.
 - تست‌های امنیتی باید حداقل دو سازمان مستقل و یک User مشترک را پوشش دهند.
 
 ---
@@ -83,12 +83,12 @@ Identity Access مالک User و احراز هویت است. Access Control ما
 
 ### تصمیم پیشنهادی
 
-\`Organization\` و \`Branch\` Aggregate Rootهای مستقل باشند. Branch فقط شناسهٔ سازمان مالک را نگهداری کند و قواعد رابطه از طریق Application و Constraintهای دیتابیس تضمین شوند. دو نوع Membership نیز Aggregate مستقل با شناسه‌های مرجع باشند.
+`Organization` و `Branch` Aggregate Rootهای مستقل باشند. Branch فقط شناسهٔ سازمان مالک را نگهداری کند و قواعد رابطه از طریق Application و Constraintهای دیتابیس تضمین شوند. دو نوع Membership نیز Aggregate مستقل با شناسه‌های مرجع باشند.
 
 ### پیامدها
 
 - عملیات شعبه برای تغییرات محلی، نیازمند بارگذاری تمام Organization نیست.
-- مالکیت Branch از طریق \`organizationId\` کنترل می‌شود.
+- مالکیت Branch از طریق `organizationId` کنترل می‌شود.
 - قواعد چند Aggregate در Application orchestration می‌شوند، نه با دست‌کاری مستقیم Entityهای یکدیگر.
 - این تصمیم باید پیش از ایجاد Repositoryهای کامل تأیید شود.
 
@@ -107,8 +107,8 @@ Identity Access مالک User و احراز هویت است. Access Control ما
 
 دو مدل مستقل نگهداری شوند:
 
-- \`OrganizationMembership\`: رابطهٔ User و Organization؛
-- \`BranchMembership\`: رابطهٔ OrganizationMembership و Branch.
+- `OrganizationMembership`: رابطهٔ User و Organization؛
+- `BranchMembership`: رابطهٔ OrganizationMembership و Branch.
 
 وضعیت User فقط در Identity Access باقی بماند. این Context فقط وضعیت همکاری/عضویت را کنترل کند.
 
@@ -158,15 +158,15 @@ Identity Access مالک User و احراز هویت است. Access Control ما
 
 مدل فعلی سه نوع وضعیت با معنای متفاوت دارد:
 
-- Organization: \`ACTIVE | SUSPENDED\`
-- Branch: \`ACTIVE | INACTIVE\`
-- Membership: \`INVITED | ACTIVE | SUSPENDED | REMOVED\`
+- Organization: `ACTIVE | SUSPENDED`
+- Branch: `ACTIVE | INACTIVE`
+- Membership: `INVITED | ACTIVE | SUSPENDED | REMOVED`
 
 استفاده از یک Status عمومی یا تغییر هم‌زمان وضعیت همهٔ فرزندان، معنای چرخهٔ حیات را مبهم می‌کند.
 
 ### تصمیم پیشنهادی
 
-Enumهای فعلی از هم مستقل باقی بمانند. هر Entity فقط وضعیت خودش را تغییر دهد. Transitionها در Use Caseهای مشخص تعریف و آزمون شوند. \`REMOVED\` از مسیر ویرایش عمومی به \`ACTIVE\` برنگردد.
+Enumهای فعلی از هم مستقل باقی بمانند. هر Entity فقط وضعیت خودش را تغییر دهد. Transitionها در Use Caseهای مشخص تعریف و آزمون شوند. `REMOVED` از مسیر ویرایش عمومی به `ACTIVE` برنگردد.
 
 ### پیامدها
 
@@ -205,7 +205,7 @@ Enumهای فعلی از هم مستقل باقی بمانند. هر Entity فق
 
 ### زمینه
 
-رکوردهای سازمانی به عضویت، نقش، Audit و داده‌های Contextهای دیگر مرجع می‌دهند. حذف فیزیکی می‌تواند تاریخچه یا روابط وابسته را از بین ببرد. Schema فعلی در چند رابطه از \`onDelete: Cascade\` استفاده می‌کند.
+رکوردهای سازمانی به عضویت، نقش، Audit و داده‌های Contextهای دیگر مرجع می‌دهند. حذف فیزیکی می‌تواند تاریخچه یا روابط وابسته را از بین ببرد. Schema فعلی در چند رابطه از `onDelete: Cascade` استفاده می‌کند.
 
 ### تصمیم پیشنهادی
 
@@ -226,14 +226,14 @@ Enumهای فعلی از هم مستقل باقی بمانند. هر Entity فق
 
 ### زمینه
 
-\`Organization.ownerUserId\` در Organization Management قرار دارد، در حالی که نقش سیستمی \`ORGANIZATION_OWNER\` و RoleAssignment متعلق به Access Control است. تغییر یکی بدون دیگری باعث ناسازگاری مالکیت و دسترسی می‌شود.
+`Organization.ownerUserId` در Organization Management قرار دارد، در حالی که نقش سیستمی `ORGANIZATION_OWNER` و RoleAssignment متعلق به Access Control است. تغییر یکی بدون دیگری باعث ناسازگاری مالکیت و دسترسی می‌شود.
 
 ### تصمیم پیشنهادی
 
 - مالک اولیه باید User معتبر و دارای OrganizationMembership فعال باشد.
 - تغییر یا حذف عضویت مالک فعلی بدون انتقال مالکیت مجاز نیست.
 - ایجاد سازمان و انتقال مالکیت فقط از Workflow اختصاصی انجام شوند.
-- Workflow باید تغییر \`ownerUserId\` و RoleAssignment متناظر را با تضمین اتمی یا سیاست سازگاری جبرانی مصوب هماهنگ کند.
+- Workflow باید تغییر `ownerUserId` و RoleAssignment متناظر را با تضمین اتمی یا سیاست سازگاری جبرانی مصوب هماهنگ کند.
 - Generic Role Assignment نباید جایگزین Workflow مالکیت شود.
 
 ### پیامدها
@@ -317,13 +317,13 @@ Application Use Caseهای Organization Management از Authorization Port بر�
 
 ### زمینه
 
-Schema فعلی \`userId\` را در OrganizationMembership اجباری می‌کند و برای هر زوج Organization/User یک رکورد می‌پذیرد؛ در عین حال Status برابر \`INVITED\` دارد. بنابراین دعوت شخصی که هنوز User ندارد، با مدل موجود به‌صورت مستقل نمایش داده نمی‌شود.
+Schema فعلی `userId` را در OrganizationMembership اجباری می‌کند و برای هر زوج Organization/User یک رکورد می‌پذیرد؛ در عین حال Status برابر `INVITED` دارد. بنابراین دعوت شخصی که هنوز User ندارد، با مدل موجود به‌صورت مستقل نمایش داده نمی‌شود.
 
 ### تصمیم پیشنهادی برای v1
 
 تا زمان طراحی موجودیت Invitation، فقط User موجود از طریق شناسهٔ User می‌تواند وارد فرآیند عضویت شود. دعوت مبتنی بر ایمیل برای شخص فاقد حساب، نیازمند مدل و Workflow مستقل است؛ Outbound Email صرفاً ارسال‌کننده است و مالک دعوت نیست.
 
-سیاست بازگشت از \`REMOVED\` و نیاز به چند دورهٔ عضویت نیز باید روشن شود. قید یکتایی فعلی اجازهٔ ساخت دوره‌های متعدد برای همان رابطه را نمی‌دهد.
+سیاست بازگشت از `REMOVED` و نیاز به چند دورهٔ عضویت نیز باید روشن شود. قید یکتایی فعلی اجازهٔ ساخت دوره‌های متعدد برای همان رابطه را نمی‌دهد.
 
 ### پیامدها
 
