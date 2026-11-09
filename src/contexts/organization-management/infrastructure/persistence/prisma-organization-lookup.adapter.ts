@@ -1,8 +1,6 @@
 import { Injectable } from '@nestjs/common';
-
 import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
-
 import type { OrganizationLookupPort } from '../../application/ports/organization-lookup.port.js';
 import type { OrganizationStatus } from '../../contracts/lifecycle-status.contract.js';
 
