@@ -44,7 +44,7 @@ export class CreateBranchHandler implements ICommandHandler<
 
     const branch = Branch.create(command.input);
 
-    const organizationExists = await this.organizationLookup.existsById(
+    const organizationExists = await this.organizationLookup.findStatusById(
       branch.organizationId,
     );
 
