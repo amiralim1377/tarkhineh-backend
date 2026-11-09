@@ -20,6 +20,8 @@ import {
   CreateBranchCommand,
   type CreateBranchResult,
 } from './create-branch.command.js';
+import { ORGANIZATION_STATUS } from '../../../contracts/lifecycle-status.contract.js';
+import { OrganizationSuspendedError } from '../../errors/organization-suspended.error.js';
 
 @CommandHandler(CreateBranchCommand)
 export class CreateBranchHandler implements ICommandHandler<
@@ -44,12 +46,16 @@ export class CreateBranchHandler implements ICommandHandler<
 
     const branch = Branch.create(command.input);
 
-    const organizationExists = await this.organizationLookup.findStatusById(
+    const organizationStatus = await this.organizationLookup.findStatusById(
       branch.organizationId,
     );
 
-    if (!organizationExists) {
+    if (organizationStatus === null) {
       throw new OrganizationNotFoundError(branch.organizationId);
+    }
+
+    if (organizationStatus !== ORGANIZATION_STATUS.ACTIVE) {
+      throw new OrganizationSuspendedError(branch.organizationId);
     }
 
     const canCreateBranch =
