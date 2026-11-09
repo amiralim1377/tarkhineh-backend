@@ -22,6 +22,7 @@ import {
   type AuthorizationSnapshotReader,
 } from '../ports/authorization-snapshot-reader.port.js';
 import { PERMISSION_DEFINITIONS } from '../../domain/permissions/permission-catalog-derived.js';
+import type { AccessControlAuthorization } from '../../contracts/authorization.contract.js';
 
 export interface EffectiveAuthorizationContext {
   readonly snapshot: AuthorizationSnapshot;
@@ -45,7 +46,7 @@ const EMPTY_SNAPSHOT: AuthorizationSnapshot = {
  * authorization policies. It does not depend on persistence implementations.
  */
 @Injectable()
-export class AuthorizationApplicationService {
+export class AuthorizationApplicationService implements AccessControlAuthorization {
   private readonly evaluator = new PermissionEvaluator();
 
   constructor(
