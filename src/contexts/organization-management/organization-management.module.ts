@@ -10,9 +10,11 @@ import { PrismaOrganizationLookupAdapter } from './infrastructure/persistence/pr
 import { BRANCH_CREATION_AUTHORIZATION_PORT } from './application/ports/branch-creation-authorization.port.js';
 import { AccessControlModule } from '../access-control/access-control.module.js';
 import { AccessControlBranchCreationAuthorizationAdapter } from './infrastructure/authorization/access-control-branch-creation.adapter.js';
+import { OrganizationBranchesController } from './presentation/http/controllers/organization-branches.controller.js';
 
 @Module({
   imports: [CqrsModule, PrismaModule, AccessControlModule],
+  controllers: [OrganizationBranchesController],
   providers: [
     CreateBranchHandler,
     {
