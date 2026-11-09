@@ -21,6 +21,7 @@ import { AccessControlPermissionsController } from './presentation/http/controll
 import { AccessControlRolesController } from './presentation/http/controllers/access-control-roles.controller.js';
 import { RoleAssignmentsController } from './presentation/http/controllers/role-assignments.controller.js';
 import { PermissionOverridesController } from './presentation/http/controllers/permission-overrides.controller.js';
+import { ACCESS_CONTROL_AUTHORIZATION } from './contracts/authorization.contract.js';
 
 @Module({
   imports: [CqrsModule, PrismaModule, SharedModule],
@@ -57,7 +58,11 @@ import { PermissionOverridesController } from './presentation/http/controllers/p
       provide: ACCESS_CONTROL_UNIT_OF_WORK,
       useExisting: PrismaAccessControlUnitOfWork,
     },
+    {
+      provide: ACCESS_CONTROL_AUTHORIZATION,
+      useExisting: AuthorizationApplicationService,
+    },
   ],
-  exports: [AuthorizationApplicationService],
+  exports: [AuthorizationApplicationService, ACCESS_CONTROL_AUTHORIZATION],
 })
 export class AccessControlModule {}
