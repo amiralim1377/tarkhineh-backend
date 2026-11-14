@@ -4,12 +4,14 @@ import { DependencyUnavailableError } from '../../../../shared/application/error
 import { Branch } from '../../domain/entities/branch.js';
 import { Prisma } from '../../../../generated/prisma/client.js';
 import { BranchSlugAlreadyExistsError } from '../../application/errors/branch-slug-already-exists.error.js';
+import { InvalidBranchDataError } from '../../domain/errors/invalid-branch-data.error.js';
 
 describe('PrismaBranchRepository', () => {
   const prisma = {
     branch: {
       findUnique: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
     },
   };
 
@@ -301,6 +303,362 @@ describe('PrismaBranchRepository', () => {
       await expect(repository.save(validBranch)).rejects.toBeInstanceOf(
         DependencyUnavailableError,
       );
+    });
+  });
+
+  describe('findById', () => {
+    it('should return a reconstituted branch when found', async () => {
+      // arrange
+      const input = {
+        organizationId: 'organization-Id',
+        branchId: 'branch-Id',
+      };
+      const persistedBranch = {
+        id: 'branch-Id',
+        organizationId: 'organization-Id',
+        nameFa: 'شعبه ونک',
+        nameEn: 'Vanak Branch',
+        slug: 'vanak',
+        status: 'ACTIVE',
+        phoneNumber: '+982188888888',
+        addressFa: 'تهران، میدان ونک',
+        addressEn: null,
+        cityFa: 'تهران',
+        cityEn: null,
+        postalCode: null,
+        countryCode: 'IR',
+        latitude: 35.7575,
+        longitude: 51.4106,
+        timeZoneId: 'Asia/Tehran',
+        createdAt: new Date('2026-01-01T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-02T10:00:00.000Z'),
+      };
+      prisma.branch.findUnique.mockResolvedValue(persistedBranch);
+
+      // act
+      const branch = await repository.findById(
+        input.organizationId,
+        input.branchId,
+      );
+
+      // assert
+      expect(branch).toBeInstanceOf(Branch);
+      expect(branch?.id).toBe(persistedBranch.id);
+      expect(branch?.slug).toBe(persistedBranch.slug);
+
+      expect(prisma.branch.findUnique).toHaveBeenCalledWith({
+        where: {
+          id: input.branchId,
+          organizationId: input.organizationId,
+        },
+        select: expect.any(Object),
+      });
+    });
+
+    it('should return null when the branch does not exist', async () => {
+      // arrange
+      const input = {
+        organizationId: 'organization-Id',
+        branchId: 'branch-Id',
+      };
+
+      prisma.branch.findUnique.mockResolvedValue(null);
+
+      // act
+      const branch = await repository.findById(
+        input.organizationId,
+        input.branchId,
+      );
+
+      // assert
+      expect(branch).toBeNull();
+      expect(prisma.branch.findUnique).toHaveBeenCalledTimes(1);
+    });
+
+    it('should find the branch using both branch ID and organization ID', async () => {
+      // arrange
+      const input = {
+        organizationId: 'organization-Id-123',
+        branchId: 'branch-Id-321',
+      };
+      const persistedBranch = {
+        id: 'branch-Id-321',
+        organizationId: 'organization-Id-123',
+        nameFa: 'شعبه ونک',
+        nameEn: 'Vanak Branch',
+        slug: 'vanak',
+        status: 'ACTIVE',
+        phoneNumber: '+982188888888',
+        addressFa: 'تهران، میدان ونک',
+        addressEn: null,
+        cityFa: 'تهران',
+        cityEn: null,
+        postalCode: null,
+        countryCode: 'IR',
+        latitude: 35.7575,
+        longitude: 51.4106,
+        timeZoneId: 'Asia/Tehran',
+        createdAt: new Date('2026-01-01T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-02T10:00:00.000Z'),
+      };
+      prisma.branch.findUnique.mockResolvedValue(persistedBranch);
+
+      // act
+      const branch = await repository.findById(
+        input.organizationId,
+        input.branchId,
+      );
+
+      // assertion
+      expect(branch?.id).toBe('branch-Id-321');
+      expect(branch?.organizationId).toBe('organization-Id-123');
+      expect(prisma.branch.findUnique).toHaveBeenCalledTimes(1);
+      expect(prisma.branch.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: input.branchId,
+            organizationId: input.organizationId,
+          },
+        }),
+      );
+    });
+
+    it('should normalize database errors', async () => {
+      // arrange
+      const input = {
+        organizationId: 'organization-Id-123',
+        branchId: 'branch-Id-321',
+      };
+      const databaseError = Object.assign(
+        new Error('Database connection failed'),
+        {
+          code: 'ECONNREFUSED',
+        },
+      );
+
+      prisma.branch.findUnique.mockRejectedValue(databaseError);
+
+      // act
+      await expect(
+        repository.findById(input.organizationId, input.branchId),
+      ).rejects.toBeInstanceOf(DependencyUnavailableError);
+    });
+
+    it('should propagate domain errors during branch reconstitution', async () => {
+      // arrange
+      const input = {
+        organizationId: 'organization-Id-123',
+        branchId: 'branch-Id-321',
+      };
+      const persistedBranch = {
+        id: input.branchId,
+        organizationId: input.organizationId,
+        nameFa: 'شعبه ونک',
+        nameEn: 'Vanak Branch',
+        slug: 'vanak',
+        status: 'INVALID_STATUS',
+        phoneNumber: '+982188888888',
+        addressFa: 'تهران، میدان ونک',
+        addressEn: null,
+        cityFa: 'تهران',
+        cityEn: null,
+        postalCode: null,
+        countryCode: 'IR',
+        latitude: 35.7575,
+        longitude: 51.4106,
+        timeZoneId: 'Asia/Tehran',
+        createdAt: new Date('2026-01-01T10:00:00.000Z'),
+        updatedAt: new Date('2026-01-02T10:00:00.000Z'),
+      };
+
+      prisma.branch.findUnique.mockResolvedValue(persistedBranch as never);
+
+      // act & assert
+      await expect(
+        repository.findById(input.organizationId, input.branchId),
+      ).rejects.toBeInstanceOf(InvalidBranchDataError);
+    });
+  });
+
+  describe('update', () => {
+    const createBranch = () =>
+      Branch.create({
+        organizationId: 'organization-Id-123',
+        nameFa: 'شعبه ونک',
+        nameEn: 'Vanak Branch',
+        slug: 'vanak',
+        phoneNumber: '+982188888888',
+        addressFa: 'تهران، میدان ونک',
+        cityFa: 'تهران',
+        countryCode: 'IR',
+        latitude: 35.7575,
+        longitude: 51.4106,
+        timeZoneId: 'Asia/Tehran',
+      });
+
+    it('should update an existing branch', async () => {
+      // arrange
+      const branch = Branch.create({
+        organizationId: 'organization-id',
+        nameFa: 'شعبه ونک',
+        nameEn: 'Vanak Branch',
+        slug: 'vanak',
+        phoneNumber: '+982188888888',
+        addressFa: 'تهران، میدان ونک',
+        cityFa: 'تهران',
+        countryCode: 'IR',
+        latitude: 35.7575,
+        longitude: 51.4106,
+        timeZoneId: 'Asia/Tehran',
+      });
+
+      prisma.branch.update.mockResolvedValue({});
+      // Act
+      await repository.update(branch);
+
+      // assert
+      expect(prisma.branch.update.mock.calls[0][0].data).not.toHaveProperty(
+        'slug',
+      );
+      expect(prisma.branch.update).toHaveBeenCalledTimes(1);
+      expect(prisma.branch.update).toHaveBeenCalledWith({
+        where: {
+          id: branch.id,
+          organizationId: branch.organizationId,
+        },
+        data: {
+          nameFa: branch.nameFa,
+          nameEn: branch.nameEn,
+          status: branch.status,
+          phoneNumber: branch.phoneNumber,
+          addressFa: branch.addressFa,
+          addressEn: branch.addressEn,
+          cityFa: branch.cityFa,
+          cityEn: branch.cityEn,
+          postalCode: branch.postalCode,
+          countryCode: branch.countryCode,
+          latitude: branch.latitude,
+          longitude: branch.longitude,
+          timeZoneId: branch.timeZoneId,
+          updatedAt: branch.updatedAt,
+        },
+      });
+    });
+
+    it('should use branch ID and organization ID to identify the branch', async () => {
+      // arrange
+      const input = {
+        organizationId: 'organization-Id-123',
+        branchId: 'branch-Id-321',
+      };
+      const branch = Branch.create({
+        organizationId: input.organizationId,
+        nameFa: 'شعبه ونک',
+        nameEn: 'Vanak Branch',
+        slug: 'vanak',
+        phoneNumber: '+982188888888',
+        addressFa: 'تهران، میدان ونک',
+        cityFa: 'تهران',
+        countryCode: 'IR',
+        latitude: 35.7575,
+        longitude: 51.4106,
+        timeZoneId: 'Asia/Tehran',
+      });
+
+      prisma.branch.update.mockResolvedValue({});
+
+      // act
+      repository.update(branch);
+
+      // assert
+      expect(prisma.branch.update).toHaveBeenCalledTimes(1);
+
+      expect(prisma.branch.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: branch.id,
+            organizationId: branch.organizationId,
+          },
+        }),
+      );
+    });
+
+    it('should not modify the branch slug', async () => {
+      // arrange
+      const branch = createBranch();
+
+      prisma.branch.update.mockResolvedValue({});
+
+      // act
+      await repository.update(branch);
+
+      // assert
+      const updateData = prisma.branch.update.mock.calls[0]?.[0].data;
+
+      expect(updateData).not.toHaveProperty('slug');
+      expect(branch.slug).toBe('vanak');
+    });
+
+    it('should not modify the branch ID or organization ID', async () => {
+      // arrange
+      const branch = createBranch();
+
+      prisma.branch.update.mockResolvedValue({});
+
+      // act
+      await repository.update(branch);
+
+      // assert
+      const updateData = prisma.branch.update.mock.calls[0]?.[0].data;
+
+      expect(updateData).not.toHaveProperty('id');
+      expect(updateData).not.toHaveProperty('organizationId');
+
+      expect(prisma.branch.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: branch.id,
+            organizationId: branch.organizationId,
+          },
+        }),
+      );
+    });
+
+    it('should not modify the branch createdAt timestamp', async () => {
+      // arrange
+      const branch = createBranch();
+
+      prisma.branch.update.mockResolvedValue({});
+
+      // act
+      await repository.update(branch);
+
+      // assert
+      const updateData = prisma.branch.update.mock.calls[0]?.[0].data;
+
+      expect(updateData).not.toHaveProperty('createdAt');
+      expect(updateData).toHaveProperty('updatedAt');
+    });
+
+    it('should normalize database errors', async () => {
+      // arrange
+      const branch = createBranch();
+
+      const databaseError = Object.assign(
+        new Error('Database connection failed'),
+        {
+          code: 'ECONNREFUSED',
+        },
+      );
+
+      prisma.branch.update.mockRejectedValue(databaseError);
+
+      // act & assert
+      await expect(repository.update(branch)).rejects.toBeInstanceOf(
+        DependencyUnavailableError,
+      );
+
+      expect(prisma.branch.update).toHaveBeenCalledTimes(1);
     });
   });
 });
