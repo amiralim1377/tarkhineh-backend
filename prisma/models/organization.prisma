@@ -29,7 +29,7 @@ model Organization {
 }
 
 model OrganizationMembership {
-  id             String           @id @default(cuid())
+  id             String           @id 
   organizationId String
   userId         String
   status         MembershipStatus @default(INVITED)
@@ -50,7 +50,7 @@ model OrganizationMembership {
 }
 
 model BranchMembership {
-  id                       String           @id @default(cuid())
+  id                       String           @id 
   organizationId           String
   branchId                 String
   organizationMembershipId String
