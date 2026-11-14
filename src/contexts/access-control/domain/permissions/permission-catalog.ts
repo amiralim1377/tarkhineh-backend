@@ -40,6 +40,9 @@ export const PERMISSION_CODE = {
   BRANCH_STAFF_SUSPEND: 'branch.staff.suspend',
   BRANCH_STAFF_REMOVE: 'branch.staff.remove',
 
+  // Branch - profile
+  BRANCH_PROFILE_UPDATE: 'branch.profile.update',
+
   // Branch - Roles
   BRANCH_ROLES_ASSIGN: 'branch.roles.assign',
 } as const;
@@ -92,6 +95,7 @@ export const PERMISSION_RESOURCE = {
   BRANCH_DASHBOARD: 'branch.dashboard',
   BRANCH_STAFF: 'branch.staff',
   BRANCH_ROLES: 'branch.roles',
+  BRANCH_PROFILE: 'branch.profile',
 } as const;
 
 export type PermissionResource =
@@ -455,6 +459,20 @@ export const PERMISSION_CATALOG = {
     resource: PERMISSION_RESOURCE.BRANCH_STAFF,
     action: PERMISSION_ACTION.UPDATE,
     delegable: true,
+  },
+  [PERMISSION_CODE.BRANCH_PROFILE_UPDATE]: {
+    name: {
+      en: 'Update Branch Profile',
+      fa: 'ویرایش اطلاعات شعبه',
+    },
+    description: {
+      en: 'Allows updating profile information of an authorized branch.',
+      fa: 'امکان ویرایش اطلاعات شعبه‌های مجاز را فراهم می‌کند.',
+    },
+    resourceLevel: PERMISSION_RESOURCE_LEVEL.BRANCH,
+    resource: PERMISSION_RESOURCE.BRANCH_PROFILE,
+    action: PERMISSION_ACTION.UPDATE,
+    delegable: false,
   },
 
   [PERMISSION_CODE.BRANCH_STAFF_SUSPEND]: {
