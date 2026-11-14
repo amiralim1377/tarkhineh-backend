@@ -1,5 +1,4 @@
 import 'dotenv/config';
-
 import { randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
 import {
@@ -12,7 +11,6 @@ import {
   it,
   vi,
 } from 'vitest';
-
 import { PrismaService } from '../../../../src/prisma/prisma.service.js';
 
 import { PERMISSION_CODE } from '../../../../src/contexts/access-control/domain/permissions/permission-catalog.js';
@@ -26,7 +24,7 @@ import {
   PERMISSION_OVERRIDE_EFFECT,
   PermissionOverride,
 } from '../../../../src/contexts/access-control/domain/permission-overrides/permission-override.js';
-
+import { UniqueId } from '../../../../src/shared/domain/value-objects/unique-id.vo.js';
 import { PrismaAccessControlUnitOfWork } from '../../../../src/contexts/access-control/infrastructure/persistence/prisma-access-control.unit-of-work.js';
 import { PrismaDefaultAuthorizationSnapshotReader } from '../../../../src/contexts/access-control/infrastructure/persistence/prisma-authorization-snapshot.reader.js';
 import { PrismaPermissionOverrideRepository } from '../../../../src/contexts/access-control/infrastructure/persistence/prisma-permission-override.repository.js';
@@ -126,6 +124,7 @@ async function createFixture(): Promise<IntegrationFixture> {
 
     const membership = await tx.organizationMembership.create({
       data: {
+        id: new UniqueId().getValue(),
         organizationId: organization.id,
         userId: user.id,
         status: 'ACTIVE',
@@ -148,6 +147,7 @@ async function createFixture(): Promise<IntegrationFixture> {
 
     const branchMembership = await tx.branchMembership.create({
       data: {
+        id: new UniqueId().getValue(),
         organizationId: organization.id,
         branchId: branch.id,
         organizationMembershipId: membership.id,
@@ -315,6 +315,7 @@ async function createSecondaryTenant(
 
     await tx.organizationMembership.create({
       data: {
+        id: new UniqueId().getValue(),
         organizationId: organization.id,
         userId: owner.id,
         status: 'ACTIVE',
@@ -324,6 +325,7 @@ async function createSecondaryTenant(
     // The primary test user is also a member of this tenant.
     const membership = await tx.organizationMembership.create({
       data: {
+        id: new UniqueId().getValue(),
         organizationId: organization.id,
         userId: current.userId,
         status: 'ACTIVE',
@@ -1144,6 +1146,7 @@ describe('Access Control Persistence Integration', () => {
 
       const membership = await tx.branchMembership.create({
         data: {
+          id: new UniqueId().getValue(),
           organizationId: current.organizationId,
           branchId: branch.id,
           organizationMembershipId: current.organizationMembershipId,

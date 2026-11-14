@@ -1,11 +1,10 @@
 import 'dotenv/config';
-
 import * as argon2 from 'argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client.js';
-
 import { IdentityUser } from '../src/contexts/identity-access/domain/entities/identity-user.js';
 import { Organization } from '../src/contexts/organization-management/domain/entities/organization.js';
+import { UniqueId } from '../src/shared/domain/value-objects/unique-id.vo.js';
 
 // ============================================================
 // CONFIGURATION
@@ -207,6 +206,7 @@ async function main(): Promise<void> {
       // Create the owner's organization membership.
       const membership = await tx.organizationMembership.create({
         data: {
+          id: new UniqueId().getValue(),
           organizationId: savedOrganization.id,
           userId: user.id,
           status: 'ACTIVE',

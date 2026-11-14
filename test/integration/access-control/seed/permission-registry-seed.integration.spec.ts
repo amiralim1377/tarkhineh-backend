@@ -3,18 +3,15 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-
 import type { Prisma } from '../../../../src/generated/prisma/client.js';
 import { PrismaService } from '../../../../src/prisma/prisma.service.js';
-
 import { PERMISSION_CODE } from '../../../../src/contexts/access-control/domain/permissions/permission-catalog.js';
-
 import { PERMISSION_DEFINITIONS } from '../../../../src/contexts/access-control/domain/permissions/permission-catalog-derived.js';
-
 import {
   synchronizeAccessControlRegistry,
   SYSTEM_ROLE_PERMISSION_SETS,
 } from '../../../../prisma/seed/access-control-seed.js';
+import { UniqueId } from '../../../../src/shared/domain/value-objects/unique-id.vo.js';
 
 // ============================================================
 // TEST DATABASE
@@ -179,6 +176,7 @@ describe('Access Control Registry Seed Integration', () => {
 
       const membership = await tx.organizationMembership.create({
         data: {
+          id: new UniqueId().getValue(),
           organizationId: organization.id,
           userId: user.id,
           status: 'ACTIVE',
