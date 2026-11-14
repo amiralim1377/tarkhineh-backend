@@ -2,9 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '../../../../generated/prisma/client.js';
 import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
-import type { BranchRepository } from '../../application/ports/branch.repository.js';
 import { BranchSlugAlreadyExistsError } from '../../application/errors/branch-slug-already-exists.error.js';
-import type { Branch } from '../../domain/entities/branch.js';
+import type { BranchRepository } from '../../application/ports/branch.repository.js';
+import { Branch } from '../../domain/entities/branch.js';
 
 @Injectable()
 export class PrismaBranchRepository implements BranchRepository {
@@ -62,6 +62,77 @@ export class PrismaBranchRepository implements BranchRepository {
         );
       }
 
+      throw normalizePrismaError(error);
+    }
+  }
+
+  async findById(
+    organizationId: string,
+    branchId: string,
+  ): Promise<Branch | null> {
+    const persistedBranch = await this.prisma.branch
+      .findUnique({
+        where: {
+          id: branchId,
+          organizationId,
+        },
+        select: {
+          id: true,
+          organizationId: true,
+          nameFa: true,
+          nameEn: true,
+          slug: true,
+          status: true,
+          phoneNumber: true,
+          addressFa: true,
+          addressEn: true,
+          cityFa: true,
+          cityEn: true,
+          postalCode: true,
+          countryCode: true,
+          latitude: true,
+          longitude: true,
+          timeZoneId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      })
+      .catch((error: unknown) => {
+        throw normalizePrismaError(error);
+      });
+
+    if (persistedBranch === null) {
+      return null;
+    }
+
+    return Branch.reconstitute(persistedBranch);
+  }
+
+  async update(branch: Branch): Promise<void> {
+    try {
+      await this.prisma.branch.update({
+        where: {
+          id: branch.id,
+          organizationId: branch.organizationId,
+        },
+        data: {
+          nameFa: branch.nameFa,
+          nameEn: branch.nameEn,
+          status: branch.status,
+          phoneNumber: branch.phoneNumber,
+          addressFa: branch.addressFa,
+          addressEn: branch.addressEn,
+          cityFa: branch.cityFa,
+          cityEn: branch.cityEn,
+          postalCode: branch.postalCode,
+          countryCode: branch.countryCode,
+          latitude: branch.latitude,
+          longitude: branch.longitude,
+          timeZoneId: branch.timeZoneId,
+          updatedAt: branch.updatedAt,
+        },
+      });
+    } catch (error: unknown) {
       throw normalizePrismaError(error);
     }
   }
