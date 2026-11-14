@@ -1,8 +1,7 @@
 import { Entity } from '../../../../shared/domain/entities/entity.js';
 import { UniqueId } from '../../../../shared/domain/value-objects/unique-id.vo.js';
 import { InvalidIdentityUserDataError } from '../errors/invalid-identity-user-data.error.js';
-
-export type IdentityUserStatus = 'ACTIVE' | 'PENDING' | 'SUSPENDED';
+import { IdentityUserStatus } from '../types/identity-user-status.js';
 
 export interface IdentityUserProps {
   id: string;
