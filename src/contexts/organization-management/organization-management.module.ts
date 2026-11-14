@@ -11,6 +11,8 @@ import { BRANCH_CREATION_AUTHORIZATION_PORT } from './application/ports/branch-c
 import { AccessControlModule } from '../access-control/access-control.module.js';
 import { AccessControlBranchCreationAuthorizationAdapter } from './infrastructure/authorization/access-control-branch-creation.adapter.js';
 import { OrganizationBranchesController } from './presentation/http/controllers/organization-branches.controller.js';
+import { ORGANIZATION_MEMBERSHIP_PORT } from './application/ports/organization-membership.port.js';
+import { PrismaOrganizationMembershipRepository } from './infrastructure/persistence/prisma-organization-membership.repository.js';
 
 @Module({
   imports: [CqrsModule, PrismaModule, AccessControlModule],
@@ -28,6 +30,10 @@ import { OrganizationBranchesController } from './presentation/http/controllers/
     {
       provide: BRANCH_CREATION_AUTHORIZATION_PORT,
       useClass: AccessControlBranchCreationAuthorizationAdapter,
+    },
+    {
+      provide: ORGANIZATION_MEMBERSHIP_PORT,
+      useClass: PrismaOrganizationMembershipRepository,
     },
   ],
 })
