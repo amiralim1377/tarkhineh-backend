@@ -6,6 +6,7 @@ import {
 } from '../errors/invalid-branch-data.error.js';
 
 import { BranchSlug } from './branch-slug.vo.js';
+import { expectBranchDataError } from './branch-value-object.spec-helper.js';
 
 describe('BranchSlug', () => {
   function createSut(value: string) {
@@ -60,6 +61,13 @@ describe('BranchSlug', () => {
 
       // ASSERT
       expect(result.getValue()).toBe('tarkhineh-vanak-123');
+    });
+
+    it('should reject non-string input', () => {
+      expectBranchDataError(
+        () => BranchSlug.create(null as unknown as string),
+        BRANCH_ERROR_CODE.SLUG_INVALID,
+      );
     });
 
     it.each([

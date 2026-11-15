@@ -9,9 +9,15 @@ export class BranchSlug {
   private constructor(private readonly value: string) {}
 
   static create(value: string): BranchSlug {
+    if (typeof value !== 'string') {
+      throw new InvalidBranchDataError(
+        BRANCH_ERROR_CODE.SLUG_INVALID,
+        'Branch slug must be a string.',
+      );
+    }
+
     const normalized = value.trim().toLowerCase().replace(/\s+/g, '-');
 
-    // Validate the normalized slug.
     if (!BranchSlug.SLUG_PATTERN.test(normalized)) {
       throw new InvalidBranchDataError(
         BRANCH_ERROR_CODE.SLUG_INVALID,

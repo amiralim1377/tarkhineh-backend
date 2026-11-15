@@ -1,14 +1,30 @@
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
+import { PrismaModule } from '../../prisma/prisma.module.js';
+
 import { CreateBranchHandler } from './application/commands/create-branch/create-branch.handler.js';
 import { BRANCH_REPOSITORY } from './application/ports/branch.repository.js';
 import { PrismaBranchRepository } from './infrastructure/persistence/prisma-branch.repository.js';
 import { ORGANIZATION_LOOKUP_PORT } from './application/ports/organization-lookup.port.js';
 import { PrismaOrganizationLookupAdapter } from './infrastructure/persistence/prisma-organization-lookup.adapter.js';
 import { BRANCH_CREATION_AUTHORIZATION_PORT } from './application/ports/branch-creation-authorization.port.js';
+import { AccessControlModule } from '../access-control/access-control.module.js';
+import { AccessControlBranchCreationAuthorizationAdapter } from './infrastructure/authorization/access-control-branch-creation.adapter.js';
+import { OrganizationBranchesController } from './presentation/http/controllers/organization-branches.controller.js';
+import { ORGANIZATION_MEMBERSHIP_PORT } from './application/ports/organization-membership.port.js';
+import { PrismaOrganizationMembershipRepository } from './infrastructure/persistence/prisma-organization-membership.repository.js';
+import { IdentityAccessModule } from '../identity-access/identity-access.module.js';
+import { ORGANIZATION_MEMBER_ADDITION_AUTHORIZATION_PORT } from './application/ports/organization-member-addition-authorization.port.js';
+import { AccessControlOrganizationMemberAdditionAuthorizationAdapter } from './infrastructure/authorization/access-control-organization-member-addition.adapter.js';
 
 @Module({
-  imports: [CqrsModule],
+  imports: [
+    CqrsModule,
+    PrismaModule,
+    AccessControlModule,
+    IdentityAccessModule,
+  ],
+  controllers: [OrganizationBranchesController],
   providers: [
     CreateBranchHandler,
     {
@@ -21,9 +37,15 @@ import { BRANCH_CREATION_AUTHORIZATION_PORT } from './application/ports/branch-c
     },
     {
       provide: BRANCH_CREATION_AUTHORIZATION_PORT,
-      useValue: {
-        canCreateBranch: async () => false,
-      },
+      useClass: AccessControlBranchCreationAuthorizationAdapter,
+    },
+    {
+      provide: ORGANIZATION_MEMBERSHIP_PORT,
+      useClass: PrismaOrganizationMembershipRepository,
+    },
+    {
+      provide: ORGANIZATION_MEMBER_ADDITION_AUTHORIZATION_PORT,
+      useClass: AccessControlOrganizationMemberAdditionAuthorizationAdapter,
     },
   ],
 })

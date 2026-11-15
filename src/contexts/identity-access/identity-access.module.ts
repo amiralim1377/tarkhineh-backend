@@ -53,6 +53,9 @@ import { PASSWORD_CHANGE_STORE } from './application/ports/password-change-store
 import { PrismaPasswordChangeStore } from './infrastructure/persistence/prisma-password-change.store.js';
 import { EMAIL_VERIFICATION_COMPLETION_STORE } from './application/ports/email-verification-completion-store.port.js';
 import { PrismaEmailVerificationCompletionStore } from './infrastructure/persistence/prisma-email-verification-completion.store.js';
+import { IDENTITY_ACCESS_USER_LOOKUP } from './contracts/user-lookup.contract.js';
+
+import { PrismaIdentityAccessUserLookup } from './infrastructure/persistence/prisma-identity-access-user-lookup.repository.js';
 
 @Module({
   imports: [
@@ -179,7 +182,11 @@ import { PrismaEmailVerificationCompletionStore } from './infrastructure/persist
         cookieJwtStrategy,
       ],
     },
+    {
+      provide: IDENTITY_ACCESS_USER_LOOKUP,
+      useClass: PrismaIdentityAccessUserLookup,
+    },
   ],
-  exports: [AUTHENTICATION_STRATEGIES],
+  exports: [AUTHENTICATION_STRATEGIES, IDENTITY_ACCESS_USER_LOOKUP],
 })
 export class IdentityAccessModule {}

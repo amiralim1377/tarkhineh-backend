@@ -243,7 +243,7 @@ describe('PrismaOutboundEmailDispatchStore integration', () => {
     const message = await createMessage();
 
     const claims = await store.claimBatch(claimInput());
-    const lease = claims[0];
+    const lease = claims.find((claim) => claim.messageId === message.id);
 
     if (!lease) {
       throw new Error('Expected a dispatch lease');

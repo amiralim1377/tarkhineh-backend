@@ -1,0 +1,49 @@
+enum AccessControlAuditEventType {
+  ROLE_CREATED
+  ROLE_UPDATED
+  ROLE_ARCHIVED
+  ROLE_PERMISSION_ADDED
+  ROLE_PERMISSION_REMOVED
+  ROLE_ASSIGNED
+  ROLE_REVOKED
+  PERMISSION_OVERRIDE_CREATED
+  PERMISSION_OVERRIDE_UPDATED
+  PERMISSION_OVERRIDE_REMOVED
+  AUTHORIZATION_DENIED
+}
+
+enum AccessControlAuditResourceType {
+  ROLE
+  ROLE_ASSIGNMENT
+  PERMISSION_OVERRIDE
+  PERMISSION
+  AUTHORIZATION
+}
+
+enum AccessControlAuditSubjectType {
+  USER
+  ORGANIZATION_MEMBERSHIP
+  BRANCH_MEMBERSHIP
+}
+
+/// Historical, append-only Access Control audit event.
+/// All operational references are scalar identifiers by ADR-023; this model intentionally declares no relations.
+model AccessControlAuditEvent {
+  id             String                         @id @default(cuid())
+  eventType      AccessControlAuditEventType
+  organizationId String
+  branchId       String?
+  actorUserId    String
+  subjectType    AccessControlAuditSubjectType?
+  subjectId      String?
+  resourceType   AccessControlAuditResourceType
+  resourceId     String?
+  correlationId  String?                        @db.VarChar(128)
+  payloadVersion Int                            @default(1)
+  beforeState    Json?
+  afterState     Json?
+  occurredAt     DateTime                       @default(now()) @db.Timestamptz(3)
+
+  @@index([organizationId, occurredAt(sort: Desc)], map: "AccessControlAuditEvent_org_time_idx")
+  @@index([organizationId, branchId, occurredAt(sort: Desc)], map: "AccessControlAuditEvent_org_branch_time_idx")
+}

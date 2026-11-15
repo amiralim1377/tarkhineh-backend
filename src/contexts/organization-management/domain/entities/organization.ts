@@ -5,9 +5,13 @@ import {
   ORGANIZATION_MANAGEMENT_ERROR_CODE,
   InvalidOrganizationDataError,
 } from '../errors/invalid-organization-data.error.js';
-import { OrganizationSlug } from '../value-objects/organization-slug.vo.js';
 
-export type OrganizationStatus = 'ACTIVE' | 'SUSPENDED';
+import {
+  ORGANIZATION_STATUS,
+  type OrganizationStatus,
+} from '../types/lifecycle-status.js';
+
+import { OrganizationSlug } from '../value-objects/organization-slug.vo.js';
 
 // Input required to create a new organization.
 export interface CreateOrganizationInput {
@@ -73,13 +77,12 @@ export class Organization extends Entity<UniqueId> {
 
     const organizationSlug = OrganizationSlug.create(input.slug);
 
-    // Build the initial organization state.
     const state: OrganizationState = {
       id: organizationId.getValue(),
       name: organizationName,
       slug: organizationSlug,
       ownerUserId,
-      status: 'ACTIVE',
+      status: ORGANIZATION_STATUS.ACTIVE,
     };
 
     return new Organization(state);
@@ -114,7 +117,10 @@ export class Organization extends Entity<UniqueId> {
       );
     }
 
-    if (props.status !== 'ACTIVE' && props.status !== 'SUSPENDED') {
+    if (
+      props.status !== ORGANIZATION_STATUS.ACTIVE &&
+      props.status !== ORGANIZATION_STATUS.SUSPENDED
+    ) {
       throw new InvalidOrganizationDataError(
         ORGANIZATION_MANAGEMENT_ERROR_CODE.ORGANIZATION.STATUS_INVALID,
         'Organization status is invalid.',
@@ -133,7 +139,6 @@ export class Organization extends Entity<UniqueId> {
       );
     }
 
-    // Restore the original organization state.
     const state: OrganizationState = {
       id,
       name: organizationName,
@@ -167,7 +172,6 @@ export class Organization extends Entity<UniqueId> {
   }
 
   // Domain behaviors
-
   rename(name: string): void {
     const normalizedName = name.trim();
 
@@ -182,26 +186,26 @@ export class Organization extends Entity<UniqueId> {
   }
 
   suspend(): boolean {
-    if (this.props.status === 'SUSPENDED') {
+    if (this.props.status === ORGANIZATION_STATUS.SUSPENDED) {
       return false;
     }
 
-    this.props.status = 'SUSPENDED';
+    this.props.status = ORGANIZATION_STATUS.SUSPENDED;
 
     return true;
   }
 
   activate(): boolean {
-    if (this.props.status === 'ACTIVE') {
+    if (this.props.status === ORGANIZATION_STATUS.ACTIVE) {
       return false;
     }
 
-    this.props.status = 'ACTIVE';
+    this.props.status = ORGANIZATION_STATUS.ACTIVE;
 
     return true;
   }
 
   isActive(): boolean {
-    return this.props.status === 'ACTIVE';
+    return this.props.status === ORGANIZATION_STATUS.ACTIVE;
   }
 }

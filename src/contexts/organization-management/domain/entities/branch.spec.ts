@@ -552,7 +552,7 @@ describe('Branch', () => {
               createdAt: new Date(Number.NaN),
             }),
           ),
-        BRANCH_ERROR_CODE.STATUS_INVALID,
+        BRANCH_ERROR_CODE.TIMESTAMPS_INVALID,
       );
     });
 
@@ -564,7 +564,7 @@ describe('Branch', () => {
               updatedAt: new Date(Number.NaN),
             }),
           ),
-        BRANCH_ERROR_CODE.STATUS_INVALID,
+        BRANCH_ERROR_CODE.TIMESTAMPS_INVALID,
       );
     });
 
@@ -576,7 +576,19 @@ describe('Branch', () => {
               createdAt: 'invalid-date' as unknown as Date,
             }),
           ),
-        BRANCH_ERROR_CODE.STATUS_INVALID,
+        BRANCH_ERROR_CODE.TIMESTAMPS_INVALID,
+      );
+    });
+    it('should reject createdAt later than updatedAt', () => {
+      expectBranchDataError(
+        () =>
+          Branch.reconstitute(
+            createBranchProps({
+              createdAt: new Date('2026-01-01T12:00:00.000Z'),
+              updatedAt: new Date('2026-01-01T09:00:00.000Z'),
+            }),
+          ),
+        BRANCH_ERROR_CODE.TIMESTAMPS_INVALID,
       );
     });
   });

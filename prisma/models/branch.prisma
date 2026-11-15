@@ -21,10 +21,8 @@ model Branch {
   slug           String
   status         BranchStatus @default(ACTIVE)
 
-  // Contact
   phoneNumber String?
 
-  // Address
   addressFa   String
   addressEn   String?
   cityFa      String
@@ -32,22 +30,19 @@ model Branch {
   postalCode  String?
   countryCode String  @db.VarChar(2)
 
-  // Location
   latitude  Float?
   longitude Float?
 
-  // Timezone
   timeZoneId String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  memberships BranchMembership[]
-  roles       Role[]             @relation("BranchRoles")
-  images      BranchImage[]
-  workingDays BranchWorkingDay[]
+  organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships         BranchMembership[]
+  permissionOverrides UserPermissionOverride[]
+  images              BranchImage[]
+  workingDays         BranchWorkingDay[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, slug])
