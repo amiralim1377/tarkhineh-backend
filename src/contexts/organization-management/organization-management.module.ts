@@ -13,9 +13,17 @@ import { AccessControlBranchCreationAuthorizationAdapter } from './infrastructur
 import { OrganizationBranchesController } from './presentation/http/controllers/organization-branches.controller.js';
 import { ORGANIZATION_MEMBERSHIP_PORT } from './application/ports/organization-membership.port.js';
 import { PrismaOrganizationMembershipRepository } from './infrastructure/persistence/prisma-organization-membership.repository.js';
+import { IdentityAccessModule } from '../identity-access/identity-access.module.js';
+import { ORGANIZATION_MEMBER_ADDITION_AUTHORIZATION_PORT } from './application/ports/organization-member-addition-authorization.port.js';
+import { AccessControlOrganizationMemberAdditionAuthorizationAdapter } from './infrastructure/authorization/access-control-organization-member-addition.adapter.js';
 
 @Module({
-  imports: [CqrsModule, PrismaModule, AccessControlModule],
+  imports: [
+    CqrsModule,
+    PrismaModule,
+    AccessControlModule,
+    IdentityAccessModule,
+  ],
   controllers: [OrganizationBranchesController],
   providers: [
     CreateBranchHandler,
@@ -34,6 +42,10 @@ import { PrismaOrganizationMembershipRepository } from './infrastructure/persist
     {
       provide: ORGANIZATION_MEMBERSHIP_PORT,
       useClass: PrismaOrganizationMembershipRepository,
+    },
+    {
+      provide: ORGANIZATION_MEMBER_ADDITION_AUTHORIZATION_PORT,
+      useClass: AccessControlOrganizationMemberAdditionAuthorizationAdapter,
     },
   ],
 })
