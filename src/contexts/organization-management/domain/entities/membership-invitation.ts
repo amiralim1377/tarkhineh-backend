@@ -1,16 +1,13 @@
 import { Entity } from '../../../../shared/domain/entities/entity.js';
 import { UniqueId } from '../../../../shared/domain/value-objects/unique-id.vo.js';
-
 import {
   MEMBERSHIP_INVITATION_SCOPE,
   type MembershipInvitationScope,
 } from '../types/membership-invitation-scope.js';
-
 import {
   MEMBERSHIP_INVITATION_STATUS,
   type MembershipInvitationStatus,
 } from '../types/membership-invitation-status.js';
-
 import {
   MEMBERSHIP_INVITATION_ERROR_CODE,
   InvalidMembershipInvitationDataError,
