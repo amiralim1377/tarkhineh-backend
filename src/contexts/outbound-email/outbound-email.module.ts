@@ -1,17 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
-
 import { PrismaModule } from '../../prisma/prisma.module.js';
-
 import { OUTBOUND_EMAIL_PAYLOAD_ENCRYPTOR } from './application/ports/outbound-email-payload-encryptor.port.js';
 import { OUTBOUND_EMAIL_PROVIDER } from './application/ports/outbound-email-provider.port.js';
 import { OUTBOUND_EMAIL_DISPATCH_STORE } from './application/ports/outbound-email-dispatch-store.port.js';
 import { OUTBOUND_EMAIL_DELIVERY_STORE } from './application/ports/outbound-email-delivery-store.port.js';
-
 import { OutboundEmailTemplateRegistry } from './application/templates/outbound-email-template.registry.js';
 import { IdentityPasswordResetEmailTemplate } from './application/templates/identity/password-reset/password-reset.template.js';
-
 import { AesGcmOutboundEmailPayloadEncryptor } from './infrastructure/security/aes-gcm-outbound-email-payload-encryptor.js';
 import { SmtpOutboundEmailProvider } from './infrastructure/providers/smtp-outbound-email.provider.js';
 import { PrismaOutboundEmailDispatchStore } from './infrastructure/persistence/prisma-outbound-email-dispatch.store.js';
@@ -25,6 +21,7 @@ import {
 } from './infrastructure/queue/outbound-email-delivery.worker.js';
 import { IdentityEmailVerificationEmailTemplate } from './application/templates/identity/email-verification/email-verification.template.js';
 import { PasswordChangedEmailTemplate } from './application/templates/identity/password-changed/password-changed.template.js';
+import { IdentityWelcomeEmailTemplate } from './application/templates/identity/welcome/welcome.template.js';
 
 @Module({
   imports: [
@@ -71,6 +68,7 @@ import { PasswordChangedEmailTemplate } from './application/templates/identity/p
           new IdentityPasswordResetEmailTemplate(configService),
           new IdentityEmailVerificationEmailTemplate(configService),
           new PasswordChangedEmailTemplate(configService),
+          new IdentityWelcomeEmailTemplate(configService),
         ]);
       },
     },
