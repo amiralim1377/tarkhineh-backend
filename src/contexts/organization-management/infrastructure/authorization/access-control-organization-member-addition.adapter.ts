@@ -3,13 +3,8 @@ import {
   ACCESS_CONTROL_AUTHORIZATION,
   type AccessControlAuthorization,
 } from '../../../access-control/contracts/authorization.contract.js';
-
 import { PERMISSION_CODE } from '../../../access-control/contracts/permission-codes.contract.js';
-
-import {
-  ORGANIZATION_MEMBER_ADDITION_AUTHORIZATION_PORT,
-  type OrganizationMemberAdditionAuthorizationPort,
-} from '../../application/ports/organization-member-addition-authorization.port.js';
+import { type OrganizationMemberAdditionAuthorizationPort } from '../../application/ports/organization-member-addition-authorization.port.js';
 
 @Injectable()
 export class AccessControlOrganizationMemberAdditionAuthorizationAdapter implements OrganizationMemberAdditionAuthorizationPort {
