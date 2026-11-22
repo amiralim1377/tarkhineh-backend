@@ -7,7 +7,7 @@ export class OrganizationSuspendedError extends ApplicationError {
   override readonly code =
     ORGANIZATION_MANAGEMENT_APPLICATION_ERROR_CODE.ORGANIZATION_SUSPENDED;
 
-  constructor(organizationId: string) {
+  constructor(public readonly organizationId: string) {
     super(`Organization "${organizationId}" is suspended.`);
   }
 }
