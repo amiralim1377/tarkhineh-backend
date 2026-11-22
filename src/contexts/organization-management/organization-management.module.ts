@@ -16,6 +16,8 @@ import { PrismaOrganizationMembershipRepository } from './infrastructure/persist
 import { IdentityAccessModule } from '../identity-access/identity-access.module.js';
 import { ORGANIZATION_MEMBER_ADDITION_AUTHORIZATION_PORT } from './application/ports/organization-member-addition-authorization.port.js';
 import { AccessControlOrganizationMemberAdditionAuthorizationAdapter } from './infrastructure/authorization/access-control-organization-member-addition.adapter.js';
+import { AddOrganizationMemberHandler } from './application/commands/add-organization-member/add-organization-member.handler.js';
+import { OrganizationMembersController } from './presentation/http/controllers/organization-members.controller.js';
 
 @Module({
   imports: [
@@ -24,9 +26,10 @@ import { AccessControlOrganizationMemberAdditionAuthorizationAdapter } from './i
     AccessControlModule,
     IdentityAccessModule,
   ],
-  controllers: [OrganizationBranchesController],
+  controllers: [OrganizationBranchesController, OrganizationMembersController],
   providers: [
     CreateBranchHandler,
+    AddOrganizationMemberHandler,
     {
       provide: BRANCH_REPOSITORY,
       useClass: PrismaBranchRepository,
