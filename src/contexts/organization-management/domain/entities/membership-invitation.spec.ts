@@ -1,24 +1,216 @@
+import { unknown } from 'zod';
+import {
+  InvalidMembershipInvitationDataError,
+  MEMBERSHIP_INVITATION_ERROR_CODE,
+} from '../errors/invalid-membership-invitation.error.js';
+import { MEMBERSHIP_INVITATION_SCOPE } from '../types/membership-invitation-scope.js';
+import { MEMBERSHIP_INVITATION_STATUS } from '../types/membership-invitation-status.js';
+import {
+  CreateMembershipInvitationInput,
+  MembershipInvitation,
+} from './membership-invitation.js';
+
 describe('MembershipInvitation', () => {
+  const validInput: CreateMembershipInvitationInput = {
+    organizationId: 'org-123',
+    branchId: null,
+    email: 'employee@example.com',
+    inviterUserId: 'user-123',
+    tokenHash: 'hashed-token-123',
+    scope: MEMBERSHIP_INVITATION_SCOPE.ORGANIZATION,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  };
+
+  const validBranchInput: CreateMembershipInvitationInput = {
+    organizationId: 'org-123',
+    email: 'employee@example.com',
+    inviterUserId: 'user-123',
+    tokenHash: 'hashed-token-123',
+    expiresAt: new Date('2026-11-23T13:46:12.793Z'),
+    branchId: 'branch-123',
+    scope: MEMBERSHIP_INVITATION_SCOPE.BRANCH,
+  };
   // --------------------------------------------------
   // CREATE
   // --------------------------------------------------
 
   describe('create', () => {
-    it.todo('should create an organization invitation successfully');
+    it('should create an organization invitation successfully', () => {
+      // arrange
+      //   act
+      const actual = MembershipInvitation.create(validInput);
+      //   assert
+      expect(actual).toBeInstanceOf(MembershipInvitation);
+      expect(actual.id).toBeTruthy();
+      expect(actual.organizationId).toBe(validInput.organizationId);
+      expect(actual.branchId).toBeNull();
+      expect(actual.email).toBe(validInput.email);
+      expect(actual.inviterUserId).toBe(validInput.inviterUserId);
+      expect(actual.tokenHash).toBe(validInput.tokenHash);
+      expect(actual.scope).toBe(validInput.scope);
+      expect(actual.status).toBe(MEMBERSHIP_INVITATION_STATUS.PENDING);
+      expect(actual.expiresAt).toEqual(validInput.expiresAt);
+      expect(actual.acceptedAt).toBeNull();
+      expect(actual.createdAt).toBeInstanceOf(Date);
+      expect(actual.updatedAt).toBeInstanceOf(Date);
+      expect(actual.updatedAt.getTime()).toBe(actual.createdAt.getTime());
+    });
 
-    it.todo('should create a branch invitation successfully');
+    it('should create a branch invitation successfully', () => {
+      // arrange
+      const validInput: CreateMembershipInvitationInput = {
+        organizationId: 'org-123',
+        email: 'employee@example.com',
+        inviterUserId: 'user-123',
+        tokenHash: 'hashed-token-123',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        branchId: 'branch-123',
+        scope: MEMBERSHIP_INVITATION_SCOPE.BRANCH,
+      };
 
-    it.todo('should generate an ID when ID is not provided');
+      //   act
+      const actual = MembershipInvitation.create(validBranchInput);
+      //   assert
+      expect(actual).toBeInstanceOf(MembershipInvitation);
+      expect(actual.id).toBeTruthy();
+      expect(actual.organizationId).toBe(validInput.organizationId);
+      expect(actual.branchId).toBe(validInput.branchId);
+      expect(actual.email).toBe(validInput.email);
+      expect(actual.inviterUserId).toBe(validInput.inviterUserId);
+      expect(actual.tokenHash).toBe(validInput.tokenHash);
+      expect(actual.scope).toBe(validInput.scope);
+      expect(actual.status).toBe(MEMBERSHIP_INVITATION_STATUS.PENDING);
+      expect(actual.expiresAt).toEqual(validBranchInput.expiresAt);
 
-    it.todo('should use the provided ID when ID is supplied');
+      expect(actual.acceptedAt).toBeNull();
+      expect(actual.createdAt).toBeInstanceOf(Date);
+      expect(actual.updatedAt).toBeInstanceOf(Date);
+      expect(actual.updatedAt.getTime()).toBe(actual.createdAt.getTime());
+    });
 
-    it.todo('should throw an error when the provided ID is empty');
+    it('should generate an ID when ID is not provided', () => {
+      const validInput: CreateMembershipInvitationInput = {
+        organizationId: 'org-123',
+        branchId: null,
+        email: 'employee@example.com',
+        inviterUserId: 'user-123',
+        tokenHash: 'hashed-token-123',
+        scope: MEMBERSHIP_INVITATION_SCOPE.ORGANIZATION,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      };
 
-    it.todo('should throw an error when organization ID is empty');
+      //   act
+      const actual = MembershipInvitation.create(validInput);
 
-    it.todo(
-      'should throw an error when branch ID is missing for a branch invitation',
-    );
+      //   assert
+      expect(actual.id).toBeDefined();
+    });
+
+    it('should use the provided ID when ID is supplied', () => {
+      const validInput: CreateMembershipInvitationInput = {
+        organizationId: 'org-123',
+        id: 'supplied-id',
+        branchId: null,
+        email: 'employee@example.com',
+        inviterUserId: 'user-123',
+        tokenHash: 'hashed-token-123',
+        scope: MEMBERSHIP_INVITATION_SCOPE.ORGANIZATION,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      };
+      //   act
+      const actual = MembershipInvitation.create(validInput);
+      //   assert
+      expect(actual.id).toBe(validInput.id);
+    });
+
+    it('should throw an error when the provided ID is empty', () => {
+      const validInput: CreateMembershipInvitationInput = {
+        id: '  ',
+        organizationId: 'org-123',
+        branchId: null,
+        email: 'employee@example.com',
+        inviterUserId: 'user-123',
+        tokenHash: 'hashed-token-123',
+        scope: MEMBERSHIP_INVITATION_SCOPE.ORGANIZATION,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      };
+
+      // act
+      let actualError: unknown;
+
+      try {
+        MembershipInvitation.create(validInput);
+      } catch (error) {
+        actualError = error;
+      }
+
+      //   act & assert
+      expect(() => MembershipInvitation.create(validInput)).toThrow(
+        InvalidMembershipInvitationDataError,
+      );
+
+      expect(actualError).toMatchObject({
+        code: MEMBERSHIP_INVITATION_ERROR_CODE.ID_REQUIRED,
+        message: 'Membership invitation ID is required.',
+      });
+    });
+
+    it('should throw an error when organization ID is empty', () => {
+      const validInput: CreateMembershipInvitationInput = {
+        organizationId: ' ',
+        branchId: null,
+        email: 'employee@example.com',
+        inviterUserId: 'user-123',
+        tokenHash: 'hashed-token-123',
+        scope: MEMBERSHIP_INVITATION_SCOPE.ORGANIZATION,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      };
+
+      let actualError: unknown;
+
+      try {
+        MembershipInvitation.create(validInput);
+      } catch (error) {
+        actualError = error;
+      }
+
+      // assert
+      expect(actualError).toBeInstanceOf(InvalidMembershipInvitationDataError);
+
+      expect(actualError).toMatchObject({
+        code: MEMBERSHIP_INVITATION_ERROR_CODE.ORGANIZATION_ID_REQUIRED,
+        message: 'Membership invitation organization ID is required.',
+      });
+    });
+
+    it('should throw an error when branch ID is missing for a branch invitation', () => {
+      // arrange
+      const validBranchInput: CreateMembershipInvitationInput = {
+        organizationId: 'org-123',
+        email: 'employee@example.com',
+        inviterUserId: 'user-123',
+        tokenHash: 'hashed-token-123',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        scope: MEMBERSHIP_INVITATION_SCOPE.BRANCH,
+      };
+
+      // act
+      let actualError: unknown;
+
+      try {
+        MembershipInvitation.create(validBranchInput);
+      } catch (error) {
+        actualError = error;
+      }
+
+      // assert
+      expect(actualError).toBeInstanceOf(InvalidMembershipInvitationDataError);
+
+      expect(actualError).toMatchObject({
+        code: MEMBERSHIP_INVITATION_ERROR_CODE.BRANCH_ID_REQUIRED,
+        message: 'Branch invitation requires a branch ID.',
+      });
+    });
 
     it.todo(
       'should throw an error when branch ID is provided for an organization invitation',
