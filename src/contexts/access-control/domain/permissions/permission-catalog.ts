@@ -15,6 +15,7 @@ export const PERMISSION_CODE = {
 
   // Organization - Members
   ORGANIZATION_MEMBERS_READ: 'organization.members.read',
+  ORGANIZATION_MEMBERS_ADD: 'organization.members.add',
   ORGANIZATION_MEMBERS_INVITE: 'organization.members.invite',
   ORGANIZATION_MEMBERS_UPDATE: 'organization.members.update',
   ORGANIZATION_MEMBERS_REMOVE: 'organization.members.remove',
@@ -248,6 +249,21 @@ export const PERMISSION_CATALOG = {
     resource: PERMISSION_RESOURCE.ORGANIZATION_MEMBERS,
     action: PERMISSION_ACTION.READ,
     delegable: true,
+  },
+
+  [PERMISSION_CODE.ORGANIZATION_MEMBERS_ADD]: {
+    name: {
+      en: 'Add Organization Member',
+      fa: 'افزودن عضو سازمان',
+    },
+    description: {
+      en: 'Allows adding existing users as active members of the organization.',
+      fa: 'امکان افزودن مستقیم کاربران موجود به‌عنوان اعضای فعال سازمان را فراهم می‌کند.',
+    },
+    resourceLevel: PERMISSION_RESOURCE_LEVEL.ORGANIZATION,
+    resource: PERMISSION_RESOURCE.ORGANIZATION_MEMBERS,
+    action: PERMISSION_ACTION.CREATE,
+    delegable: false,
   },
 
   [PERMISSION_CODE.ORGANIZATION_MEMBERS_INVITE]: {
