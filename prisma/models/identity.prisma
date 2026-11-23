@@ -35,7 +35,7 @@ model User {
   createdRoles               Role[]                   @relation("RoleCreator")
   createdRoleAssignments     RoleAssignment[]         @relation("RoleAssignmentActor")
   createdPermissionOverrides UserPermissionOverride[] @relation("PermissionOverrideActor")
-  sentMembershipInvitations  MembershipInvitation[]    @relation("MembershipInvitationInviter")
+  sentMembershipInvitations  MembershipInvitation[]   @relation("MembershipInvitationInviter")
 
   @@index([status])
 }
