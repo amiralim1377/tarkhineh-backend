@@ -11,22 +11,21 @@ enum MembershipInvitationStatus {
 }
 
 model MembershipInvitation {
-  id             String @id
+  id             String                     @id
   organizationId String
   branchId       String?
   email          String
   inviterUserId  String
-  tokenHash      String @unique
-  scope  MembershipInvitationScope
-  status MembershipInvitationStatus @default(PENDING)
-  expiresAt  DateTime
-  acceptedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  tokenHash      String                     @unique
+  scope          MembershipInvitationScope
+  status         MembershipInvitationStatus @default(PENDING)
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
 
-
-  organization Organization @relation(fields: [organizationId],references:[id],onDelete:Cascade)
-  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId, organizationId], references: [id, organizationId], onDelete: Cascade)
   inviter      User         @relation("MembershipInvitationInviter", fields: [inviterUserId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, email, scope, status])
