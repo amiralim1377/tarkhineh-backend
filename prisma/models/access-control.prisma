@@ -19,16 +19,16 @@ enum RoleStatus {
 }
 
 model Role {
-  id              String              @id @default(cuid())
-  code            String
-  name            String
-  description     String?
-  definitionScope RoleDefinitionScope
+  id               String               @id @default(cuid())
+  code             String
+  name             String
+  description      String?
+  definitionScope  RoleDefinitionScope
   assignmentTarget RoleAssignmentTarget
-  organizationId  String?
-  isAssignable    Boolean             @default(true)
-  status          RoleStatus          @default(ACTIVE)
-  createdById     String?
+  organizationId   String?
+  isAssignable     Boolean              @default(true)
+  status           RoleStatus           @default(ACTIVE)
+  createdById      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
