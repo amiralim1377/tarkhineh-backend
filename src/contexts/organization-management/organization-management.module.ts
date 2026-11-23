@@ -27,6 +27,7 @@ import { SharedModule } from '../../shared/shared.module.js';
     AccessControlModule,
     IdentityAccessModule,
     SharedModule,
+    PrismaModule,
   ],
   controllers: [OrganizationBranchesController, OrganizationMembersController],
   providers: [
