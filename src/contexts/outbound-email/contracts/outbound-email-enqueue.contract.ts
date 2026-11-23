@@ -1,3 +1,5 @@
+import type { TransactionContext } from '../../../shared/application/ports/transaction-runner.port.js';
+
 export const OUTBOUND_EMAIL_ENQUEUE = Symbol('OUTBOUND_EMAIL_ENQUEUE');
 
 export type OutboundEmailEnqueueLane = 'TRANSACTIONAL' | 'BULK';
@@ -41,12 +43,17 @@ export interface EnqueueOutboundEmailResult {
 
 export interface OutboundEmailEnqueuePort {
   /**
-   * Registers a new outbound email message.
+   * Registers an outbound email message using
+   * the caller's existing database transaction.
+   *
+   * The implementation must not create or commit
+   * an independent transaction.
    *
    * Repeated requests with the same idempotency key
    * must not create duplicate logical messages.
    */
   enqueue(
     input: EnqueueOutboundEmailInput,
+    transactionContext: TransactionContext,
   ): Promise<EnqueueOutboundEmailResult>;
 }
