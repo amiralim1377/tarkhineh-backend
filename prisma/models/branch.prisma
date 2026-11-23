@@ -40,6 +40,7 @@ model Branch {
 
   organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   memberships         BranchMembership[]
+  membershipInvitations MembershipInvitation[]
   permissionOverrides UserPermissionOverride[]
   images              BranchImage[]
   workingDays         BranchWorkingDay[]
