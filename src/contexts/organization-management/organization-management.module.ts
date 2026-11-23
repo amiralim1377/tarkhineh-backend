@@ -18,6 +18,7 @@ import { ORGANIZATION_MEMBER_ADDITION_AUTHORIZATION_PORT } from './application/p
 import { AccessControlOrganizationMemberAdditionAuthorizationAdapter } from './infrastructure/authorization/access-control-organization-member-addition.adapter.js';
 import { AddOrganizationMemberHandler } from './application/commands/add-organization-member/add-organization-member.handler.js';
 import { OrganizationMembersController } from './presentation/http/controllers/organization-members.controller.js';
+import { SharedModule } from '../../shared/shared.module.js';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { OrganizationMembersController } from './presentation/http/controllers/o
     PrismaModule,
     AccessControlModule,
     IdentityAccessModule,
+    SharedModule,
   ],
   controllers: [OrganizationBranchesController, OrganizationMembersController],
   providers: [
