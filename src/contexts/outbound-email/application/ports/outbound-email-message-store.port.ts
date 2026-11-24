@@ -11,28 +11,24 @@ export interface CreateOutboundEmailMessageInput {
    */
   readonly idempotencyKey: string;
 
+  /**
+   * HMAC-SHA256 fingerprint of the logical request.
+   */
+  readonly requestFingerprint: string;
+
   readonly lane: OutboundEmailEnqueueLane;
 
   readonly templateKey: string;
 
   readonly payloadVersion: number;
 
-  /**
-   * Encrypted email payload.
-   *
-   * Plaintext payload must never be persisted.
-   */
   readonly encryptedPayload: string;
 
   readonly validUntil: Date | null;
 
-  /**
-   * Reference to the originating domain object.
-   */
   readonly aggregateType: string | null;
   readonly aggregateId: string | null;
 }
-
 export interface CreateOutboundEmailMessageResult {
   readonly messageId: string;
   readonly created: boolean;
