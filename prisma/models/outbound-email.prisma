@@ -21,6 +21,9 @@ model OutboundEmailMessage {
 
   // Prevent duplicate logical messages.
   idempotencyKey String @unique
+  // HMAC-SHA256 fingerprint of the logical request.
+  // Nullable to preserve existing records.
+  requestFingerprint String? @db.VarChar(64)
 
   // Determines which independent worker pool handles the message.
   lane        OutboundEmailLane
