@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { MembershipInvitation } from '../../domain/entities/membership-invitation.js';
-import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
 import type { MembershipInvitationPort } from '../../application/ports/membership-invitation.port.js';
 import type { MembershipInvitationScope } from '../../domain/types/membership-invitation-scope.js';
@@ -14,9 +13,14 @@ const PENDING_INVITATION_UNIQUE_INDEXES = new Set([
   'MembershipInvitation_pending_branch_email_key',
 ]);
 
+type MembershipInvitationPrismaClient = Pick<
+  Prisma.TransactionClient,
+  'membershipInvitation'
+>;
+
 @Injectable()
 export class PrismaMembershipInvitationRepository implements MembershipInvitationPort {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: MembershipInvitationPrismaClient) {}
 
   async findById(
     organizationId: string,
