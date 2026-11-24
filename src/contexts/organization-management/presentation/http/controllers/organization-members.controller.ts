@@ -20,8 +20,16 @@ import {
 } from '@nestjs/swagger';
 import { AddOrganizationMemberCommand } from '../../../application/commands/add-organization-member/add-organization-member.command.js';
 import type { AddOrganizationMemberResult } from '../../../application/commands/add-organization-member/add-organization-member.command.js';
+import {
+  CreateMembershipInvitationCommand,
+  type CreateMembershipInvitationCommandInput,
+  type CreateMembershipInvitationResult,
+} from '../../../application/commands/create-membership-invitation/create-membership-invitation.command.js';
+import { MEMBERSHIP_INVITATION_SCOPE } from '../../../domain/types/membership-invitation-scope.js';
 import { AddOrganizationMemberDto } from '../dto/add-organization-member.dto.js';
 import { AddOrganizationMemberResponseDto } from '../dto/add-organization-member-response.dto.js';
+import { CreateMembershipInvitationDto } from '../dto/create-membership-invitation.dto.js';
+import { CreateMembershipInvitationResponseDto } from '../dto/create-membership-invitation-response.dto.js';
 import { CurrentUser } from '../../../../identity-access/presentation/http/auth/decorators/current-user.decorator.js';
 
 @ApiTags('Organization Members')
@@ -71,5 +79,65 @@ export class OrganizationMembersController {
     );
 
     return AddOrganizationMemberResponseDto.from(result);
+  }
+
+  @Post('invitations')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Create a membership invitation',
+    description:
+      'Creates a pending organization or branch membership invitation and queues an invitation email for asynchronous delivery.',
+  })
+  @ApiCreatedResponse({
+    description: 'Membership invitation successfully created.',
+    type: CreateMembershipInvitationResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid email, invitation scope, or branch ID.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The actor is not allowed to create this membership invitation.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Organization or branch not found.',
+  })
+  @ApiConflictResponse({
+    description:
+      'Organization is suspended, branch is inactive, or a pending invitation already exists.',
+  })
+  async createMembershipInvitation(
+    @Param('organizationId') organizationId: string,
+    @Body() body: CreateMembershipInvitationDto,
+    @CurrentUser() principal: { userId: string },
+  ): Promise<CreateMembershipInvitationResponseDto> {
+    let input: CreateMembershipInvitationCommandInput;
+
+    if (body.scope === MEMBERSHIP_INVITATION_SCOPE.ORGANIZATION) {
+      input = {
+        email: body.email,
+        scope: MEMBERSHIP_INVITATION_SCOPE.ORGANIZATION,
+      };
+    } else {
+      input = {
+        email: body.email,
+        scope: MEMBERSHIP_INVITATION_SCOPE.BRANCH,
+        branchId: body.branchId!,
+      };
+    }
+
+    const result =
+      await this.commandBus.execute<CreateMembershipInvitationResult>(
+        new CreateMembershipInvitationCommand(
+          principal.userId,
+          organizationId,
+          input,
+        ),
+      );
+
+    return CreateMembershipInvitationResponseDto.from(result);
   }
 }
