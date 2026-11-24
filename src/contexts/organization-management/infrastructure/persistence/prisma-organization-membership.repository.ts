@@ -1,14 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import type { OrganizationMembershipPort } from '../../application/ports/organization-membership.port.js';
 import { OrganizationMembership } from '../../domain/entities/organization-membership.js';
-import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
 import { OrganizationMembershipAlreadyExistsError } from '../../application/errors/organization-membership-already-exists.error.js';
 import { Prisma } from '../../../../generated/prisma/client.js';
 
+type OrganizationMembershipPrismaClient = Pick<
+  Prisma.TransactionClient,
+  'organizationMembership'
+>;
+
 @Injectable()
 export class PrismaOrganizationMembershipRepository implements OrganizationMembershipPort {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: OrganizationMembershipPrismaClient) {}
 
   async findById(
     organizationId: string,
@@ -93,7 +97,7 @@ export class PrismaOrganizationMembershipRepository implements OrganizationMembe
           updatedAt: membership.updatedAt,
         },
       });
-    } catch (error) {
+    } catch (error: unknown) {
       throw normalizePrismaError(error);
     }
   }
