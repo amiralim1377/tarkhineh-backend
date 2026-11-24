@@ -13,9 +13,13 @@ import type { OutboundEmailPayloadEncryptor } from '../ports/outbound-email-payl
 
 import type { OutboundEmailMessageStore } from '../ports/outbound-email-message-store.port.js';
 
+import type { OutboundEmailRequestFingerprinter } from '../ports/outbound-email-request-fingerprinter.port.js';
+
 const transactionContext: TransactionContext = {
   [TRANSACTION_CONTEXT]: true,
 };
+
+const REQUEST_FINGERPRINT = 'a'.repeat(64);
 
 const payloadEncryptorMock = {
   encrypt: vi.fn<(plaintext: string) => string>(),
@@ -24,6 +28,10 @@ const payloadEncryptorMock = {
 
 const messageStoreMock = {
   createOrGet: vi.fn<OutboundEmailMessageStore['createOrGet']>(),
+};
+
+const requestFingerprinterMock = {
+  fingerprint: vi.fn<OutboundEmailRequestFingerprinter['fingerprint']>(),
 };
 
 function createInput(
@@ -53,6 +61,8 @@ describe('OutboundEmailEnqueueService', () => {
 
     payloadEncryptorMock.encrypt.mockReturnValue('encrypted-payload-123');
 
+    requestFingerprinterMock.fingerprint.mockReturnValue(REQUEST_FINGERPRINT);
+
     messageStoreMock.createOrGet.mockResolvedValue({
       messageId: 'email-message-123',
       created: true,
@@ -61,10 +71,29 @@ describe('OutboundEmailEnqueueService', () => {
     sut = new OutboundEmailEnqueueService(
       payloadEncryptorMock as OutboundEmailPayloadEncryptor,
       messageStoreMock as OutboundEmailMessageStore,
+      requestFingerprinterMock as OutboundEmailRequestFingerprinter,
     );
   });
 
   describe('enqueue', () => {
+    it('should calculate the request fingerprint', async () => {
+      const input = createInput();
+
+      await sut.enqueue(input, transactionContext);
+
+      expect(requestFingerprinterMock.fingerprint).toHaveBeenCalledOnce();
+
+      expect(requestFingerprinterMock.fingerprint).toHaveBeenCalledWith({
+        lane: input.lane,
+        templateKey: input.templateKey,
+        payloadVersion: input.payloadVersion,
+        payload: input.payload,
+        validUntil: input.validUntil,
+        aggregateType: input.aggregateType,
+        aggregateId: input.aggregateId,
+      });
+    });
+
     it('should serialize and encrypt the payload', async () => {
       const input = createInput();
 
@@ -89,6 +118,14 @@ describe('OutboundEmailEnqueueService', () => {
       expect(storedInput).not.toHaveProperty('payload');
     });
 
+    it('should pass the request fingerprint to the message store', async () => {
+      await sut.enqueue(createInput(), transactionContext);
+
+      const [storedInput] = messageStoreMock.createOrGet.mock.calls[0]!;
+
+      expect(storedInput.requestFingerprint).toBe(REQUEST_FINGERPRINT);
+    });
+
     it('should pass all message properties to the message store', async () => {
       const input = createInput();
 
@@ -97,6 +134,7 @@ describe('OutboundEmailEnqueueService', () => {
       expect(messageStoreMock.createOrGet).toHaveBeenCalledWith(
         {
           idempotencyKey: input.idempotencyKey,
+          requestFingerprint: REQUEST_FINGERPRINT,
           lane: input.lane,
           templateKey: input.templateKey,
           payloadVersion: input.payloadVersion,
@@ -123,6 +161,41 @@ describe('OutboundEmailEnqueueService', () => {
           validUntil: null,
           aggregateType: null,
           aggregateId: null,
+          requestFingerprint: REQUEST_FINGERPRINT,
+        }),
+        transactionContext,
+      );
+
+      expect(requestFingerprinterMock.fingerprint).toHaveBeenCalledWith(
+        expect.objectContaining({
+          validUntil: null,
+          aggregateType: null,
+          aggregateId: null,
+        }),
+      );
+    });
+
+    it('should normalize values before calculating the fingerprint', async () => {
+      const input = createInput({
+        idempotencyKey: '  invitation:123  ',
+        aggregateType: '  MembershipInvitation  ',
+        aggregateId: '  invitation-123  ',
+      });
+
+      await sut.enqueue(input, transactionContext);
+
+      expect(requestFingerprinterMock.fingerprint).toHaveBeenCalledWith(
+        expect.objectContaining({
+          aggregateType: 'MembershipInvitation',
+          aggregateId: 'invitation-123',
+        }),
+      );
+
+      expect(messageStoreMock.createOrGet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey: 'invitation:123',
+          aggregateType: 'MembershipInvitation',
+          aggregateId: 'invitation-123',
         }),
         transactionContext,
       );
@@ -157,6 +230,22 @@ describe('OutboundEmailEnqueueService', () => {
       );
     });
 
+    it('should propagate fingerprint calculation errors', async () => {
+      const fingerprintError = new Error('Fingerprint calculation failed.');
+
+      requestFingerprinterMock.fingerprint.mockImplementation(() => {
+        throw fingerprintError;
+      });
+
+      await expect(sut.enqueue(createInput(), transactionContext)).rejects.toBe(
+        fingerprintError,
+      );
+
+      expect(payloadEncryptorMock.encrypt).not.toHaveBeenCalled();
+
+      expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
+    });
+
     it('should propagate payload encryption errors', async () => {
       const encryptionError = new Error('Encryption failed.');
 
@@ -167,6 +256,8 @@ describe('OutboundEmailEnqueueService', () => {
       await expect(sut.enqueue(createInput(), transactionContext)).rejects.toBe(
         encryptionError,
       );
+
+      expect(requestFingerprinterMock.fingerprint).toHaveBeenCalledOnce();
 
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
@@ -198,6 +289,7 @@ describe('OutboundEmailEnqueueService', () => {
         sut.enqueue(createInput(), {} as TransactionContext),
       ).rejects.toThrow(TypeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(payloadEncryptorMock.encrypt).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
@@ -207,6 +299,7 @@ describe('OutboundEmailEnqueueService', () => {
         sut.enqueue(createInput({ idempotencyKey: '   ' }), transactionContext),
       ).rejects.toThrow(TypeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
 
@@ -220,6 +313,7 @@ describe('OutboundEmailEnqueueService', () => {
         ),
       ).rejects.toThrow(TypeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
 
@@ -233,6 +327,7 @@ describe('OutboundEmailEnqueueService', () => {
         ),
       ).rejects.toThrow(TypeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
 
@@ -246,6 +341,7 @@ describe('OutboundEmailEnqueueService', () => {
         ),
       ).rejects.toThrow(RangeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
 
@@ -259,6 +355,7 @@ describe('OutboundEmailEnqueueService', () => {
         ),
       ).rejects.toThrow(TypeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
 
@@ -272,6 +369,7 @@ describe('OutboundEmailEnqueueService', () => {
         ),
       ).rejects.toThrow(TypeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
 
@@ -288,6 +386,7 @@ describe('OutboundEmailEnqueueService', () => {
         ),
       ).rejects.toThrow('Outbound email payload must be JSON serializable.');
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(payloadEncryptorMock.encrypt).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
@@ -302,6 +401,7 @@ describe('OutboundEmailEnqueueService', () => {
         ),
       ).rejects.toThrow(RangeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
 
@@ -315,6 +415,7 @@ describe('OutboundEmailEnqueueService', () => {
         ),
       ).rejects.toThrow(RangeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
 
@@ -329,6 +430,7 @@ describe('OutboundEmailEnqueueService', () => {
         ),
       ).rejects.toThrow(TypeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
 
@@ -342,6 +444,7 @@ describe('OutboundEmailEnqueueService', () => {
         ),
       ).rejects.toThrow(TypeError);
 
+      expect(requestFingerprinterMock.fingerprint).not.toHaveBeenCalled();
       expect(messageStoreMock.createOrGet).not.toHaveBeenCalled();
     });
   });
