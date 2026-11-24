@@ -24,6 +24,7 @@ import { OutboundEmailModule } from '../outbound-email/outbound-email.module.js'
 import { PrismaOrganizationManagementUnitOfWork } from './infrastructure/persistence/prisma-organization-management.unit-of-work.js';
 import { MEMBERSHIP_INVITATION_AUTHORIZATION_PORT } from './application/ports/membership-invitation-authorization.port.js';
 import { AccessControlMembershipInvitationAuthorizationAdapter } from './infrastructure/authorization/access-control-membership-invitation-authorization.adapter.js';
+import { PrismaService } from '../../prisma/prisma.service.js';
 
 @Module({
   imports: [
@@ -54,7 +55,9 @@ import { AccessControlMembershipInvitationAuthorizationAdapter } from './infrast
     },
     {
       provide: ORGANIZATION_MEMBERSHIP_PORT,
-      useClass: PrismaOrganizationMembershipRepository,
+      useFactory: (prisma: PrismaService) =>
+        new PrismaOrganizationMembershipRepository(prisma),
+      inject: [PrismaService],
     },
     {
       provide: ORGANIZATION_MEMBER_ADDITION_AUTHORIZATION_PORT,
