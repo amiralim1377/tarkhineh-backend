@@ -38,11 +38,12 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  memberships         BranchMembership[]
-  permissionOverrides UserPermissionOverride[]
-  images              BranchImage[]
-  workingDays         BranchWorkingDay[]
+  organization          Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships           BranchMembership[]
+  membershipInvitations MembershipInvitation[]
+  permissionOverrides   UserPermissionOverride[]
+  images                BranchImage[]
+  workingDays           BranchWorkingDay[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, slug])

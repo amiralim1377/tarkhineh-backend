@@ -1,0 +1,9 @@
+export const MEMBERSHIP_INVITATION_STATUS = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  EXPIRED: 'EXPIRED',
+  REVOKED: 'REVOKED',
+} as const;
+
+export type MembershipInvitationStatus =
+  (typeof MEMBERSHIP_INVITATION_STATUS)[keyof typeof MEMBERSHIP_INVITATION_STATUS];

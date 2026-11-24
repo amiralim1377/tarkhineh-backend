@@ -33,6 +33,9 @@ import {
   ApiProblemServiceUnavailableResponse,
   ApiProblemUnauthorizedResponse,
 } from '../../../../../shared/presentation/http/api-problem-response.decorator.js';
+import { AddBranchMemberRequestDto } from '../dto/add-branch-member.request.dto.js';
+import { AddBranchMemberResponseDto } from '../dto/add-branch-member.response.dto.js';
+import { AddBranchMemberCommand } from '../../../application/commands/add-branch-member/add-branch-member.command.js';
 
 @ApiTags('Organization Management')
 @Controller('organizations/:organizationId/branches')
@@ -154,5 +157,67 @@ export class OrganizationBranchesController {
     );
 
     return UpdateBranchResponseDto.from(result);
+  }
+
+  @Auth(AuthType.Bearer, AuthType.Cookie)
+  @Post(':branchId/members')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Add a Branch Member',
+    description:
+      'Adds an existing active user as an active member of the specified Branch after validating the actor authorization.',
+  })
+  @ApiParam({
+    name: 'organizationId',
+    description: 'The Organization identifier.',
+  })
+  @ApiParam({
+    name: 'branchId',
+    description: 'The Branch identifier.',
+  })
+  @ApiBody({
+    type: AddBranchMemberRequestDto,
+  })
+  @ApiCreatedResponse({
+    description: 'Branch member added successfully.',
+    type: AddBranchMemberResponseDto,
+  })
+  @ApiProblemBadRequestResponse({
+    description: 'The request body is invalid.',
+  })
+  @ApiProblemUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiProblemResponse(HttpStatus.FORBIDDEN, {
+    description:
+      'The authenticated actor is not authorized to add members to this Branch.',
+  })
+  @ApiProblemResponse(HttpStatus.NOT_FOUND, {
+    description: 'The Organization, Branch, or target User was not found.',
+  })
+  @ApiProblemResponse(HttpStatus.CONFLICT, {
+    description:
+      'The Organization is suspended, the Branch is inactive, or the target User already has an incompatible membership.',
+  })
+  @ApiProblemServiceUnavailableResponse({
+    description: 'A required dependency is unavailable.',
+  })
+  async addBranchMember(
+    @Param('organizationId') organizationId: string,
+    @Param('branchId') branchId: string,
+    @Body() body: AddBranchMemberRequestDto,
+    @CurrentUser() principal: AuthenticatedPrincipal,
+  ): Promise<AddBranchMemberResponseDto> {
+    const result = await this.commandBus.execute(
+      new AddBranchMemberCommand(
+        principal.userId,
+        organizationId,
+        branchId,
+        body.memberUserId,
+      ),
+    );
+
+    return AddBranchMemberResponseDto.from(result);
   }
 }

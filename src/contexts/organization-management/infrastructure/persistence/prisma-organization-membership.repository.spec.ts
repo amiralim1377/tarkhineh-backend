@@ -4,6 +4,7 @@ import { PrismaOrganizationMembershipRepository } from './prisma-organization-me
 import { Prisma } from '../../../../generated/prisma/client.js';
 import { DependencyUnavailableError } from '../../../../shared/application/errors/dependency-unavailable.error.js';
 import { InvalidOrganizationMembershipDataError } from '../../domain/errors/invalid-organization-membership.error.js';
+import { OrganizationMembershipAlreadyExistsError } from '../../application/errors/organization-membership-already-exists.error.js';
 
 describe('PrismaOrganizationMembershipRepository', () => {
   const prisma = {
@@ -389,6 +390,33 @@ describe('PrismaOrganizationMembershipRepository', () => {
       // act & assert
       await expect(repository.save(membership)).rejects.toBeInstanceOf(
         DependencyUnavailableError,
+      );
+    });
+    it('should throw when organization membership already exists', async () => {
+      // arrange
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        {
+          code: 'P2002',
+          clientVersion: 'test',
+          meta: {
+            target: ['organizationId', 'userId'],
+          },
+        },
+      );
+      // arrange
+      const membership = OrganizationMembership.create({
+        id: 'membership-123',
+        organizationId: 'organization-123',
+        userId: 'user-123',
+        status: 'ACTIVE',
+      });
+
+      prisma.organizationMembership.create.mockRejectedValue(prismaError);
+
+      // act & assert
+      await expect(repository.save(membership)).rejects.toBeInstanceOf(
+        OrganizationMembershipAlreadyExistsError,
       );
     });
   });

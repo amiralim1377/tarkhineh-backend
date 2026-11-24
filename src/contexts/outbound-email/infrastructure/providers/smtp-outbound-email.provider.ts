@@ -10,6 +10,7 @@ import type {
 import {
   OutboundEmailProviderError,
   type OutboundEmailProviderFailureKind,
+  type OutboundEmailProviderDiagnostics,
 } from '../../application/errors/outbound-email-provider.error.js';
 
 interface SmtpConfiguration {
@@ -87,9 +88,7 @@ export class SmtpOutboundEmailProvider
         subject: content.subject,
         text: content.text,
         ...(content.html !== undefined ? { html: content.html } : {}),
-        ...(content.replyTo !== undefined
-          ? { replyTo: content.replyTo }
-          : {}),
+        ...(content.replyTo !== undefined ? { replyTo: content.replyTo } : {}),
       });
 
       return {
@@ -102,6 +101,7 @@ export class SmtpOutboundEmailProvider
       // Never expose the raw SMTP error or server response to callers.
       throw new OutboundEmailProviderError(
         this.classifyFailure(error),
+        this.extractSafeDiagnostics(error),
       );
     }
   }
@@ -157,15 +157,13 @@ export class SmtpOutboundEmailProvider
     const password = this.configService.get<string>('SMTP_PASSWORD');
     const from = this.configService.get<string>('SMTP_FROM');
 
-    const configuredPort =
-      this.configService.get<number | string>('SMTP_PORT');
+    const configuredPort = this.configService.get<number | string>('SMTP_PORT');
     const port =
       configuredPort === undefined || configuredPort === null
         ? 587
         : Number(configuredPort);
 
-    const secureSetting =
-      this.configService.get<string>('SMTP_SECURE');
+    const secureSetting = this.configService.get<string>('SMTP_SECURE');
 
     if (
       !host?.trim() ||
@@ -186,9 +184,7 @@ export class SmtpOutboundEmailProvider
       host: host.trim(),
       port,
       secure:
-        secureSetting === undefined
-          ? port === 465
-          : secureSetting === 'true',
+        secureSetting === undefined ? port === 465 : secureSetting === 'true',
       username: username.trim(),
       // Preserve the configured password exactly.
       password,
@@ -196,9 +192,7 @@ export class SmtpOutboundEmailProvider
     };
   }
 
-  private classifyFailure(
-    error: unknown,
-  ): OutboundEmailProviderFailureKind {
+  private classifyFailure(error: unknown): OutboundEmailProviderFailureKind {
     if (typeof error !== 'object' || error === null) {
       return 'OUTCOME_UNKNOWN';
     }
@@ -206,14 +200,10 @@ export class SmtpOutboundEmailProvider
     const details = error as NodemailerFailureDetails;
 
     const code =
-      typeof details.code === 'string'
-        ? details.code.toUpperCase()
-        : '';
+      typeof details.code === 'string' ? details.code.toUpperCase() : '';
 
     const responseCode =
-      typeof details.responseCode === 'number'
-        ? details.responseCode
-        : null;
+      typeof details.responseCode === 'number' ? details.responseCode : null;
 
     const command =
       typeof details.command === 'string'
@@ -226,11 +216,7 @@ export class SmtpOutboundEmailProvider
         : '';
 
     // An explicit SMTP 4xx response confirms temporary rejection.
-    if (
-      responseCode !== null &&
-      responseCode >= 400 &&
-      responseCode < 500
-    ) {
+    if (responseCode !== null && responseCode >= 400 && responseCode < 500) {
       return 'TEMPORARY_REJECTION';
     }
 
@@ -241,11 +227,7 @@ export class SmtpOutboundEmailProvider
     }
 
     // An explicit SMTP 5xx response confirms rejection.
-    if (
-      responseCode !== null &&
-      responseCode >= 500 &&
-      responseCode < 600
-    ) {
+    if (responseCode !== null && responseCode >= 500 && responseCode < 600) {
       return 'PERMANENT_REJECTION';
     }
 
@@ -254,10 +236,7 @@ export class SmtpOutboundEmailProvider
     }
 
     // These timeout phases occur before message transmission.
-    if (
-      code === 'ETIMEDOUT' &&
-      SAFE_PRE_DATA_TIMEOUT_TYPES.has(timeoutType)
-    ) {
+    if (code === 'ETIMEDOUT' && SAFE_PRE_DATA_TIMEOUT_TYPES.has(timeoutType)) {
       return 'TEMPORARY_REJECTION';
     }
 
@@ -273,14 +252,67 @@ export class SmtpOutboundEmailProvider
 
     // Retry network errors automatically only when the SMTP command
     // confirms the message body was not yet being transmitted.
-    if (
-      NETWORK_FAILURE_CODES.has(code) &&
-      failedBeforeMessageData
-    ) {
+    if (NETWORK_FAILURE_CODES.has(code) && failedBeforeMessageData) {
       return 'TEMPORARY_REJECTION';
     }
 
     // The message may have reached the Provider. Do not auto-retry.
     return 'OUTCOME_UNKNOWN';
+  }
+
+  private extractSafeDiagnostics(
+    error: unknown,
+  ): OutboundEmailProviderDiagnostics {
+    if (typeof error !== 'object' || error === null) {
+      return {};
+    }
+
+    const details = error as NodemailerFailureDetails;
+
+    const code =
+      typeof details.code === 'string' ? details.code.toUpperCase() : undefined;
+
+    const responseCode =
+      typeof details.responseCode === 'number' &&
+      Number.isInteger(details.responseCode) &&
+      details.responseCode >= 400 &&
+      details.responseCode < 600
+        ? details.responseCode
+        : undefined;
+
+    const rawCommand =
+      typeof details.command === 'string'
+        ? details.command.trim().toUpperCase()
+        : '';
+
+    const allowedCommands = new Set([
+      'CONN',
+      'EHLO',
+      'HELO',
+      'STARTTLS',
+      'AUTH',
+      'MAIL FROM',
+      'RCPT TO',
+      'DATA',
+    ]);
+
+    const command = allowedCommands.has(rawCommand)
+      ? rawCommand
+      : rawCommand.startsWith('AUTH')
+        ? 'AUTH'
+        : undefined;
+
+    const timeoutType =
+      typeof details.timeoutType === 'string' &&
+      SAFE_PRE_DATA_TIMEOUT_TYPES.has(details.timeoutType.toUpperCase())
+        ? details.timeoutType.toUpperCase()
+        : undefined;
+
+    return {
+      ...(code && /^[A-Z0-9_]{1,40}$/.test(code) ? { providerCode: code } : {}),
+      ...(responseCode !== undefined ? { responseCode } : {}),
+      ...(command ? { command } : {}),
+      ...(timeoutType ? { timeoutType } : {}),
+    };
   }
 }

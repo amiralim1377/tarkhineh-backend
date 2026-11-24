@@ -194,6 +194,15 @@ export class OutboundEmailDeliveryHandler {
     leaseToken: string,
     error: OutboundEmailProviderError,
   ): Promise<void> {
+    this.logger.warn(
+      {
+        outboxMessageId: messageId,
+        failureKind: error.kind,
+        ...error.diagnostics,
+      },
+      'Outbound email provider delivery failed',
+    );
+
     switch (error.kind) {
       case 'TEMPORARY_REJECTION':
         await this.scheduleRetry(

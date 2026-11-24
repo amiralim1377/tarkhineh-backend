@@ -1,11 +1,8 @@
 import { createElement } from 'react';
 import { ConfigService } from '@nestjs/config';
 import { render as renderEmail } from 'react-email';
-
 import { OutboundEmailTemplateError } from '../../../errors/outbound-email-template.error.js';
-
 import type { OutboundEmailTemplate } from '../../outbound-email-template.js';
-
 import { WelcomeEmailView } from './welcome.view.js';
 import { OutboundEmailContent } from '../../../ports/outbound-email-provider.port.js';
 

@@ -1,4 +1,4 @@
-import type { IdentityUserStatus } from '../../domain/entities/identity-user.js';
+import { IdentityUserStatus } from '../../domain/types/identity-user-status.js';
 
 export const ACCESS_TOKEN_IDENTITY_READER = Symbol(
   'ACCESS_TOKEN_IDENTITY_READER',
