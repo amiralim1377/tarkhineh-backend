@@ -22,6 +22,13 @@ import {
 import { IdentityEmailVerificationEmailTemplate } from './application/templates/identity/email-verification/email-verification.template.js';
 import { PasswordChangedEmailTemplate } from './application/templates/identity/password-changed/password-changed.template.js';
 import { IdentityWelcomeEmailTemplate } from './application/templates/identity/welcome/welcome.template.js';
+import { OUTBOUND_EMAIL_ENQUEUE } from './contracts/outbound-email-enqueue.contract.js';
+import { OutboundEmailEnqueueService } from './application/services/outbound-email-enqueue.service.js';
+import { OUTBOUND_EMAIL_REQUEST_FINGERPRINTER } from './application/ports/outbound-email-request-fingerprinter.port.js';
+import { HmacOutboundEmailRequestFingerprinter } from './infrastructure/security/hmac-outbound-email-request-fingerprinter.js';
+import { PrismaOutboundEmailMessageStore } from './infrastructure/persistence/prisma-outbound-email-message.store.js';
+import { OUTBOUND_EMAIL_MESSAGE_STORE } from './application/ports/outbound-email-message-store.port.js';
+import { MembershipInvitationEmailTemplate } from './application/templates/organization/membership-invitation/membership-invitation.template.js';
 
 @Module({
   imports: [
@@ -44,6 +51,9 @@ import { IdentityWelcomeEmailTemplate } from './application/templates/identity/w
     BulkOutboundEmailDeliveryWorker,
     OutboundEmailDispatcher,
     OutboundEmailReconciler,
+    OutboundEmailEnqueueService,
+    PrismaOutboundEmailMessageStore,
+    HmacOutboundEmailRequestFingerprinter,
     {
       provide: OUTBOUND_EMAIL_PAYLOAD_ENCRYPTOR,
       useExisting: AesGcmOutboundEmailPayloadEncryptor,
@@ -69,10 +79,27 @@ import { IdentityWelcomeEmailTemplate } from './application/templates/identity/w
           new IdentityEmailVerificationEmailTemplate(configService),
           new PasswordChangedEmailTemplate(configService),
           new IdentityWelcomeEmailTemplate(configService),
+          new MembershipInvitationEmailTemplate(configService),
         ]);
       },
     },
+    {
+      provide: OUTBOUND_EMAIL_ENQUEUE,
+      useExisting: OutboundEmailEnqueueService,
+    },
+    {
+      provide: OUTBOUND_EMAIL_MESSAGE_STORE,
+      useExisting: PrismaOutboundEmailMessageStore,
+    },
+    {
+      provide: OUTBOUND_EMAIL_REQUEST_FINGERPRINTER,
+      useExisting: HmacOutboundEmailRequestFingerprinter,
+    },
   ],
-  exports: [OUTBOUND_EMAIL_PAYLOAD_ENCRYPTOR, OutboundEmailTemplateRegistry],
+  exports: [
+    OUTBOUND_EMAIL_PAYLOAD_ENCRYPTOR,
+    OutboundEmailTemplateRegistry,
+    OUTBOUND_EMAIL_ENQUEUE,
+  ],
 })
 export class OutboundEmailModule {}
