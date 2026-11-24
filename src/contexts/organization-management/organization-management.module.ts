@@ -25,6 +25,11 @@ import { PrismaOrganizationManagementUnitOfWork } from './infrastructure/persist
 import { MEMBERSHIP_INVITATION_AUTHORIZATION_PORT } from './application/ports/membership-invitation-authorization.port.js';
 import { AccessControlMembershipInvitationAuthorizationAdapter } from './infrastructure/authorization/access-control-membership-invitation-authorization.adapter.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { AddBranchMemberHandler } from './application/commands/add-branch-member/add-branch-member.handler.js';
+import { BRANCH_MEMBER_ADDITION_AUTHORIZATION_PORT } from './application/ports/branch-member-addition-authorization.port.js';
+import { AccessControlBranchMemberAdditionAuthorizationAdapter } from './infrastructure/authorization/access-control-branch-member-addition-authorization.adapter.js';
+import { BRANCH_MEMBER_ADDITION_UNIT_OF_WORK } from './application/ports/branch-member-addition-unit-of-work.port.js';
+import { PrismaBranchMemberAdditionUnitOfWork } from './infrastructure/persistence/prisma-branch-member-addition.unit-of-work.js';
 
 @Module({
   imports: [
@@ -40,6 +45,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
     CreateBranchHandler,
     AddOrganizationMemberHandler,
     CreateMembershipInvitationCommandHandler,
+    AddBranchMemberHandler,
     PrismaOrganizationManagementUnitOfWork,
     {
       provide: BRANCH_REPOSITORY,
@@ -70,6 +76,14 @@ import { PrismaService } from '../../prisma/prisma.service.js';
     {
       provide: MEMBERSHIP_INVITATION_AUTHORIZATION_PORT,
       useClass: AccessControlMembershipInvitationAuthorizationAdapter,
+    },
+    {
+      provide: BRANCH_MEMBER_ADDITION_AUTHORIZATION_PORT,
+      useClass: AccessControlBranchMemberAdditionAuthorizationAdapter,
+    },
+    {
+      provide: BRANCH_MEMBER_ADDITION_UNIT_OF_WORK,
+      useClass: PrismaBranchMemberAdditionUnitOfWork,
     },
   ],
 })
