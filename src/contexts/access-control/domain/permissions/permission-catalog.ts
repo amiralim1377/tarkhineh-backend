@@ -36,6 +36,7 @@ export const PERMISSION_CODE = {
 
   // Branch - Staff
   BRANCH_STAFF_READ: 'branch.staff.read',
+  BRANCH_STAFF_ADD: 'branch.staff.add',
   BRANCH_STAFF_INVITE: 'branch.staff.invite',
   BRANCH_STAFF_UPDATE: 'branch.staff.update',
   BRANCH_STAFF_SUSPEND: 'branch.staff.suspend',
@@ -459,6 +460,21 @@ export const PERMISSION_CATALOG = {
     resourceLevel: PERMISSION_RESOURCE_LEVEL.BRANCH,
     resource: PERMISSION_RESOURCE.BRANCH_STAFF,
     action: PERMISSION_ACTION.INVITE,
+    delegable: true,
+  },
+
+  [PERMISSION_CODE.BRANCH_STAFF_ADD]: {
+    name: {
+      en: 'Add Branch Staff',
+      fa: 'افزودن مستقیم کارمند به شعبه',
+    },
+    description: {
+      en: 'Allows adding existing active users as active members of an authorized branch.',
+      fa: 'امکان افزودن مستقیم کاربران فعال موجود در سیستم به‌عنوان اعضای فعال شعبه‌های مجاز را فراهم می‌کند.',
+    },
+    resourceLevel: PERMISSION_RESOURCE_LEVEL.BRANCH,
+    resource: PERMISSION_RESOURCE.BRANCH_STAFF,
+    action: PERMISSION_ACTION.CREATE,
     delegable: true,
   },
 
