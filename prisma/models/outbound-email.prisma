@@ -20,7 +20,7 @@ model OutboundEmailMessage {
   id String @id @default(cuid())
 
   // Prevent duplicate logical messages.
-  idempotencyKey String @unique
+  idempotencyKey     String  @unique
   // HMAC-SHA256 fingerprint of the logical request.
   // Nullable to preserve existing records.
   requestFingerprint String? @db.VarChar(64)
