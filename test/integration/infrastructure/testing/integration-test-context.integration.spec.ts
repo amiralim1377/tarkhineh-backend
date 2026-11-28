@@ -70,4 +70,82 @@ describe('IntegrationTestContext', () => {
     expect(branchMenuItem.menuItemId).toBe(item.id);
     expect(branchMenuItem.priceOverride).toBe(130_000n);
   });
+
+  it('should remove all created records during cleanup', async () => {
+    const { menu, database } = testContext;
+
+    const context = await menu.context.create();
+
+    const category = await menu.category.create({
+      organizationId: context.organization.id,
+    });
+
+    const item = await menu.item.create({
+      organizationId: context.organization.id,
+    });
+
+    await menu.itemCategory.create({
+      organizationId: context.organization.id,
+      menuItemId: item.id,
+      categoryId: category.id,
+    });
+
+    const branchMenuItem = await menu.branchMenuItem.create({
+      organizationId: context.organization.id,
+      branchId: context.branch.id,
+      menuItemId: item.id,
+    });
+
+    await testContext.cleanup.clean();
+
+    const prisma = database.client;
+
+    const [
+      branchMenuItemCount,
+      itemCategoryCount,
+      itemCount,
+      categoryCount,
+      branchCount,
+      organizationCount,
+      userCount,
+    ] = await Promise.all([
+      prisma.branchMenuItem.count({
+        where: { id: branchMenuItem.id },
+      }),
+      prisma.menuItemCategory.count({
+        where: {
+          menuItemId: item.id,
+          categoryId: category.id,
+        },
+      }),
+      prisma.menuItem.count({
+        where: { id: item.id },
+      }),
+      prisma.menuCategory.count({
+        where: { id: category.id },
+      }),
+      prisma.branch.count({
+        where: {
+          id: context.branch.id,
+          organizationId: context.organization.id,
+        },
+      }),
+      prisma.organization.count({
+        where: { id: context.organization.id },
+      }),
+      prisma.user.count({
+        where: { id: context.user.id },
+      }),
+    ]);
+
+    expect([
+      branchMenuItemCount,
+      itemCategoryCount,
+      itemCount,
+      categoryCount,
+      branchCount,
+      organizationCount,
+      userCount,
+    ]).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
 });
