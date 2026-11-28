@@ -1,9 +1,7 @@
 import 'dotenv/config';
-
 import { randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-
 import { AuthSession } from '../../../src/contexts/identity-access/domain/entities/auth-session.js';
 import type {
   CreateAuthSessionInput,
