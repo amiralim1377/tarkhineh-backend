@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { registerIntegrationTestContext } from './integration-test-context.js';
+import { registerIntegrationTestInfrastructure } from '../infrastructure/testing/integration-test-infrastructure.js';
+import { registerMenuIntegrationTestContext } from './menu-integration-test-context.js';
 
-const testContext = registerIntegrationTestContext();
+const infrastructure = registerIntegrationTestInfrastructure();
+const menuContext = registerMenuIntegrationTestContext(infrastructure);
 
 let automaticallyCleanedRecordIds:
   | {
@@ -14,54 +16,54 @@ let automaticallyCleanedRecordIds:
     }
   | undefined;
 
-describe('IntegrationTestContext', () => {
-  it('should connect to the test database before accessing factories', () => {
-    expect(testContext.database.isConnected).toBe(true);
+describe('MenuIntegrationTestContext', () => {
+  it('should connect to the test database before accessing menu factories', () => {
+    expect(infrastructure.database.isConnected).toBe(true);
   });
 
-  it('should expose all menu factories through a single context', () => {
-    const menu = testContext.menu;
+  it('should expose all menu-owned factories through its context', () => {
+    const factories = menuContext.factories;
 
-    expect(menu.context).toBeDefined();
-    expect(menu.category).toBeDefined();
-    expect(menu.item).toBeDefined();
-    expect(menu.itemCategory).toBeDefined();
-    expect(menu.branchMenuItem).toBeDefined();
+    expect(factories.fixture).toBeDefined();
+    expect(factories.category).toBeDefined();
+    expect(factories.item).toBeDefined();
+    expect(factories.itemCategory).toBeDefined();
+    expect(factories.branchMenuItem).toBeDefined();
   });
 
   it('should reuse the same menu factory instances', () => {
-    const first = testContext.menu;
-    const second = testContext.menu;
+    const first = menuContext.factories;
+    const second = menuContext.factories;
 
     expect(first).toBe(second);
     expect(first.category).toBe(second.category);
     expect(first.item).toBe(second.item);
   });
 
-  it('should create related menu test data through the context', async () => {
-    const { menu } = testContext;
+  it('should compose a menu fixture from identity and organization factories', async () => {
+    const factories = menuContext.factories;
 
-    const context = await menu.context.create();
+    const context = await factories.fixture.create();
 
-    const category = await menu.category.create({
+    const category = await factories.category.create({
       organizationId: context.organization.id,
       nameFa: 'نوشیدنی‌ها',
     });
 
-    const item = await menu.item.create({
+    const item = await factories.item.create({
       organizationId: context.organization.id,
       nameFa: 'قهوه اسپرسو',
       basePrice: 120_000n,
       status: 'ACTIVE',
     });
 
-    const itemCategory = await menu.itemCategory.create({
+    const itemCategory = await factories.itemCategory.create({
       organizationId: context.organization.id,
       menuItemId: item.id,
       categoryId: category.id,
     });
 
-    const branchMenuItem = await menu.branchMenuItem.create({
+    const branchMenuItem = await factories.branchMenuItem.create({
       organizationId: context.organization.id,
       branchId: context.branch.id,
       menuItemId: item.id,
@@ -69,46 +71,42 @@ describe('IntegrationTestContext', () => {
     });
 
     expect(context.organization.ownerUserId).toBe(context.user.id);
-
     expect(category.organizationId).toBe(context.organization.id);
     expect(item.organizationId).toBe(context.organization.id);
-
     expect(itemCategory.menuItemId).toBe(item.id);
     expect(itemCategory.categoryId).toBe(category.id);
-
     expect(branchMenuItem.branchId).toBe(context.branch.id);
     expect(branchMenuItem.menuItemId).toBe(item.id);
     expect(branchMenuItem.priceOverride).toBe(130_000n);
   });
 
   it('should remove all created records during cleanup', async () => {
-    const { menu, database } = testContext;
+    const factories = menuContext.factories;
+    const context = await factories.fixture.create();
 
-    const context = await menu.context.create();
-
-    const category = await menu.category.create({
+    const category = await factories.category.create({
       organizationId: context.organization.id,
     });
 
-    const item = await menu.item.create({
+    const item = await factories.item.create({
       organizationId: context.organization.id,
     });
 
-    await menu.itemCategory.create({
+    await factories.itemCategory.create({
       organizationId: context.organization.id,
       menuItemId: item.id,
       categoryId: category.id,
     });
 
-    const branchMenuItem = await menu.branchMenuItem.create({
+    const branchMenuItem = await factories.branchMenuItem.create({
       organizationId: context.organization.id,
       branchId: context.branch.id,
       menuItemId: item.id,
     });
 
-    await testContext.cleanup.clean();
+    await infrastructure.cleanup.clean();
 
-    const prisma = database.client;
+    const prisma = infrastructure.database.client;
 
     const [
       branchMenuItemCount,
@@ -119,21 +117,15 @@ describe('IntegrationTestContext', () => {
       organizationCount,
       userCount,
     ] = await Promise.all([
-      prisma.branchMenuItem.count({
-        where: { id: branchMenuItem.id },
-      }),
+      prisma.branchMenuItem.count({ where: { id: branchMenuItem.id } }),
       prisma.menuItemCategory.count({
         where: {
           menuItemId: item.id,
           categoryId: category.id,
         },
       }),
-      prisma.menuItem.count({
-        where: { id: item.id },
-      }),
-      prisma.menuCategory.count({
-        where: { id: category.id },
-      }),
+      prisma.menuItem.count({ where: { id: item.id } }),
+      prisma.menuCategory.count({ where: { id: category.id } }),
       prisma.branch.count({
         where: {
           id: context.branch.id,
@@ -143,9 +135,7 @@ describe('IntegrationTestContext', () => {
       prisma.organization.count({
         where: { id: context.organization.id },
       }),
-      prisma.user.count({
-        where: { id: context.user.id },
-      }),
+      prisma.user.count({ where: { id: context.user.id } }),
     ]);
 
     expect([
@@ -160,25 +150,24 @@ describe('IntegrationTestContext', () => {
   });
 
   it('should automatically clean up records after each test', async () => {
-    const { menu } = testContext;
+    const factories = menuContext.factories;
+    const context = await factories.fixture.create();
 
-    const context = await menu.context.create();
-
-    const category = await menu.category.create({
+    const category = await factories.category.create({
       organizationId: context.organization.id,
     });
 
-    const item = await menu.item.create({
+    const item = await factories.item.create({
       organizationId: context.organization.id,
     });
 
-    await menu.itemCategory.create({
+    await factories.itemCategory.create({
       organizationId: context.organization.id,
       menuItemId: item.id,
       categoryId: category.id,
     });
 
-    const branchMenuItem = await menu.branchMenuItem.create({
+    const branchMenuItem = await factories.branchMenuItem.create({
       organizationId: context.organization.id,
       branchId: context.branch.id,
       menuItemId: item.id,
@@ -198,8 +187,7 @@ describe('IntegrationTestContext', () => {
     expect(automaticallyCleanedRecordIds).toBeDefined();
 
     const ids = automaticallyCleanedRecordIds!;
-
-    const prisma = testContext.database.client;
+    const prisma = infrastructure.database.client;
 
     const [
       branchMenuItemCount,
@@ -212,12 +200,8 @@ describe('IntegrationTestContext', () => {
       prisma.branchMenuItem.count({
         where: { id: ids.branchMenuItemId },
       }),
-      prisma.menuItem.count({
-        where: { id: ids.itemId },
-      }),
-      prisma.menuCategory.count({
-        where: { id: ids.categoryId },
-      }),
+      prisma.menuItem.count({ where: { id: ids.itemId } }),
+      prisma.menuCategory.count({ where: { id: ids.categoryId } }),
       prisma.branch.count({
         where: {
           id: ids.branchId,
@@ -227,9 +211,7 @@ describe('IntegrationTestContext', () => {
       prisma.organization.count({
         where: { id: ids.organizationId },
       }),
-      prisma.user.count({
-        where: { id: ids.userId },
-      }),
+      prisma.user.count({ where: { id: ids.userId } }),
     ]);
 
     expect([

@@ -251,7 +251,7 @@ Example:
 ```bash
 npx vitest run \
   --config vitest.config.integration.ts \
-  test/integration/infrastructure/testing/integration-test-context.integration.spec.ts
+  test/integration/menu/menu-integration-test-context.integration.spec.ts
 ```
 
 ### Run TypeScript validation
@@ -335,121 +335,134 @@ It registers the database lifecycle and returns the database manager.
 
 ---
 
-## 9. Integration Test Context
+## 9. Shared Integration Test Infrastructure
 
 Location:
 
 ```text
-test/integration/infrastructure/testing/integration-test-context.ts
+test/integration/infrastructure/testing/
 ```
 
-The recommended entry point for integration tests that need the Menu test factories is:
+The shared infrastructure is registered with:
 
 ```typescript
-registerIntegrationTestContext();
+const infrastructure = registerIntegrationTestInfrastructure();
 ```
+
+It owns only capabilities shared by all integration test contexts:
+
+- The integration test database lifecycle.
+- The shared Prisma database manager.
+- The shared cleanup registry.
+- One `afterEach` hook that cleans records registered by factories.
+
+It deliberately does not import Menu, Organization, Identity, or other domain-specific factories.
 
 Example:
 
 ```typescript
-const testContext = registerIntegrationTestContext();
+const infrastructure = registerIntegrationTestInfrastructure();
+
+infrastructure.database;
+infrastructure.cleanup;
 ```
 
-The returned context exposes:
-
-```typescript
-testContext.database;
-testContext.cleanup;
-testContext.menu;
-```
-
-The `menu` property provides access to all Menu test factories.
-
-Factory instances are created lazily and reused within the same test file.
-
-### Automatic cleanup
-
-The context registers an `afterEach` hook:
-
-```typescript
-afterEach(async () => {
-  await cleanup.clean();
-});
-```
-
-Consequently, registered test data cleanup tasks are executed automatically after each test.
-
-Tests should not need to manually clean up factory-created records under normal circumstances.
+The infrastructure is registered once per test file. Context-specific registrations receive this same infrastructure instance and must not register another cleanup hook.
 
 ---
 
-## 10. Test Data Factories
+## 10. Bounded-Context Integration Test Contexts and Factories
 
-Location:
+Each bounded context owns its own integration test context and its own factories.
+
+Current structure:
 
 ```text
-test/integration/infrastructure/testing/factories/
+test/integration/
+├── infrastructure/
+│   └── testing/
+│       ├── cleanup/
+│       ├── integration-test-database.ts
+│       └── integration-test-infrastructure.ts
+├── identity-access/
+│   ├── identity-access-integration-test-context.ts
+│   └── factories/
+│       └── user-test.factory.ts
+├── organization/
+│   ├── organization-integration-test-context.ts
+│   └── factories/
+│       ├── branch-test.factory.ts
+│       └── organization-test.factory.ts
+└── menu/
+    ├── menu-integration-test-context.ts
+    └── factories/
+        ├── branch-menu-item.factory.ts
+        ├── menu-category.factory.ts
+        ├── menu-item-category.factory.ts
+        ├── menu-item.factory.ts
+        └── menu-test-fixture.factory.ts
 ```
 
-The current factory collection focuses on the Menu domain.
+### Context ownership
 
-### Available factories
+| Context | Owns |
+| --- | --- |
+| Identity Access | User test factory |
+| Organization | Organization and Branch test factories |
+| Menu | Menu Category, Menu Item, Menu Item–Category, and Branch Menu Item factories |
+| Shared infrastructure | Database lifecycle and cleanup lifecycle |
 
-| Factory                   | Responsibility                            |
-| ------------------------- | ----------------------------------------- |
-| `MenuTestContextFactory`  | Creates a User, Organization, and Branch  |
-| `MenuCategoryFactory`     | Creates a Menu Category                   |
-| `MenuItemFactory`         | Creates a Menu Item                       |
-| `MenuItemCategoryFactory` | Creates a Menu Item–Category relationship |
-| `BranchMenuItemFactory`   | Creates a Branch Menu Item                |
+A factory belongs to the context responsible for the entity it creates. For example, the User factory belongs to Identity; the Menu context does not own or reimplement it.
 
-### MenuTestContextFactory
+### Composing a cross-context fixture
 
-Creates the base test context:
+A Menu integration test often needs a valid User, Organization, and Branch before it can create Menu records.
 
-- User
-- Organization
-- Branch
-
-These records are created inside a Prisma transaction.
-
-The factory returns the created records so other factories can use their IDs.
-
-### Example usage
+The Menu context composes the Identity and Organization contexts. Its `MenuTestFixtureFactory` orchestrates their factories and returns a ready-to-use scenario:
 
 ```typescript
-const testContext = registerIntegrationTestContext();
+const infrastructure = registerIntegrationTestInfrastructure();
+const menuContext = registerMenuIntegrationTestContext(infrastructure);
 
-const context = await testContext.menu.context.create();
+const context = await menuContext.factories.fixture.create();
 
-const category = await testContext.menu.category.create({
+const category = await menuContext.factories.category.create({
   organizationId: context.organization.id,
   nameFa: 'نوشیدنی‌ها',
 });
 
-const item = await testContext.menu.item.create({
+const item = await menuContext.factories.item.create({
   organizationId: context.organization.id,
   nameFa: 'قهوه اسپرسو',
   basePrice: 120_000n,
   status: 'ACTIVE',
 });
 
-const itemCategory = await testContext.menu.itemCategory.create({
+const itemCategory = await menuContext.factories.itemCategory.create({
   organizationId: context.organization.id,
   menuItemId: item.id,
   categoryId: category.id,
 });
 
-const branchMenuItem = await testContext.menu.branchMenuItem.create({
+const branchMenuItem = await menuContext.factories.branchMenuItem.create({
   organizationId: context.organization.id,
   branchId: context.branch.id,
   menuItemId: item.id,
 });
 ```
 
-Each factory registers its own cleanup task after successfully creating a record.
+The fixture factory composes existing factories; it does not become the owner of User, Organization, or Branch creation logic.
 
----
+### Why contexts share one infrastructure instance
+
+A test scenario may cross multiple bounded contexts. All participating contexts must use the same database client and cleanup registry so that:
+
+- All records are created in the same test database.
+- Each factory registers cleanup in one shared place.
+- Cleanup runs once after the test.
+- LIFO cleanup removes dependent records before their parents.
+
+Register the shared infrastructure once, then pass it to every context needed by that test file.
 
 ## 11. Cleanup Strategy
 
@@ -539,7 +552,7 @@ When writing new integration tests:
 2. Name test files with the `.integration.spec.ts` suffix.
 3. Use the dedicated test database.
 4. Never hardcode production or development database credentials.
-5. Use `registerIntegrationTestContext()` when Menu factories are needed.
+5. Register `registerIntegrationTestInfrastructure()` once, then register only the bounded-context test contexts needed by the test file.
 6. Prefer factories over manually creating repeated test fixtures.
 7. Keep test data isolated using unique IDs.
 8. Ensure created records are cleaned up.
@@ -558,13 +571,21 @@ test/integration/
 ├── health/
 ├── http/
 ├── identity-access/
+├── identity-access/
+│   ├── factories/
+│   └── identity-access-integration-test-context.ts
 ├── infrastructure/
 │   ├── config/
 │   ├── database/
 │   └── testing/
 │       ├── cleanup/
-│       └── factories/
-│           └── menu/
+│       └── integration-test-infrastructure.ts
+├── menu/
+│   ├── factories/
+│   └── menu-integration-test-context.ts
+├── organization/
+│   ├── factories/
+│   └── organization-integration-test-context.ts
 ├── organization-management/
 ├── outbound-email/
 ├── prisma/

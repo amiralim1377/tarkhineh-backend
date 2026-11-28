@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { PrismaClient } from '../../../../../../src/generated/prisma/client.js';
-import type { IntegrationTestCleanup } from '../../cleanup/integration-test-cleanup.js';
+import type { PrismaClient } from '../../../../src/generated/prisma/client.js';
+import type { IntegrationTestCleanup } from '../../infrastructure/testing/cleanup/integration-test-cleanup.js';
 
 interface CreateMenuCategoryInput {
   organizationId: string;
