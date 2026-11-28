@@ -26,7 +26,7 @@ export class MenuItemFactory {
         id: randomUUID(),
         organizationId: input.organizationId,
         nameFa: input.nameFa ?? 'آیتم تست',
-        nameEn: input.nameEn ?? 'Test Item',
+        nameEn: input.nameEn === undefined ? 'Test Item' : input.nameEn,
         descriptionFa: input.descriptionFa ?? null,
         descriptionEn: input.descriptionEn ?? null,
         imageId: input.imageId ?? null,
