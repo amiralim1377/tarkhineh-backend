@@ -17,6 +17,7 @@ export function registerIntegrationTestContext(
   const database = registerIntegrationTestDatabase(config, environment);
   const cleanup = new IntegrationTestCleanup();
 
+  // Lazy initialization
   let factories: {
     context: MenuTestContextFactory;
     category: MenuCategoryFactory;
@@ -25,6 +26,7 @@ export function registerIntegrationTestContext(
     branchMenuItem: BranchMenuItemFactory;
   } | null = null;
 
+  // test-isolation=>clean-up
   afterEach(async () => {
     await cleanup.clean();
   });
