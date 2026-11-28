@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest';
-
 import { registerIntegrationTestContext } from './integration-test-context.js';
 
 const testContext = registerIntegrationTestContext();
+
+let automaticallyCleanedRecordIds:
+  | {
+      userId: string;
+      organizationId: string;
+      branchId: string;
+      categoryId: string;
+      itemId: string;
+      branchMenuItemId: string;
+    }
+  | undefined;
 
 describe('IntegrationTestContext', () => {
   it('should connect to the test database before accessing factories', () => {
@@ -147,5 +157,88 @@ describe('IntegrationTestContext', () => {
       organizationCount,
       userCount,
     ]).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it('should automatically clean up records after each test', async () => {
+    const { menu } = testContext;
+
+    const context = await menu.context.create();
+
+    const category = await menu.category.create({
+      organizationId: context.organization.id,
+    });
+
+    const item = await menu.item.create({
+      organizationId: context.organization.id,
+    });
+
+    await menu.itemCategory.create({
+      organizationId: context.organization.id,
+      menuItemId: item.id,
+      categoryId: category.id,
+    });
+
+    const branchMenuItem = await menu.branchMenuItem.create({
+      organizationId: context.organization.id,
+      branchId: context.branch.id,
+      menuItemId: item.id,
+    });
+
+    automaticallyCleanedRecordIds = {
+      userId: context.user.id,
+      organizationId: context.organization.id,
+      branchId: context.branch.id,
+      categoryId: category.id,
+      itemId: item.id,
+      branchMenuItemId: branchMenuItem.id,
+    };
+  });
+
+  it('should have automatically removed records created by the previous test', async () => {
+    expect(automaticallyCleanedRecordIds).toBeDefined();
+
+    const ids = automaticallyCleanedRecordIds!;
+
+    const prisma = testContext.database.client;
+
+    const [
+      branchMenuItemCount,
+      itemCount,
+      categoryCount,
+      branchCount,
+      organizationCount,
+      userCount,
+    ] = await Promise.all([
+      prisma.branchMenuItem.count({
+        where: { id: ids.branchMenuItemId },
+      }),
+      prisma.menuItem.count({
+        where: { id: ids.itemId },
+      }),
+      prisma.menuCategory.count({
+        where: { id: ids.categoryId },
+      }),
+      prisma.branch.count({
+        where: {
+          id: ids.branchId,
+          organizationId: ids.organizationId,
+        },
+      }),
+      prisma.organization.count({
+        where: { id: ids.organizationId },
+      }),
+      prisma.user.count({
+        where: { id: ids.userId },
+      }),
+    ]);
+
+    expect([
+      branchMenuItemCount,
+      itemCount,
+      categoryCount,
+      branchCount,
+      organizationCount,
+      userCount,
+    ]).toEqual([0, 0, 0, 0, 0, 0]);
   });
 });
