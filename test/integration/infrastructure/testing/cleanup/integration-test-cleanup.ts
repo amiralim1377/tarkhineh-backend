@@ -26,6 +26,7 @@ export class IntegrationTestCleanup {
 
     this.isRunning = true;
 
+    // Last In, First Out (LIFO)
     const tasks = this.tasks.splice(0).reverse();
     const errors: unknown[] = [];
 
