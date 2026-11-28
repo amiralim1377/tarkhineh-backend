@@ -1,12 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { MenuCategoryPort } from '../../application/ports/menu-category.port.js';
 import { MenuCategory } from '../../domain/entities/menu-category.js';
 import { PrismaService } from '../../../../prisma/prisma.service.js';
 import { normalizePrismaError } from '../../../../prisma/errors/prisma-error-translator.js';
+import { Prisma } from '../../../../generated/prisma/client.js';
+
+type MenuCategoryPrismaClient = Pick<Prisma.TransactionClient, 'menuCategory'>;
 
 @Injectable()
 export class PrismaMenuCategoryRepository implements MenuCategoryPort {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService)
+    private readonly prisma: MenuCategoryPrismaClient,
+  ) {}
 
   async findById(
     organizationId: string,
