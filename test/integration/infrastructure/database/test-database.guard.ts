@@ -14,8 +14,8 @@ interface DatabaseIdentityRow {
 }
 
 export class TestDatabaseGuardError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = TestDatabaseGuardError.name;
   }
 }
@@ -39,6 +39,9 @@ export class TestDatabaseGuard {
     });
 
     let connected = false;
+    let identity: DatabaseIdentity | undefined;
+    let verificationError: TestDatabaseGuardError | undefined;
+    let closeError: unknown;
 
     try {
       await client.connect();
@@ -51,38 +54,73 @@ export class TestDatabaseGuard {
           current_setting('server_version') AS server_version;
       `);
 
-      const identity = result.rows[0];
+      const row = result.rows[0];
 
-      if (!identity) {
+      if (!row) {
         throw new TestDatabaseGuardError(
           'Unable to determine the connected database identity.',
         );
       }
 
-      if (identity.database_name !== this.config.databaseName) {
+      if (row.database_name !== this.config.databaseName) {
         throw new TestDatabaseGuardError(
           'Connected database does not match the configured test database.',
         );
       }
 
-      return Object.freeze({
-        databaseName: identity.database_name,
-        databaseUser: identity.database_user,
-        serverVersion: identity.server_version,
+      identity = Object.freeze({
+        databaseName: row.database_name,
+        databaseUser: row.database_user,
+        serverVersion: row.server_version,
       });
     } catch (error) {
-      if (error instanceof TestDatabaseGuardError) {
-        throw error;
-      }
-
-      throw new TestDatabaseGuardError(
-        'Failed to verify the test database connection. Check PostgreSQL availability and test database credentials.',
-      );
+      verificationError =
+        error instanceof TestDatabaseGuardError
+          ? error
+          : new TestDatabaseGuardError(
+              'Failed to verify the test database connection. Check PostgreSQL availability and test database credentials.',
+              { cause: error },
+            );
     } finally {
       if (connected) {
-        await client.end();
+        try {
+          await client.end();
+        } catch (error) {
+          closeError = error;
+        }
       }
     }
+
+    if (verificationError && closeError) {
+      throw new TestDatabaseGuardError(
+        'Test database verification failed and the connection could not be closed.',
+        {
+          cause: new AggregateError(
+            [verificationError, closeError],
+            'Database verification and connection cleanup both failed.',
+          ),
+        },
+      );
+    }
+
+    if (verificationError) {
+      throw verificationError;
+    }
+
+    if (closeError) {
+      throw new TestDatabaseGuardError(
+        'Failed to close the test database verification connection.',
+        { cause: closeError },
+      );
+    }
+
+    if (!identity) {
+      throw new TestDatabaseGuardError(
+        'Unable to determine the connected database identity.',
+      );
+    }
+
+    return identity;
   }
 
   private validateEnvironment(): void {
