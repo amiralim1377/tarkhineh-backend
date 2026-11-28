@@ -1,0 +1,100 @@
+enum MenuCategoryStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum MenuItemStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum BranchMenuItemStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum BranchMenuItemAvailability {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+model MenuCategory {
+  id             String             @id
+  organizationId String
+  nameFa         String
+  nameEn         String?
+  descriptionFa  String?
+  descriptionEn  String?
+  imageId        String?
+  displayOrder   Int                @default(0)
+  status         MenuCategoryStatus @default(ACTIVE)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menuItemCategories MenuItemCategory[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, status, displayOrder])
+  @@index([organizationId, nameFa])
+}
+
+model MenuItem {
+  id             String         @id
+  organizationId String
+  nameFa         String
+  nameEn         String?
+  descriptionFa  String?
+  descriptionEn  String?
+  imageId        String?
+  basePrice      BigInt
+  status         MenuItemStatus @default(DRAFT)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menuItemCategories MenuItemCategory[]
+  branchOffers       BranchMenuItem[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, nameFa])
+}
+
+model MenuItemCategory {
+  organizationId String
+  menuItemId     String
+  categoryId     String
+  displayOrder   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  menuItem MenuItem     @relation(fields: [menuItemId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  category MenuCategory @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([menuItemId, categoryId])
+  @@index([menuItemId, organizationId])
+  @@index([categoryId, organizationId, displayOrder])
+}
+
+model BranchMenuItem {
+  id             String                     @id
+  organizationId String
+  branchId       String
+  menuItemId     String
+  priceOverride  BigInt?
+  displayOrder   Int                        @default(0)
+  status         BranchMenuItemStatus       @default(ACTIVE)
+  availability   BranchMenuItemAvailability @default(AVAILABLE)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  branch   Branch   @relation(fields: [branchId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([branchId, menuItemId])
+  @@index([branchId, organizationId, status, availability, displayOrder])
+  @@index([menuItemId, organizationId])
+}

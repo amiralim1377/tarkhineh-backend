@@ -21,6 +21,8 @@ model Organization {
   branches              Branch[]
   memberships           OrganizationMembership[]
   membershipInvitations MembershipInvitation[]
+  menuCategories        MenuCategory[]
+  menuItems             MenuItem[]
 
   owner User   @relation("OrganizationOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
   roles Role[] @relation("OrganizationRoles")

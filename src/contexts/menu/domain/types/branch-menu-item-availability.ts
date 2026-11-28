@@ -1,0 +1,7 @@
+export const BRANCH_MENU_ITEM_AVAILABILITY = {
+  AVAILABLE: 'AVAILABLE',
+  UNAVAILABLE: 'UNAVAILABLE',
+} as const;
+
+export type BranchMenuItemAvailability =
+  (typeof BRANCH_MENU_ITEM_AVAILABILITY)[keyof typeof BRANCH_MENU_ITEM_AVAILABILITY];

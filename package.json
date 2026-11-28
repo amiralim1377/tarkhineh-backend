@@ -20,7 +20,9 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
-    "test:integration": "vitest run --config ./vitest.config.integration.ts"
+    "test:integration": "vitest run --config ./vitest.config.integration.ts",
+    "test:int:migrate": "tsx test/integration/scripts/migrate-test-database.ts",
+    "test:int:reset": "tsx test/integration/scripts/reset-test-database.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^12.0.0",
