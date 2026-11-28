@@ -1,9 +1,13 @@
+import { afterEach } from 'vitest';
 import type { TestDatabaseConfig } from '../config/test-database.config.js';
-import { BranchMenuItemFactory } from './factories/menu/branch-menu-item.factory.js';
-import { MenuCategoryFactory } from './factories/menu/menu-category.factory.js';
-import { MenuItemCategoryFactory } from './factories/menu/menu-item-category.factory.js';
-import { MenuItemFactory } from './factories/menu/menu-item.factory.js';
-import { MenuTestContextFactory } from './factories/menu/menu-test-context.factory.js';
+import {
+  BranchMenuItemFactory,
+  MenuCategoryFactory,
+  MenuItemCategoryFactory,
+  MenuItemFactory,
+  MenuTestContextFactory,
+} from './factories/index.js';
+import { IntegrationTestCleanup } from './cleanup/integration-test-cleanup.js';
 import { registerIntegrationTestDatabase } from './integration-test-database.js';
 
 export function registerIntegrationTestContext(
@@ -11,19 +15,38 @@ export function registerIntegrationTestContext(
   environment: NodeJS.ProcessEnv = process.env,
 ) {
   const database = registerIntegrationTestDatabase(config, environment);
+  const cleanup = new IntegrationTestCleanup();
 
-  const prisma = database.client;
+  let factories: {
+    context: MenuTestContextFactory;
+    category: MenuCategoryFactory;
+    item: MenuItemFactory;
+    itemCategory: MenuItemCategoryFactory;
+    branchMenuItem: BranchMenuItemFactory;
+  } | null = null;
 
-  const menu = {
-    context: new MenuTestContextFactory(prisma),
-    category: new MenuCategoryFactory(prisma),
-    item: new MenuItemFactory(prisma),
-    itemCategory: new MenuItemCategoryFactory(prisma),
-    branchMenuItem: new BranchMenuItemFactory(prisma),
-  };
+  afterEach(async () => {
+    await cleanup.clean();
+  });
 
   return {
     database,
-    menu,
+    cleanup,
+
+    get menu() {
+      if (!factories) {
+        const prisma = database.client;
+
+        factories = {
+          context: new MenuTestContextFactory(prisma, cleanup),
+          category: new MenuCategoryFactory(prisma, cleanup),
+          item: new MenuItemFactory(prisma, cleanup),
+          itemCategory: new MenuItemCategoryFactory(prisma, cleanup),
+          branchMenuItem: new BranchMenuItemFactory(prisma, cleanup),
+        };
+      }
+
+      return factories;
+    },
   };
 }
