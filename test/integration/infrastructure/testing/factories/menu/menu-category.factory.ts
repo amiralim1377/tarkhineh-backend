@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '../../../../../../src/generated/prisma/client.js';
+import type { PrismaClient } from '../../../../../../src/generated/prisma/client.js';
+import type { IntegrationTestCleanup } from '../../cleanup/integration-test-cleanup.js';
 
 interface CreateMenuCategoryInput {
   organizationId: string;
@@ -13,10 +14,13 @@ interface CreateMenuCategoryInput {
 }
 
 export class MenuCategoryFactory {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly cleanup: IntegrationTestCleanup,
+  ) {}
 
   async create(input: CreateMenuCategoryInput) {
-    return this.prisma.menuCategory.create({
+    const category = await this.prisma.menuCategory.create({
       data: {
         id: randomUUID(),
         organizationId: input.organizationId,
@@ -29,5 +33,16 @@ export class MenuCategoryFactory {
         status: input.status ?? 'ACTIVE',
       },
     });
+
+    this.cleanup.add(async () => {
+      await this.prisma.menuCategory.deleteMany({
+        where: {
+          id: category.id,
+          organizationId: category.organizationId,
+        },
+      });
+    });
+
+    return category;
   }
 }

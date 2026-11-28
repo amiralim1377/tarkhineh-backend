@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '../../../../../../src/generated/prisma/client.js';
+
+import type { PrismaClient } from '../../../../../../src/generated/prisma/client.js';
+import type { IntegrationTestCleanup } from '../../cleanup/integration-test-cleanup.js';
 
 export class MenuTestContextFactory {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly cleanup: IntegrationTestCleanup,
+  ) {}
 
   async create() {
-    return this.prisma.$transaction(async (tx) => {
+    const context = await this.prisma.$transaction(async (tx) => {
       const uniqueId = randomUUID();
 
       const user = await tx.user.create({
@@ -40,11 +45,31 @@ export class MenuTestContextFactory {
         },
       });
 
-      return {
-        user,
-        organization,
-        branch,
-      };
+      return { user, organization, branch };
     });
+
+    // Registration order matters: cleanup runs in reverse order.
+    this.cleanup.add(async () => {
+      await this.prisma.user.deleteMany({
+        where: { id: context.user.id },
+      });
+    });
+
+    this.cleanup.add(async () => {
+      await this.prisma.organization.deleteMany({
+        where: { id: context.organization.id },
+      });
+    });
+
+    this.cleanup.add(async () => {
+      await this.prisma.branch.deleteMany({
+        where: {
+          id: context.branch.id,
+          organizationId: context.organization.id,
+        },
+      });
+    });
+
+    return context;
   }
 }

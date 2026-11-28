@@ -1,4 +1,5 @@
-import { PrismaClient } from '../../../../../../src/generated/prisma/client.js';
+import type { PrismaClient } from '../../../../../../src/generated/prisma/client.js';
+import type { IntegrationTestCleanup } from '../../cleanup/integration-test-cleanup.js';
 
 interface CreateMenuItemCategoryInput {
   organizationId: string;
@@ -8,10 +9,13 @@ interface CreateMenuItemCategoryInput {
 }
 
 export class MenuItemCategoryFactory {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly cleanup: IntegrationTestCleanup,
+  ) {}
 
   async create(input: CreateMenuItemCategoryInput) {
-    return this.prisma.menuItemCategory.create({
+    const itemCategory = await this.prisma.menuItemCategory.create({
       data: {
         organizationId: input.organizationId,
         menuItemId: input.menuItemId,
@@ -19,5 +23,17 @@ export class MenuItemCategoryFactory {
         displayOrder: input.displayOrder ?? 0,
       },
     });
+
+    this.cleanup.add(async () => {
+      await this.prisma.menuItemCategory.deleteMany({
+        where: {
+          organizationId: itemCategory.organizationId,
+          menuItemId: itemCategory.menuItemId,
+          categoryId: itemCategory.categoryId,
+        },
+      });
+    });
+
+    return itemCategory;
   }
 }

@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '../../../../../../src/generated/prisma/client.js';
+
+import type { PrismaClient } from '../../../../../../src/generated/prisma/client.js';
+import type { IntegrationTestCleanup } from '../../cleanup/integration-test-cleanup.js';
 
 interface CreateBranchMenuItemInput {
   organizationId: string;
@@ -12,10 +14,13 @@ interface CreateBranchMenuItemInput {
 }
 
 export class BranchMenuItemFactory {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly cleanup: IntegrationTestCleanup,
+  ) {}
 
   async create(input: CreateBranchMenuItemInput) {
-    return this.prisma.branchMenuItem.create({
+    const branchMenuItem = await this.prisma.branchMenuItem.create({
       data: {
         id: randomUUID(),
         organizationId: input.organizationId,
@@ -27,5 +32,13 @@ export class BranchMenuItemFactory {
         availability: input.availability ?? 'AVAILABLE',
       },
     });
+
+    this.cleanup.add(async () => {
+      await this.prisma.branchMenuItem.deleteMany({
+        where: { id: branchMenuItem.id },
+      });
+    });
+
+    return branchMenuItem;
   }
 }
